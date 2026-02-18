@@ -1,0 +1,14 @@
+{
+  "name": "agentic-coding",
+  "owner": {
+    "name": "zsakata"
+  },
+  "plugins": [
+    {
+      "name": "claude-rules",
+      "source": "./claude-code/plugins/claude-rules",
+      "description": "Skills for writing effective CLAUDE.md files and rules",
+      "version": "0.1.0"
+    }
+  ]
+}
