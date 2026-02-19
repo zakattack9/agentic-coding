@@ -30,8 +30,7 @@ claude-code/plugins/ralph/
 │       ├── context_monitor.py              # NEW: PostToolUse context usage alerts
 │       └── stop_loop_reminder.py            # NEW: Stop hook — tasks.json validation + enforce commit
 ├── sandbox/
-│   ├── Dockerfile                           # NEW: custom sandbox template
-│   └── entrypoint.sh                        # NEW: auth symlink + Claude launch
+│   └── setup.sh                             # NEW: auth symlink setup (run via `docker sandbox exec`)
 ├── scripts/
 │   ├── ralph.sh                             # NEW: main loop runner (sandbox-aware)
 │   ├── ralph-init.sh                        # NEW: initialize a ralph loop in a project
@@ -95,7 +94,7 @@ target-project/
 
 Core behavior:
 - Iterates from 1 to `MAX_ITERATIONS` (default: 10), invoking Claude each time with the prompt template
-- **Sandbox mode (default):** Uses `docker sandbox run -t dclaude:latest claude "$PROJECT_DIR" "$HOME/.dclaude_state" -- -p "$PROMPT"` — the sandbox provides OS-level isolation, `--dangerously-skip-permissions` is applied by the sandbox template automatically
+- **Sandbox mode (default):** Uses the create + exec + run pattern (see below). The sandbox provides OS-level isolation; `--dangerously-skip-permissions` is applied by the sandbox template automatically
 - **Direct mode (fallback):** Uses `claude -p "$PROMPT" --dangerously-skip-permissions` — relies on PreToolUse hook blocklist for safety (see `pretooluse-hook-reference.md`)
 - Auto-detects Docker Sandbox availability at startup; falls back to direct mode if unavailable
 - Each iteration is a fresh `claude -p` process = fresh context window (the sandbox itself persists across iterations — fast reconnect, no re-setup)
@@ -105,8 +104,41 @@ Core behavior:
 - Detects completion via `<promise>COMPLETE</promise>` in output, then verifies with `jq` that all stories in `tasks.json` have `passes: true`
 - Falls back to tasks.json-only check (if agent completed everything but forgot the tag)
 - Streams output to terminal via `tee /dev/stderr` while capturing for promise detection
-- In sandbox mode, adds a 2-second sleep between iterations to allow file sync to settle
+- In sandbox mode, adds a 2-3 second sleep between iterations to allow sandbox→host file sync to settle before reading `tasks.json` on the host
+- Handles transient empty responses (exit 0 with no text output) by retrying the iteration, with a cap on retries
 - Exits 0 on completion, 1 on max iterations reached
+
+Sandbox invocation pattern (create + exec + run):
+
+```bash
+SANDBOX_NAME="ralph-$(echo "$PROJECT_DIR" | sed 's#[^A-Za-z0-9._-]#_#g')"
+
+# One-time setup: create sandbox if it doesn't exist
+if ! docker sandbox ls 2>/dev/null | grep -q "$SANDBOX_NAME"; then
+  # Create with default claude-code template + auth state mount
+  docker sandbox create --name "$SANDBOX_NAME" claude "$PROJECT_DIR" "$HOME/.dclaude_state"
+
+  # Set up auth symlinks and git config inside the sandbox
+  docker sandbox exec -u root "$SANDBOX_NAME" bash -c '
+    STATE_DIR="/Users/'"$USER"'/.dclaude_state"
+    rm -rf /home/agent/.claude /home/agent/.claude.json 2>/dev/null || true
+    ln -s "$STATE_DIR/.claude" /home/agent/.claude
+    ln -s "$STATE_DIR/.claude.json" /home/agent/.claude.json
+    chown -h agent:agent /home/agent/.claude /home/agent/.claude.json 2>/dev/null || true
+  '
+  docker sandbox exec "$SANDBOX_NAME" bash -c '
+    git config --global user.email "ralph@localhost"
+    git config --global user.name "Ralph Loop"
+  '
+fi
+
+# Every iteration
+docker sandbox run "$SANDBOX_NAME" -- -p "$PROMPT"
+```
+
+**Why create + exec + run instead of a custom Dockerfile template:** Docker Sandbox VMs have a separate image store from the host Docker daemon. Locally-built images (`docker build -t dclaude:latest`) are not accessible to the sandbox VM — `--pull-template never` does not help. The `exec` approach uses the stock `docker/sandbox-templates:claude-code` image (pulled from Docker Hub) and customizes the live VM. See `sandbox-test-results.md` Step 6 for full details.
+
+**File sync constraint:** Once Mutagen has synced a file into the sandbox, host-side overwrites of that file are permanently ignored. This does not affect the default loop (sandbox writes files, host only reads), but matters for manual intervention. If `ralph.sh` needs to inject data between iterations, use `docker sandbox exec` to write directly into the sandbox. If resuming after a user pause where files were edited on the host, use `docker sandbox stop` + restart to force a resync. See `sandbox-test-results.md` Step 4 for the full analysis and workaround matrix.
 
 Arguments:
 ```
@@ -128,10 +160,13 @@ Dependencies: `jq` (for tasks.json verification), `claude` CLI. Docker Desktop 4
 
 See `docker-sandbox-isolation.md` for full setup, architecture diagram, network policy configuration, and known caveats.
 
-**Sandbox template files:**
+**Sandbox setup:**
 
-- **`sandbox/Dockerfile`** — Extends `docker/sandbox-templates:claude-code` with a custom entrypoint
-- **`sandbox/entrypoint.sh`** — Symlinks shared auth state (`~/.dclaude_state`) into the sandbox user's home so credentials persist across sandboxes without mounting `~/.claude` directly
+- **`sandbox/setup.sh`** — Shell script that sets up auth symlinks and git config inside the sandbox VM. Run once via `docker sandbox exec -u root` after `docker sandbox create`. Symlinks `~/.dclaude_state/.claude/` into the sandbox `agent` user's home so credentials persist across sandbox destruction and recreation without mounting `~/.claude` directly.
+
+**Note:** The original plan used a custom Dockerfile template (`sandbox/Dockerfile` + `sandbox/entrypoint.sh`). Feasibility testing found that Docker Sandbox VMs cannot access locally-built images — the `--pull-template never -t dclaude:latest` approach fails with "pull access denied". The working approach is to use the stock `docker/sandbox-templates:claude-code` template and customize via `docker sandbox exec`. See `sandbox-test-results.md` Step 6.
+
+**Auth state initialization:** `~/.dclaude_state/.claude.json` must contain valid JSON (`{}` minimum). Using `touch` to create an empty file causes JSON parse errors on sandbox startup. Use `echo '{}' > ~/.dclaude_state/.claude.json`.
 
 **Fallback:** When Docker Sandbox is unavailable (no Docker Desktop, Linux CI, etc.), `ralph.sh` runs Claude directly with `--dangerously-skip-permissions` and relies on a PreToolUse hook blocklist for safety. The hook script and full pattern reference are documented in `pretooluse-hook-reference.md`.
 
@@ -153,9 +188,9 @@ Fires graduated alerts at 5 thresholds — each threshold triggers only once per
 
 | Threshold | Severity | Message                                                                                        |
 | --------- | -------- | ---------------------------------------------------------------------------------------------- |
-| 50%, 60%  | NOTICE   | "Be mindful of remaining space. Plan to finish your current task within this session."         |
-| 70%, 80%  | WARNING  | "Finish your current task and commit soon. Do not start additional tasks."                     |
-| 90%       | CRITICAL | "Wrap up immediately — commit progress, update progress.txt, and stop. Do NOT start new work." |
+| 50%, 60%  | NOTICE   | "Be mindful of remaining space. Plan to finish your current task within this session. If you discover follow-up work, add new stories to tasks.json — the next iteration will pick them up." |
+| 70%, 80%  | WARNING  | "Finish your current task and commit soon. Do not start additional tasks. If work remains, create new stories in tasks.json for the next iteration and capture any implementation details or insights in progress.txt so the next iteration has full context." |
+| 90%       | CRITICAL | "Wrap up immediately. Do NOT start new work. Instead: (1) create tasks in tasks.json for any remaining work, (2) write implementation details, insights, and handoff notes to progress.txt, (3) commit all changes, (4) stop. The next iteration will continue from where you left off." |
 
 **State tracking:** Uses `/tmp/claude-context-alerts-${SESSION_ID}` to record which thresholds have already fired. Each threshold fires once, then is suppressed for the rest of the session.
 
@@ -358,7 +393,7 @@ A user-invocable skill (`/ralph-plan`) that interactively generates `prd.md` and
 
 1. **Plugin scaffold** — `.claude-plugin/plugin.json` + `marketplace.json` update
 2. **Templates** — `prd-template.md`, `tasks-template.json`, `progress-template.md`, `prompt.md` (static files, no deps)
-3. **Sandbox template** — `sandbox/Dockerfile` + `sandbox/entrypoint.sh` (see `docker-sandbox-isolation.md`)
+3. **Sandbox setup script** — `sandbox/setup.sh` (auth symlinks + git config, run via `docker sandbox exec`; see `sandbox-test-results.md`)
 4. **Hook scripts** — `context_monitor.py`, `stop_loop_reminder.py` (Python, standalone, testable independently)
 5. **hooks.json** — Wire hooks to events (depends on hook scripts)
 6. **ralph.sh** — Main loop runner with sandbox/direct mode detection (depends on templates + sandbox template)
@@ -390,10 +425,12 @@ A user-invocable skill (`/ralph-plan`) that interactively generates `prd.md` and
 
 ## Verification Plan
 
-1. **Sandbox template** — Build and run interactively:
-   - `docker build -t dclaude:latest ./sandbox/` → should build without errors
-   - `docker sandbox run -t dclaude:latest claude . -- -p "echo hello"` → should return output, confirm sandbox is functional
-   - Verify auth persists: run twice, second run should not prompt for login
+1. **Sandbox setup** — Create sandbox, configure auth, verify pipe mode:
+   - `docker sandbox create --name ralph-test claude /tmp/test-project "$HOME/.dclaude_state"` → should create sandbox
+   - Run `sandbox/setup.sh` via `docker sandbox exec -u root ralph-test bash < sandbox/setup.sh` → should set up auth symlinks and git config
+   - `docker sandbox run ralph-test -- -p "Respond with: OK"` → should return output without login prompt
+   - Verify auth persists: `docker sandbox rm ralph-test`, recreate, re-run setup, verify no login prompt
+   - See `sandbox-test-results.md` for the full feasibility test suite that has already validated these steps
 2. **Network policy** — Apply deny-by-default allowlist, verify:
    - `curl https://api.anthropic.com` → should succeed (allowed)
    - `curl https://evil.com` → should fail (blocked)
@@ -415,6 +452,7 @@ A user-invocable skill (`/ralph-plan`) that interactively generates `prd.md` and
 
 | File                           | Purpose                                                                                                                                                     |
 | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `docker-sandbox-isolation.md`  | Full Docker Sandbox setup, architecture, network policies, caveats, `dclaude` wrapper                                                                       |
+| `docker-sandbox-isolation.md`  | Docker Sandbox architecture, network policies, caveats. **Note:** The custom Dockerfile/template approach documented there does not work — see `sandbox-test-results.md` for the working create+exec+run pattern |
+| `sandbox-test-results.md`      | Feasibility test results, file sync root cause analysis, auth DX, workaround matrix, architecture recommendations. **Read this before implementing sandbox mode.** |
 | `pretooluse-hook-reference.md` | PreToolUse hook implementation guide: 18 categories of dangerous command patterns, regex patterns, architecture, evasion awareness, false positive handling |
 | `context-monitor-hook.md`      | Context monitor hook design notes                                                                                                                           |

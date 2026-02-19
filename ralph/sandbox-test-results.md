@@ -53,54 +53,75 @@ Created `sync-test.json` on host with `{"status": "created_on_host"}`. Asked Cla
 
 ### Step 4: File Sync — Critical Finding
 
-**Host → sandbox sync for file overwrites does not work.** When a file is overwritten on the host after the sandbox has already synced it, the sandbox sees the stale version **indefinitely**. This is not a latency issue — it is a **Mutagen conflict detection** issue (see root cause analysis below).
+**Host → sandbox sync for file overwrites does not work.** Once Mutagen has synced a file version into the sandbox, subsequent host overwrites of that same file path are silently ignored — **permanently**, not as a temporary delay.
+
+#### Basic sync behavior
 
 | Scenario | Result |
 |----------|--------|
-| New file created on host → visible in sandbox | **PASS** (within 5s) |
+| New file created on host → visible in sandbox | **PASS** (within 3-5s) |
 | File overwritten on host → sandbox sees change | **FAIL** (permanently stale) |
 | Sandbox writes file → next `docker sandbox run` sees it | **PASS** (immediate) |
-| Sandbox writes file → host sees change | **PASS** (within 2s) |
+| Sandbox writes file → host sees change | **PASS** (within 2-3s) |
 
 **Independently verified** by running `ralph/verify-sync-latency.sh` — the host→sandbox overwrite failure is reproducible.
 
-#### Root Cause: Mutagen Conflict Detection
+#### Targeted follow-up tests
 
-Docker Sandboxes use [Mutagen](https://mutagen.io/documentation/synchronization/) (acquired by Docker) as the bidirectional sync engine. Mutagen uses a **three-way merge algorithm** that tracks the last "agreed-upon" state of every file and detects what each endpoint changed since then.
+After the initial findings, six additional tests were run to pinpoint exactly when the issue triggers and which workarounds are effective:
 
-When the sandbox writes a file and the host subsequently overwrites the same file, Mutagen detects **modifications on both endpoints** relative to the last agreed-upon state. In `two-way-safe` mode (the likely default for sandboxes), such conflicts are **not auto-resolved** — the file stays at whichever version was last agreed upon, which is the sandbox's version.
+| Test | Scenario | Result |
+|------|----------|--------|
+| A | Host creates new file → sandbox reads it | **PASS** — visible in 5s |
+| B | Host overwrites file that sandbox previously read (sandbox never wrote it) | **FAIL** — permanently stale |
+| C | Host creates file, then overwrites within 5s before sandbox syncs first version | **PASS** — sandbox sees version 2 (only synced once) |
+| D | Sandbox writes file, then host overwrites it | **FAIL** — permanently stale |
+| E | Same as D but with 30s wait between host write and check | **FAIL** — still stale after 30s |
+| F | `docker sandbox stop` then restart after host overwrite | **PASS** — sandbox picks up host version |
+| G | Delete file inside sandbox via `exec`, then host writes new version | **PASS** — sandbox sees new version |
 
-This is not a latency issue that resolves over time. The file is stuck in a conflict state. Docker does not expose Mutagen's sync configuration, so you cannot:
-- Switch to `two-way-resolved` mode (where the host/alpha would win conflicts)
+Key takeaway from Test B: **the sandbox does not need to have written the file** for the issue to occur. Simply having synced and read a file is enough. Any subsequent host overwrite of that file is ignored.
+
+Key takeaway from Test C: If the host overwrites a file **before** Mutagen has synced the first version into the sandbox, the sandbox gets the latest version. The issue only triggers after a successful sync has established a cached version.
+
+#### Root Cause: Mutagen Sync Staleness
+
+Docker Sandboxes use [Mutagen](https://mutagen.io/documentation/synchronization/) (acquired by Docker) as the bidirectional sync engine. Mutagen creates an ext4 cache in the sandbox VM and uses a three-way merge algorithm to track file state.
+
+The initial hypothesis was that this was a two-sided Mutagen conflict (both endpoints modified the file). **Test B disproved this** — the sandbox only read the file, never wrote it. A one-sided host modification should propagate cleanly in any Mutagen sync mode.
+
+The actual root cause appears to be a **sync cache staleness bug** in Docker's Mutagen integration: once a file has been synced into the sandbox VM's ext4 cache, the Mutagen filesystem watcher fails to detect or propagate subsequent host-side overwrites of that file. This is consistent with:
+- [Docker for Windows #14060](https://github.com/docker/for-win/issues/14060) — files not updating inside container after Docker Desktop upgrade (same symptom, different platform)
+- [Mutagen conflict resolution issue #271](https://github.com/mutagen-io/mutagen/issues/271) — reconciliation algorithm bugs fixed in v0.12 rewrite
+- [Docker Synchronized File Shares stalling #7281](https://github.com/docker/for-mac/issues/7281) — sync stalling on macOS
+
+Docker does not expose Mutagen's sync configuration, so you cannot:
 - Run `mutagen sync flush` to force a resync
-- Configure conflict resolution strategy
+- Change the sync mode or conflict resolution strategy
+- Inspect the sync session state
 
-This explains why **new files** sync fine (no prior agreed-upon state = no conflict) but **overwrites** don't.
+#### Volume mounts are not an alternative
 
-References:
-- [Mutagen file synchronization docs](https://mutagen.io/documentation/synchronization/)
-- [Mutagen conflict resolution issue #271](https://github.com/mutagen-io/mutagen/issues/271) — similar bug in Mutagen v0.11, fixed in v0.12 reconciliation rewrite
-- [Docker Synchronized File Shares docs](https://docs.docker.com/desktop/features/synchronized-file-sharing/)
-- [Docker for Windows #14060](https://github.com/docker/for-win/issues/14060) — related file sync regression
+Docker Sandboxes do not support `-v` or `--mount` flags. The `docker sandbox create` command only accepts workspace paths. The [architecture docs](https://docs.docker.com/ai/sandboxes/architecture/) state: "This is file synchronization, not volume mounting. Files are copied between host and VM." The sync mechanism is baked into the sandbox design and cannot be swapped for bind mounts.
 
 #### Impact on Ralph Loop
 
-**Low for the default flow.** The Ralph Loop pattern is:
+**No impact on the default automated flow.** The Ralph Loop pattern is:
 1. Sandbox writes `prd.json` (and other files)
 2. Host reads `prd.json` to check completion (sandbox→host sync works)
 3. Next `docker sandbox run` — sandbox reads its own `prd.json` (sandbox→sandbox persistence works)
 
-The host never overwrites workspace files between iterations. All file mutations happen inside the sandbox.
+The host never overwrites workspace files during the loop. All file mutations happen inside the sandbox.
 
-**Becomes a problem if you need:**
-- Host-injected feedback between iterations (e.g., writing `ralph/feedback.txt` from `ralph.sh`)
-- Hot-reloading the prompt template while the loop runs
-- Manual `prd.json` edits during a paused loop
-- Multi-process coordination via shared files
+**Impacts manual intervention scenarios:**
+- Editing `prd.json` on the host to add/remove stories while the loop is paused — sandbox won't see the changes
+- Hot-reloading `ralph/prompt.md` while the loop runs — sandbox keeps the old version
+- `ralph.sh` injecting a feedback file between iterations — sandbox won't see it
+- Any multi-process coordination via shared workspace files
 
 #### Workarounds for Host→Sandbox Writes
 
-Ranked by reliability:
+Three confirmed workarounds and two additional options, ranked by practicality:
 
 **1. `docker sandbox exec` as a write proxy (confirmed working)**
 
@@ -114,21 +135,31 @@ docker sandbox exec my-sandbox bash -c 'cat > /project/ralph/feedback.txt' <<< '
 docker sandbox exec -i my-sandbox bash -c 'cat > /project/ralph/prd.json' < /host/path/prd.json
 ```
 
-This writes at the VM filesystem level. No Mutagen conflict possible because only one endpoint changed the file. The change then syncs back to the host normally. This is the recommended approach for any host→sandbox writes that `ralph.sh` needs to perform.
+This writes at the VM filesystem level. No sync issue possible because the write happens inside the VM. The change then syncs back to the host normally. Best for programmatic writes from `ralph.sh`.
 
-**2. Delete-inside-sandbox, then write-on-host (untested, theoretically sound)**
+**2. Delete-inside-sandbox, then write-on-host (confirmed working — Test G)**
 
-Since Mutagen handles deletions cleanly ("deletions can be overwritten" per Mutagen docs), this sequence might break the conflict:
+Delete the file inside the sandbox, wait for the deletion to sync, then write the new version on the host:
 
 ```bash
 docker sandbox exec my-sandbox rm /project/file.json   # delete inside sandbox
-sleep 2                                                  # wait for delete to sync
+sleep 3                                                  # wait for delete to sync
 echo '{"new": "data"}' > /project/file.json             # host creates "new" file
 ```
 
-Mutagen would see: sandbox deleted, host created → no conflict → host version wins. **Not tested** — the sync engine might still see it as a conflict. Worth exploring if the `exec` proxy approach is insufficient.
+Mutagen treats the host write as a new file (no prior synced version to conflict with). Best for cases where you want to edit files on the host side (e.g., with your editor) rather than piping through `exec`.
 
-**3. Environment variables for small data**
+**3. Stop/start the sandbox to force resync (confirmed working — Test F)**
+
+```bash
+docker sandbox stop my-sandbox
+# Make any host edits here — they will be picked up on restart
+docker sandbox run my-sandbox -- -p "$PROMPT"
+```
+
+Stopping and restarting the sandbox forces Mutagen to re-snapshot the host filesystem. All host changes are picked up. Adds a few seconds of overhead. **Best for manual intervention** — e.g., pausing the loop, editing `prd.json` in your editor, then resuming. `ralph.sh` could use this approach when resuming after a pause.
+
+**4. Environment variables for small data**
 
 For metadata like iteration count or status flags, bypass the filesystem entirely:
 
@@ -136,19 +167,16 @@ For metadata like iteration count or status flags, bypass the filesystem entirel
 docker sandbox run my-sandbox -e RALPH_ITERATION=3 -e RALPH_STATUS=continue -- -p "$PROMPT"
 ```
 
-**4. Stop/start sandbox to force resync (untested, heavy)**
-
-```bash
-docker sandbox stop my-sandbox
-# host writes here
-docker sandbox run my-sandbox -- ...
-```
-
-Stopping the sandbox might cause Mutagen to re-snapshot the host filesystem on restart. Adds several seconds of overhead. Only viable as a last resort.
-
 **5. Wait for Docker to fix it**
 
-Docker Sandboxes are beta. The Mutagen reconciliation algorithm was rewritten in v0.12 to fix a similar class of conflict bugs. Docker's internal Mutagen version may receive the same fix. Track Docker Desktop release notes.
+Docker Sandboxes are beta. The Mutagen reconciliation algorithm was rewritten in v0.12 to fix a similar class of bugs. Docker's internal Mutagen version may receive fixes. Track Docker Desktop release notes.
+
+#### Recommended strategy for `ralph.sh`
+
+- **During automated iteration:** No workaround needed. The sandbox reads its own writes.
+- **Programmatic host→sandbox writes (feedback injection, prompt updates):** Use `docker sandbox exec` (workaround 1).
+- **Resuming after user pause with manual edits:** Use `docker sandbox stop` + restart (workaround 3). This is the simplest UX — the user edits files normally on the host, and `ralph.sh` does a stop/start cycle when resuming.
+- **Optional safety net:** `ralph.sh` could `docker sandbox stop` + restart between every N iterations as a cheap way to guarantee the sandbox always has the latest host state. The overhead is a few seconds per stop/start cycle.
 
 ### Step 5: Build Custom `dclaude` Template
 
@@ -303,9 +331,11 @@ docker sandbox run "$NAME" -- -p "$PROMPT"
 
 Steps 1-2 are idempotent if guarded by `docker sandbox ls | grep -q "$NAME"`.
 
-### 2. All workspace mutations must happen inside the sandbox
+### 2. Host cannot overwrite files the sandbox has already synced
 
-Due to the Mutagen conflict issue, the host must never overwrite files that the sandbox has written. The data flow is strictly:
+Once Mutagen has synced a file into the sandbox, host-side overwrites of that file are permanently ignored (see Step 4 root cause analysis). This is not limited to files the sandbox wrote — even files the sandbox only read are affected.
+
+The default automated loop avoids this naturally:
 
 ```
 ralph.sh (host)                     Sandbox VM
@@ -314,11 +344,16 @@ ralph.sh (host)                     Sandbox VM
   reads progress.txt ◄──sync──────  │ Claude writes progress  │
   reads output ◄─────────────────   │ Claude outputs to stdout│
                                     │ Claude commits to git   │
-  (NEVER writes to workspace) ──X   │                         │
                                     └─────────────────────────┘
 ```
 
-If `ralph.sh` needs to inject data between iterations, use `docker sandbox exec` as a write proxy (see Step 4 workarounds above), not host filesystem writes.
+For scenarios where the host does need to write into the sandbox (feedback injection, manual edits, prompt updates), three confirmed workarounds exist:
+
+| Scenario | Recommended workaround |
+|----------|----------------------|
+| `ralph.sh` injects data programmatically | `docker sandbox exec` write proxy |
+| User edits files on host during pause | `docker sandbox stop` + restart before resuming |
+| User wants to edit a specific file | `docker sandbox exec ... rm`, then edit on host |
 
 ### 3. Read completion status from host after sync delay
 
@@ -361,23 +396,79 @@ Based on these findings, the following reference docs need updates before implem
 
 | Document | Change needed |
 |----------|---------------|
-| `docker-sandbox-isolation.md` | Replace custom Dockerfile approach with create+exec+run pattern. Fix `touch` → `echo '{}'`. Document Mutagen conflict root cause. |
-| `ralph-loop-plan.md` Section 3 | Update `ralph.sh` sandbox invocation to use three-step pattern, add sandbox existence check, add auth failure detection/retry |
+| `docker-sandbox-isolation.md` | Replace custom Dockerfile approach with create+exec+run pattern. Fix `touch` → `echo '{}'`. Replace "conflict detection" explanation with sync staleness root cause. Document that volume mounts are not available. Add stop/start and delete-then-create workarounds. |
+| `ralph-loop-plan.md` Section 3 | Update `ralph.sh` sandbox invocation to use three-step pattern, add sandbox existence check, add auth failure detection/retry, add stop/start cycle for resume-after-pause |
 | `ralph-loop-plan.md` Section 4 | Note that custom Dockerfile template doesn't work; sandbox setup is done via `exec` |
+
+---
+
+## Sandbox Stop/Start Timing
+
+Measured across multiple cycles to determine the overhead of a stop/start cycle (relevant for workaround 3 and the optional safety-net resync).
+
+### Raw results
+
+**Stop + start cycles (no `run` in between — warm):**
+
+| Cycle | Stop | Start | Total |
+|-------|------|-------|-------|
+| 1 (cold) | 10,300ms | 133ms | 10,433ms |
+| 2 | 133ms | 127ms | 260ms |
+| 3 | 126ms | 122ms | 248ms |
+| 4 | 129ms | 126ms | 255ms |
+| 5 | 124ms | 127ms | 251ms |
+
+**Stop + start after a `run` (pipe mode) — realistic Ralph pattern:**
+
+| Cycle | Stop | Start | Run (`-p "Say OK"`) | Total |
+|-------|------|-------|---------------------|-------|
+| 1 | 146ms | 147ms | 6,195ms | 6,488ms |
+| 2 | 10,332ms | 133ms | 5,742ms | 16,207ms |
+| 3 | 10,355ms | 139ms | 5,652ms | 16,146ms |
+
+**Second warm stop/start run (confirming bimodal pattern):**
+
+| Cycle | Stop | Start | Total |
+|-------|------|-------|-------|
+| 1 (first after run) | 10,334ms | 122ms | 10,456ms |
+| 2 | 130ms | 124ms | 254ms |
+| 3 | 139ms | 143ms | 282ms |
+| 4 | 121ms | 130ms | 251ms |
+| 5 | 122ms | 137ms | 259ms |
+
+### Analysis
+
+There is a clear **bimodal pattern**:
+
+| Scenario | Stop time | Start time | Total overhead |
+|----------|-----------|------------|----------------|
+| After `docker sandbox run` (realistic) | ~10.3s | ~130ms | **~10.4s** |
+| Back-to-back stop/start (warm, no run) | ~125ms | ~130ms | **~250ms** |
+
+- **Start is always fast** (~130ms) regardless of scenario
+- **Stop is the bottleneck** — ~10.3s after a `run` command, likely due to process/session teardown inside the sandbox
+- **Pipe mode `run` adds ~6s** minimum even for trivial prompts (real Ralph iterations take much longer)
+
+### Implications for Ralph Loop
+
+- **Workaround 3 (stop/start resync)** adds ~10.4s overhead per use. Acceptable for manual-pause-and-resume (happens rarely, user is already waiting). Acceptable as an every-N-iterations safety net.
+- A full iteration cycle is: **~10s stop + ~0.1s start + Ns run**. For real work where `run` takes minutes, the 10s overhead is negligible (<5% for a 3-minute iteration).
+- **The stop overhead does NOT compound** — warm stop/start (without a preceding `run`) is ~250ms.
 
 ---
 
 ## Verification Script
 
-`ralph/verify-sync-latency.sh` is a self-contained script that independently reproduces the host→sandbox file overwrite sync issue. It:
+`ralph/verify-sync-latency.sh` is a self-contained script that reproduces the host→sandbox file overwrite sync issue. It does not require Claude auth — only `docker sandbox create/exec/rm` and file I/O.
 
-1. Creates a sandbox with a temp workspace
-2. Tests new file sync (host → sandbox) — expected PASS
-3. Tests file overwrite sync (host → sandbox) — expected FAIL
-4. Tests sandbox→host sync — expected PASS
-5. Cleans up all artifacts on exit
+Tests:
+1. New file sync (host → sandbox) — expected **PASS**
+2. File overwrite sync (host → sandbox) — expected **FAIL**
+3. Sandbox→host sync — expected **PASS**
 
-Run with: `./ralph/verify-sync-latency.sh`
+Cleans up all artifacts on exit. Run with: `./ralph/verify-sync-latency.sh`
+
+The follow-up tests (A through G) documented in Step 4 were run interactively and are not in the script. They could be added if a more comprehensive regression test is needed.
 
 ---
 
