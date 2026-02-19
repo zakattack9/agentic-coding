@@ -462,3 +462,22 @@ A user-invocable skill (`/ralph-plan`) that interactively generates `prd.md` and
 | `sandbox-test-results.md`      | Feasibility test results, file sync root cause analysis, auth DX, workaround matrix, architecture recommendations. **Read this before implementing sandbox mode.** |
 | `pretooluse-hook-reference.md` | PreToolUse hook implementation guide: 18 categories of dangerous command patterns, regex patterns, architecture, evasion awareness, false positive handling |
 | `context-monitor-hook.md`      | Context monitor hook design notes                                                                                                                           |
+
+---
+
+## Open Questions
+
+### Parallelization of concurrent ralph loops
+
+The current plan does not explicitly address running multiple ralph loops simultaneously. Analysis of shared resources:
+
+**Cross-project** (Project A + Project B): Likely works out of the box. Sandbox names, `ralph/` directories, `.ralph-active` markers, and git repos are all namespaced by `$PROJECT_DIR`. Main concern is Docker Desktop resource limits — each sandbox VM consumes memory/CPU.
+
+**Same-repo, different features**: Cannot work in a single worktree — git doesn't support concurrent branch work in one directory. Git worktrees would make each worktree a separate directory, so ralph would treat them as independent projects. Needs validation.
+
+**Same-directory accidental double-start**: Two `ralph.sh` processes in the same directory would stomp on `ralph/` files, share a sandbox, and race on git commits. `.ralph-active` could serve as a PID-aware lock (check if stored PID is alive on startup, only delete on exit if PID matches `$$`), but this is not currently specified.
+
+**To resolve before or during implementation:**
+- Should `.ralph-active` act as a PID-aware lock to prevent same-directory double-start?
+- Should the plan formally recommend git worktrees for same-repo parallel features?
+- Are Docker resource considerations (multiple concurrent VMs) worth documenting in ralph.sh `--help` or init output?
