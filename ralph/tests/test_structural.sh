@@ -45,11 +45,10 @@ test_marketplace_plugin_chain() {
     return
   fi
 
-  local hooks_ref
-  hooks_ref=$(jq -r '.hooks' "$plugin_json")
-  local hooks_path="$plugin_dir/$hooks_ref"
+  # hooks/hooks.json is auto-discovered by Claude Code at the conventional path
+  local hooks_path="$plugin_dir/hooks/hooks.json"
   if [[ ! -f "$hooks_path" ]]; then
-    fail "marketplace_plugin_chain" "hooks.json not found at $hooks_path (ref: $hooks_ref)"
+    fail "marketplace_plugin_chain" "hooks.json not found at conventional path: $hooks_path"
     return
   fi
 
