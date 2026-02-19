@@ -234,6 +234,14 @@ def _check_implement_transitions(current: dict, snapshot: dict) -> str | None:
                     f"'{snap['reviewStatus']}' to '{cur['reviewStatus']}' on story {sid}."
                 )
 
+    # At most one story may transition null -> needs_review per implement iteration
+    if needs_review_transitions > 1:
+        return (
+            "Implement iterations may submit at most one story for review. "
+            f"Found {needs_review_transitions} stories transitioning "
+            "reviewStatus null -> 'needs_review'."
+        )
+
     # Check new stories (in current but not in snapshot)
     for sid, cur in current.items():
         if sid not in snapshot:
