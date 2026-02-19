@@ -88,64 +88,62 @@ Key properties:
 
 ```bash
 mkdir -p "$HOME/.dclaude_state/.claude"
-touch "$HOME/.dclaude_state/.claude.json"
+echo '{}' > "$HOME/.dclaude_state/.claude.json"
 ```
 
-### 2. Build custom sandbox template
+> **Note:** Use `echo '{}'` not `touch`. An empty `.claude.json` causes JSON parse errors on sandbox startup.
 
-Create `~/.dclaude_template/entrypoint.sh`:
+### 2. Create and configure sandbox (create + exec + run)
+
+> **Why not a custom Dockerfile?** Docker Sandbox VMs have a separate image store from the host Docker daemon. Locally-built images (`docker build -t dclaude:latest`) are not accessible inside the VM — `--pull-template never` does not help. See `sandbox-test-results.md` Step 6 for details.
+
+Instead, use the stock `docker/sandbox-templates:claude-code` template (pulled from Docker Hub) and customize the live VM via `exec`:
 
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
+# Step 1: Create sandbox with default template + auth state mount
+docker sandbox create --name "$SANDBOX_NAME" claude "$PROJECT_DIR" "$HOME/.dclaude_state"
 
-# Locate the host user's shared state dir (mounted at same abs path)
-STATE_DIR_GLOB="/Users/*/.dclaude_state"
-STATE_DIR=""
-for d in $STATE_DIR_GLOB; do
-  [ -d "$d" ] && STATE_DIR="$d" && break
-done
-
-if [ -n "$STATE_DIR" ]; then
-  mkdir -p "$STATE_DIR/.claude"
-  [ -f "$STATE_DIR/.claude.json" ] || touch "$STATE_DIR/.claude.json"
-
-  # Symlink into sandbox user's home
+# Step 2: Set up auth symlinks inside the sandbox
+docker sandbox exec -u root "$SANDBOX_NAME" bash -c '
+  STATE_DIR="/Users/'"$USER"'/.dclaude_state"
   rm -rf /home/agent/.claude /home/agent/.claude.json 2>/dev/null || true
   ln -s "$STATE_DIR/.claude" /home/agent/.claude
   ln -s "$STATE_DIR/.claude.json" /home/agent/.claude.json
   chown -h agent:agent /home/agent/.claude /home/agent/.claude.json 2>/dev/null || true
+'
+
+# Step 3: Configure git identity
+docker sandbox exec "$SANDBOX_NAME" bash -c '
+  git config --global user.email "ralph@localhost"
+  git config --global user.name "Ralph Loop"
+'
+```
+
+Steps 1-3 run once per project. The sandbox persists across iterations — subsequent runs only need:
+
+```bash
+docker sandbox run "$SANDBOX_NAME" -- -p "$PROMPT"
+```
+
+In `ralph.sh`, guard with an existence check:
+
+```bash
+if ! docker sandbox ls 2>/dev/null | grep -q "$SANDBOX_NAME"; then
+  # Steps 1-3 above (one-time setup)
 fi
-
-exec claude "$@"
+docker sandbox run "$SANDBOX_NAME" -- -p "$PROMPT"
 ```
 
-Create `~/.dclaude_template/Dockerfile`:
+### 3. Initial auth (one-time per machine)
 
-```dockerfile
-FROM docker/sandbox-templates:claude-code
-
-COPY entrypoint.sh /usr/local/bin/dclaude-entrypoint
-RUN chmod +x /usr/local/bin/dclaude-entrypoint
-
-ENTRYPOINT ["/usr/local/bin/dclaude-entrypoint"]
-```
-
-Build:
+The first `docker sandbox run` will fail with "Not logged in". Complete OAuth interactively:
 
 ```bash
-cd ~/.dclaude_template && docker build -t dclaude:latest .
+docker sandbox run "$SANDBOX_NAME"
+# Complete /login in the interactive session, then /exit
 ```
 
-### 3. Initial auth (one-time)
-
-Run interactively once to complete OAuth login:
-
-```bash
-docker sandbox run -t dclaude:latest claude "$HOME/.dclaude_state" .
-```
-
-Log in when prompted. The credentials persist in `~/.dclaude_state/.claude/` and are reused by all future sandboxes.
+Credentials persist in `~/.dclaude_state/.claude/.credentials.json` and are shared across all project sandboxes via the symlinks. No re-login needed for new projects.
 
 ---
 
@@ -153,23 +151,20 @@ Log in when prompted. The credentials persist in `~/.dclaude_state/.claude/` and
 
 ### Invocation change
 
-The loop runner replaces direct `claude` calls with sandbox-wrapped calls:
+The loop runner replaces direct `claude` calls with sandbox-wrapped calls using the create + exec + run pattern:
 
 ```bash
 # Before (no sandbox)
 claude -p "$PROMPT" --dangerously-skip-permissions
 
-# After (sandbox mode)
-docker sandbox run \
-  -t dclaude:latest \
-  --name "ralph-${SAFE_PROJECT_NAME}" \
-  claude "$PROJECT_DIR" "$HOME/.dclaude_state" \
-  -- -p "$PROMPT"
+# After (sandbox mode) — see Setup section for one-time create + exec steps
+docker sandbox run "$SANDBOX_NAME" -- -p "$PROMPT"
 ```
 
 Notes:
-- `--name` creates a stable sandbox per project (reused across iterations)
-- The workspace (`$PROJECT_DIR`) and auth state (`$HOME/.dclaude_state`) are both mounted
+- The sandbox is created once per project via `docker sandbox create` (see Setup section above)
+- Auth and git config are set up once via `docker sandbox exec` after creation
+- Subsequent iterations only need `docker sandbox run` — fast reconnect to existing sandbox
 - `-- -p "$PROMPT"` passes args through to Claude inside the sandbox
 - `--dangerously-skip-permissions` is already applied by the sandbox template
 
@@ -256,13 +251,22 @@ dclaude() {
   [[ "${1:-}" == "--" ]] && shift
 
   local safe_name
-  safe_name="$(echo "$workspace" | sed 's#[^A-Za-z0-9._-]#_#g')"
+  safe_name="dclaude-$(echo "$workspace" | sed 's#[^A-Za-z0-9._-]#_#g')"
 
-  docker sandbox run \
-    --name "dclaude-${safe_name}" \
-    -t dclaude:latest \
-    claude "$workspace" "$HOME/.dclaude_state" \
-    -- "$@"
+  # One-time setup if sandbox doesn't exist
+  if ! docker sandbox ls 2>/dev/null | grep -q "$safe_name"; then
+    docker sandbox create --name "$safe_name" claude "$workspace" "$HOME/.dclaude_state"
+    docker sandbox exec -u root "$safe_name" bash -c '
+      STATE_DIR="$(ls -d /Users/*/.dclaude_state 2>/dev/null | head -1)"
+      [ -n "$STATE_DIR" ] || exit 0
+      rm -rf /home/agent/.claude /home/agent/.claude.json 2>/dev/null || true
+      ln -s "$STATE_DIR/.claude" /home/agent/.claude
+      ln -s "$STATE_DIR/.claude.json" /home/agent/.claude.json
+      chown -h agent:agent /home/agent/.claude /home/agent/.claude.json 2>/dev/null || true
+    '
+  fi
+
+  docker sandbox run "$safe_name" -- "$@"
 }
 ```
 
@@ -289,11 +293,42 @@ docker sandbox run -e ANTHROPIC_API_KEY="sk-ant-..." -t dclaude:latest claude .
 
 Or set it in the entrypoint from a mounted secrets file. The symlink-based auth sharing approach described above works for interactive login but should be tested with your specific plan.
 
-### File sync latency
+### File sync: host→sandbox overwrites are permanently ignored
 
-Docker Sandboxes use bidirectional file sync, not direct volume mounts. There can be sub-second delays between a write inside the sandbox and visibility on the host (and vice versa).
+Docker Sandboxes use Mutagen-based bidirectional file sync, not volume mounts. Sandbox→host sync works reliably (2-3s). However, **once Mutagen has synced a file into the sandbox, host-side overwrites of that same file are permanently ignored** — this is not a latency issue but a sync cache staleness bug. Even files the sandbox only read (never wrote) are affected. New files sync fine. See `sandbox-test-results.md` Step 4 for the full root cause analysis and follow-up tests A-G.
 
-**Impact on Ralph Loop**: Between iterations, `ralph.sh` reads `prd.json` on the host to check completion. If the sandbox just wrote it, there could be a brief race. Mitigation: add a short sleep (1-2s) between iterations, or perform the completion check inside the sandbox.
+**Impact on Ralph Loop**: The default automated flow is unaffected (sandbox writes files, host only reads). The issue matters when a developer edits files on the host and expects the sandbox to see the changes — e.g., editing `prd.md` or `tasks.json` in VS Code during a pause, or hot-reloading `prompt.md`.
+
+**Recommended pattern — stop/start on resume:**
+
+The cleanest developer experience for IDE-based editing is to let the developer edit files normally on the host, then have `ralph.sh` stop and restart the sandbox before the next iteration. Stopping the sandbox forces Mutagen to re-snapshot the host filesystem, so all host changes are picked up on restart.
+
+```bash
+# ralph.sh resume-after-pause logic
+if [ "$RESUMING_AFTER_PAUSE" = true ]; then
+  echo "Resyncing sandbox with host files..."
+  docker sandbox stop "$SANDBOX_NAME"
+  # All host edits (prd.md, tasks.json, prompt.md, source files) are now picked up
+fi
+docker sandbox run "$SANDBOX_NAME" -- -p "$PROMPT"
+```
+
+Developer workflow:
+1. Pause the ralph loop (Ctrl+C or let the current iteration finish)
+2. Edit any files in VS Code / any editor — no special tooling needed
+3. Resume the loop — `ralph.sh` detects the pause and does a stop/start cycle (~10s overhead)
+4. The sandbox sees all host changes
+
+This approach requires zero additional tooling (no file watchers, no editor extensions, no `exec` commands). The 10s stop/start overhead is a one-time cost per resume, not per file edit. For programmatic writes from `ralph.sh` itself (e.g., injecting feedback between iterations), use `docker sandbox exec` instead — see `sandbox-test-results.md` workaround 1.
+
+**Other workarounds** (for cases where stop/start isn't suitable):
+
+| Method | Use case |
+|--------|----------|
+| `docker sandbox exec -i $NAME bash -c 'cat > /project/file' < host-file` | Programmatic writes from scripts |
+| `docker sandbox exec $NAME rm /project/file` then write on host | Delete-then-create for a single file |
+
+See `sandbox-test-results.md` Step 4 for the full workaround matrix with confirmed test results.
 
 ### One sandbox per workspace
 

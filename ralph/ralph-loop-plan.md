@@ -138,7 +138,13 @@ docker sandbox run "$SANDBOX_NAME" -- -p "$PROMPT"
 
 **Why create + exec + run instead of a custom Dockerfile template:** Docker Sandbox VMs have a separate image store from the host Docker daemon. Locally-built images (`docker build -t dclaude:latest`) are not accessible to the sandbox VM — `--pull-template never` does not help. The `exec` approach uses the stock `docker/sandbox-templates:claude-code` image (pulled from Docker Hub) and customizes the live VM. See `sandbox-test-results.md` Step 6 for full details.
 
-**File sync constraint:** Once Mutagen has synced a file into the sandbox, host-side overwrites of that file are permanently ignored. This does not affect the default loop (sandbox writes files, host only reads), but matters for manual intervention. If `ralph.sh` needs to inject data between iterations, use `docker sandbox exec` to write directly into the sandbox. If resuming after a user pause where files were edited on the host, use `docker sandbox stop` + restart to force a resync. See `sandbox-test-results.md` Step 4 for the full analysis and workaround matrix.
+**File sync constraint:** Once Mutagen has synced a file into the sandbox, host-side overwrites of that file are permanently ignored. This does not affect the default loop (sandbox writes files, host only reads), but matters for manual intervention. `ralph.sh` handles two scenarios:
+
+1. **Resume after pause (developer edited files on host):** `ralph.sh` detects the pause and runs `docker sandbox stop` + restart before the next iteration. This forces Mutagen to re-snapshot the host filesystem, picking up all edits made in VS Code or any editor. Overhead is ~10s (one-time per resume). The developer workflow is: pause → edit files normally → resume. No special tooling required. See `docker-sandbox-isolation.md` "File sync" caveat for the full pattern.
+
+2. **Programmatic host→sandbox writes (feedback injection between iterations):** Use `docker sandbox exec` to write directly into the sandbox, bypassing the sync layer entirely.
+
+See `sandbox-test-results.md` Step 4 for the full root cause analysis, follow-up tests, and workaround matrix.
 
 Arguments:
 ```

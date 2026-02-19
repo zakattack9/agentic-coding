@@ -390,15 +390,15 @@ This persists for the lifetime of the sandbox.
 
 ---
 
-## Documents to Update
+## Documents Updated
 
-Based on these findings, the following reference docs need updates before implementation:
+The following reference docs have been updated based on these findings:
 
-| Document | Change needed |
-|----------|---------------|
-| `docker-sandbox-isolation.md` | Replace custom Dockerfile approach with create+exec+run pattern. Fix `touch` → `echo '{}'`. Replace "conflict detection" explanation with sync staleness root cause. Document that volume mounts are not available. Add stop/start and delete-then-create workarounds. |
-| `ralph-loop-plan.md` Section 3 | Update `ralph.sh` sandbox invocation to use three-step pattern, add sandbox existence check, add auth failure detection/retry, add stop/start cycle for resume-after-pause |
-| `ralph-loop-plan.md` Section 4 | Note that custom Dockerfile template doesn't work; sandbox setup is done via `exec` |
+| Document | Changes applied |
+|----------|----------------|
+| `docker-sandbox-isolation.md` | Replaced custom Dockerfile approach with create+exec+run pattern. Fixed `touch` → `echo '{}'`. Replaced "file sync latency" caveat with full sync staleness documentation including stop/start-on-resume pattern for IDE editing. Updated `dclaude` wrapper. Updated invocation section. |
+| `ralph-loop-plan.md` Section 3 | Updated sandbox invocation to create+exec+run pattern with existence check. Documented stop/start-on-resume and `exec` write proxy for file sync constraint. |
+| `ralph-loop-plan.md` Section 4 | Notes that custom Dockerfile template doesn't work; sandbox setup is done via `exec`. Fixed `.claude.json` initialization. |
 
 ---
 
