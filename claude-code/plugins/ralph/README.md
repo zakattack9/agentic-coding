@@ -21,7 +21,7 @@ Key features:
 Add the marketplace, then install the ralph plugin:
 
 ```bash
-/plugin marketplace add https://github.com/<owner>/agentic-coding.git
+/plugin marketplace add https://github.com/zakattack9/agentic-coding.git
 /plugin install ralph
 ```
 
@@ -91,11 +91,11 @@ Each iteration, `ralph.sh`:
 
 ### Iteration Modes
 
-| Mode | Trigger | What happens |
-|---|---|---|
-| **Implement** | Story has `passes: false`, `reviewStatus: null` | Claude implements the story, sets `reviewStatus: "needs_review"` |
-| **Review** | Story has `reviewStatus: "needs_review"` | Fresh-context review: approve or request changes |
-| **Review-Fix** | Story has `reviewStatus: "changes_requested"` | Address review feedback, resubmit for review |
+| Mode           | Trigger                                         | What happens                                                     |
+| -------------- | ----------------------------------------------- | ---------------------------------------------------------------- |
+| **Implement**  | Story has `passes: false`, `reviewStatus: null` | Claude implements the story, sets `reviewStatus: "needs_review"` |
+| **Review**     | Story has `reviewStatus: "needs_review"`        | Fresh-context review: approve or request changes                 |
+| **Review-Fix** | Story has `reviewStatus: "changes_requested"`   | Address review feedback, resubmit for review                     |
 
 Priority: Review-Fix > Review > Implement. This ensures feedback is addressed before new work begins.
 
@@ -142,11 +142,11 @@ ralph-archive.sh [OPTIONS]
 
 The plugin registers three hooks that activate automatically:
 
-| Event | Script | Behavior |
-|---|---|---|
-| **PostToolUse** | `context_monitor.py` | Graduated context usage alerts at 50/60/70/80/90% |
-| **Stop** | `stop_loop_reminder.py` | Validates tasks.json schema, review integrity, legal transitions, and uncommitted changes. Only active when `.ralph-active` exists (i.e., during a ralph loop) |
-| **SessionStart** | inline | Cleans up context monitor state files |
+| Event            | Script                  | Behavior                                                                                                                                                       |
+| ---------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **PostToolUse**  | `context_monitor.py`    | Graduated context usage alerts at 50/60/70/80/90%                                                                                                              |
+| **Stop**         | `stop_loop_reminder.py` | Validates tasks.json schema, review integrity, legal transitions, and uncommitted changes. Only active when `.ralph-active` exists (i.e., during a ralph loop) |
+| **SessionStart** | inline                  | Cleans up context monitor state files                                                                                                                          |
 
 ## File Layout
 
