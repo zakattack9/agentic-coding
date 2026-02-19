@@ -9,6 +9,12 @@
       "source": "./claude-code/plugins/zaksak",
       "description": "A collection of Claude Code utilities by Zak Sakata",
       "version": "0.1.0"
+    },
+    {
+      "name": "ralph",
+      "source": "./claude-code/plugins/ralph",
+      "description": "Ralph Loop — autonomous agentic coding workflow with sandbox isolation, scoped memory, and self-managing task iteration",
+      "version": "0.1.0"
     }
   ]
 }

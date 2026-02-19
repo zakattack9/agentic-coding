@@ -32,27 +32,27 @@ claude-code/plugins/ralph/
 ```
 
 **Acceptance criteria:**
-- [ ] All directories exist
-- [ ] No files yet (directories only)
+- [x] All directories exist
+- [x] No files yet (directories only)
 
 ### 1.2 — Create plugin manifest
 
 **File:** `claude-code/plugins/ralph/.claude-plugin/plugin.json`
 
 **Acceptance criteria:**
-- [ ] Valid JSON with `name`, `description`, `version`, `hooks` fields
-- [ ] `hooks` field is `"./hooks/hooks.json"` — plain relative path starting with `./` (per manifest path rules; `${CLAUDE_PLUGIN_ROOT}` is NOT used here — it's used inside hooks.json for script command paths)
-- [ ] Version is `0.1.0`
+- [x] Valid JSON with `name`, `description`, `version`, `hooks` fields
+- [x] `hooks` field is `"./hooks/hooks.json"` — plain relative path starting with `./` (per manifest path rules; `${CLAUDE_PLUGIN_ROOT}` is NOT used here — it's used inside hooks.json for script command paths)
+- [x] Version is `0.1.0`
 
 ### 1.3 — Register plugin in marketplace
 
 **File:** `marketplace.json` (repo root)
 
 **Acceptance criteria:**
-- [ ] New entry added to the `plugins` array
-- [ ] `source` points to `./claude-code/plugins/ralph`
-- [ ] Existing `zaksak` entry is unchanged
-- [ ] File is valid JSON
+- [x] New entry added to the `plugins` array
+- [x] `source` points to `./claude-code/plugins/ralph`
+- [x] Existing `zaksak` entry is unchanged
+- [x] File is valid JSON
 
 ### 1.4 — Create PRD template
 
@@ -61,10 +61,10 @@ claude-code/plugins/ralph/
 Per §7 of the plan. Sections 1–10 with HTML comment annotations explaining what to write. Complexity tier annotations (S-Patch to L-Epic) on each section header.
 
 **Acceptance criteria:**
-- [ ] All 10 sections present: Summary, Problem Statement, Goals, Non-Goals, Background & Context, Technical Design (with subsections 6a–6e), Constraints, Edge Cases & Error Handling, Risks & Mitigations, Open Questions
-- [ ] Each section has an HTML comment explaining what to write and which complexity tiers it applies to
-- [ ] Technical Design has subsections: Database Changes, API Contracts, Core Logic Changes, Frontend Changes, Infrastructure/Config Changes
-- [ ] Template is ready for a human to fill in (placeholder text, not lorem ipsum)
+- [x] All 10 sections present: Summary, Problem Statement, Goals, Non-Goals, Background & Context, Technical Design (with subsections 6a–6e), Constraints, Edge Cases & Error Handling, Risks & Mitigations, Open Questions
+- [x] Each section has an HTML comment explaining what to write and which complexity tiers it applies to
+- [x] Technical Design has subsections: Database Changes, API Contracts, Core Logic Changes, Frontend Changes, Infrastructure/Config Changes
+- [x] Template is ready for a human to fill in (placeholder text, not lorem ipsum)
 
 ### 1.5 — Create tasks template
 
@@ -73,10 +73,10 @@ Per §7 of the plan. Sections 1–10 with HTML comment annotations explaining wh
 Per §8 of the plan. The starter JSON structure that gets copied into target projects.
 
 **Acceptance criteria:**
-- [ ] Valid JSON matching the schema in §8 exactly
-- [ ] Single example story with all required fields: `id`, `title`, `description`, `acceptanceCriteria` (array), `priority`, `passes` (false), `reviewStatus` (null), `reviewCount` (0), `reviewFeedback` (""), `notes`, `dependsOn` (array)
-- [ ] Top-level fields: `project`, `branchName`, `description`, `verifyCommands` (array), `userStories` (array)
-- [ ] Parseable by `jq`
+- [x] Valid JSON matching the schema in §8 exactly
+- [x] Single example story with all required fields: `id`, `title`, `description`, `acceptanceCriteria` (array), `priority`, `passes` (false), `reviewStatus` (null), `reviewCount` (0), `reviewFeedback` (""), `notes`, `dependsOn` (array)
+- [x] Top-level fields: `project`, `branchName`, `description`, `verifyCommands` (array), `userStories` (array)
+- [x] Parseable by `jq`
 
 ### 1.6 — Create progress template
 
@@ -85,10 +85,10 @@ Per §8 of the plan. The starter JSON structure that gets copied into target pro
 Per §9 of the plan. Minimal scaffold with `{{DATE}}` and `{{PROJECT_NAME}}` placeholders for `ralph-init.sh` to substitute.
 
 **Acceptance criteria:**
-- [ ] Contains `{{DATE}}` and `{{PROJECT_NAME}}` substitution tokens
-- [ ] Has "Codebase Patterns" section at top (empty, with placeholder bullet)
-- [ ] Has `---` separator after the patterns section
-- [ ] Matches the structure in §9
+- [x] Contains `{{DATE}}` and `{{PROJECT_NAME}}` substitution tokens
+- [x] Has "Codebase Patterns" section at top (empty, with placeholder bullet)
+- [x] Has `---` separator after the patterns section
+- [x] Matches the structure in §9
 
 ### 1.7 — Create sandbox setup script
 
@@ -97,20 +97,20 @@ Per §9 of the plan. Minimal scaffold with `{{DATE}}` and `{{PROJECT_NAME}}` pla
 Per §4 of the plan. Auth symlink setup + git config, run via `docker sandbox exec -u root`. Reference `sandbox-test-results.md` for the working pattern.
 
 **Acceptance criteria:**
-- [ ] Sets up symlinks from sandbox agent home to `$STATE_DIR/.claude` and `$STATE_DIR/.claude.json`
-- [ ] Configures git user.email and user.name inside sandbox
-- [ ] Uses correct paths (`/home/agent/` for sandbox agent user)
-- [ ] Handles `chown -h agent:agent` for symlinks
-- [ ] Removes existing `.claude` / `.claude.json` before symlinking (idempotent)
-- [ ] Documents that `~/.dclaude_state/.claude.json` must contain valid JSON (`{}` minimum) — `touch` creates an empty file that causes JSON parse errors on sandbox startup (see plan §4)
-- [ ] Script is executable (`chmod +x`)
-- [ ] Comments explain what each section does
+- [x] Sets up symlinks from sandbox agent home to `$STATE_DIR/.claude` and `$STATE_DIR/.claude.json`
+- [x] Configures git user.email and user.name inside sandbox
+- [x] Uses correct paths (`/home/agent/` for sandbox agent user)
+- [x] Handles `chown -h agent:agent` for symlinks
+- [x] Removes existing `.claude` / `.claude.json` before symlinking (idempotent)
+- [x] Documents that `~/.dclaude_state/.claude.json` must contain valid JSON (`{}` minimum) — `touch` creates an empty file that causes JSON parse errors on sandbox startup (see plan §4)
+- [x] Script is executable (`chmod +x`)
+- [x] Comments explain what each section does
 
 ### 1.8 — Commit Phase 1
 
 **Acceptance criteria:**
-- [ ] All files from 1.1–1.7 committed on a feature branch
-- [ ] Commit message: `feat(ralph): scaffold plugin structure and static templates`
+- [x] All files from 1.1–1.7 committed on a feature branch
+- [x] Commit message: `feat(ralph): scaffold plugin structure and static templates`
 
 ---
 

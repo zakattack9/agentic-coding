@@ -1,0 +1,21 @@
+{
+  "project": "",
+  "branchName": "ralph/feature-name",
+  "description": "",
+  "verifyCommands": [],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "",
+      "description": "",
+      "acceptanceCriteria": [],
+      "priority": 1,
+      "passes": false,
+      "reviewStatus": null,
+      "reviewCount": 0,
+      "reviewFeedback": "",
+      "notes": "",
+      "dependsOn": []
+    }
+  ]
+}
