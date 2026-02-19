@@ -36,6 +36,8 @@ claude-code/plugins/ralph/
 │   ├── ralph.sh                             # NEW: main loop runner (sandbox-aware)
 │   ├── ralph-init.sh                        # NEW: initialize a ralph loop in a project
 │   └── ralph-archive.sh                     # NEW: archive a completed loop
+├── skills/
+│   └── ralph-plan.md                        # NEW: interactive PRD + task list generation skill
 └── templates/
     ├── prompt.md                            # NEW: per-iteration prompt template
     ├── prd-template.md                      # NEW: PRD scaffold (requirements context)
@@ -68,7 +70,7 @@ target-project/
 ```json
 {
   "name": "ralph",
-  "description": "Ralph Loop — autonomous agentic coding workflow with hooks-based safety, scoped memory, and self-managing task iteration",
+  "description": "Ralph Loop — autonomous agentic coding workflow with sandbox isolation, scoped memory, and self-managing task iteration",
   "version": "0.1.0",
   "hooks": "./hooks/hooks.json"
 }
@@ -82,7 +84,7 @@ target-project/
 {
   "name": "ralph",
   "source": "./claude-code/plugins/ralph",
-  "description": "Ralph Loop — autonomous agentic coding workflow with hooks-based safety, scoped memory, and self-managing task iteration",
+  "description": "Ralph Loop — autonomous agentic coding workflow with sandbox isolation, scoped memory, and self-managing task iteration",
   "version": "0.1.0"
 }
 ```
@@ -321,6 +323,35 @@ What it does:
 4. Resets `ralph/` to clean state with fresh templates
 5. Commits the archive
 
+### 11. ralph-plan Skill
+
+**File:** `claude-code/plugins/ralph/skills/ralph-plan.md`
+
+A user-invocable skill (`/ralph-plan`) that interactively generates `prd.md` and `tasks.json`. Adapts based on whether `ralph/prd.md` already has content.
+
+**Mode 1 — Full planning** (prd.md is empty or template scaffold):
+1. Ask the user clarifying questions — as many as needed until the requirements are clear. No fixed limit. Focus on: problem/goal, core functionality, scope boundaries, technical context, constraints, success criteria. Continue asking until confident the specification is complete.
+2. Generate `ralph/prd.md` with all relevant sections filled in (following the PRD template structure)
+3. Derive `ralph/tasks.json` — break requirements into right-sized stories (each completable in one iteration/context window), set dependency ordering via `dependsOn`, write verifiable acceptance criteria, include `verifyCommands`
+4. Present both files for user review
+
+**Mode 2 — Task derivation** (prd.md already has content):
+1. Read existing `ralph/prd.md`
+2. Ask targeted questions only if requirements are ambiguous or incomplete
+3. Derive `ralph/tasks.json` from the specification
+4. Present tasks for user review
+
+**Task derivation rules** (applied in both modes):
+- Each story must be completable in one ralph iteration (one context window). Rule of thumb: if you can't describe the change in 2-3 sentences, it's too big — split it
+- Stories ordered by dependency: schema/database → backend logic → API routes → frontend components → integration/summary views
+- Every story gets verifiable acceptance criteria (not vague — "Filter dropdown has options: All, Active, Done", not "works correctly")
+- `dependsOn` set explicitly when story order matters beyond priority
+- `verifyCommands` populated from the project's existing test/lint/typecheck commands
+
+**Trigger phrases:** `/ralph-plan`, "plan this feature for ralph", "create a ralph prd", "generate tasks for ralph"
+
+**Prerequisite:** `ralph/` directory must exist (run `ralph-init.sh` first). If it doesn't exist, the skill tells the user to run init first.
+
 ---
 
 ## Implementation Order
@@ -333,6 +364,7 @@ What it does:
 6. **ralph.sh** — Main loop runner with sandbox/direct mode detection (depends on templates + sandbox template)
 7. **ralph-init.sh** — Initializer (depends on templates existing)
 8. **ralph-archive.sh** — Archiver (depends on file layout)
+9. **ralph-plan skill** — Interactive planner (depends on templates for PRD structure knowledge)
 
 ---
 
@@ -349,6 +381,7 @@ What it does:
 | Progress.txt format       | Append-only with curated top section    | Loop-scoped memory; patterns section is edited, entries are append-only                                                                                                  |
 | Memory file separation    | progress.txt (loop) vs CLAUDE.md (repo) | Clear boundary: task state vs lasting conventions                                                                                                                        |
 | PRD / task list separation | prd.md (context) + tasks.json (state)   | PRD is the specification (what, why, constraints); tasks.json is the checklist (stories, completion). Avoids cramming rich requirements into JSON strings                |
+| PRD creation workflow      | Single `ralph-plan` skill, two modes    | One skill generates both files from the same understanding; adapts if PRD already exists. Unlimited Q&A until spec is clear — no artificial question cap                 |
 | Completion detection      | Promise tag + tasks.json verification   | Dual check prevents false completion signals                                                                                                                             |
 | Hook language             | All Python                              | Consistent codebase, built-in JSON handling (no `jq` dep), cleaner task list validation                                                                                  |
 | Prompt variable injection | `sed` substitution                      | No external dependency (vs `envsubst` requiring `gettext`)                                                                                                               |
@@ -373,7 +406,10 @@ What it does:
 5. **ralph.sh (sandbox mode)** — Run with `--sandbox --max-iterations 1` against a simple single-story task list in a test project
 6. **ralph.sh (direct mode)** — Run with `--no-sandbox --max-iterations 1` to verify fallback works
 7. **ralph-archive.sh** — Run after a completed loop, verify archive structure and clean reset
-8. **End-to-end** — Run a 2-3 story task list through full ralph loop completion in sandbox mode
+8. **ralph-plan skill** — Test both modes:
+   - Mode 1: Run `/ralph-plan` with empty prd.md → verify it asks questions, generates both prd.md and tasks.json, stories are right-sized and dependency-ordered
+   - Mode 2: Drop a pre-written prd.md into `ralph/`, run `/ralph-plan` → verify it reads existing PRD and derives tasks.json without regenerating the PRD
+9. **End-to-end** — Run a 2-3 story task list through full ralph loop completion in sandbox mode
 
 ## Reference Documents
 
