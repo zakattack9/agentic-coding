@@ -139,26 +139,26 @@ Per §6 of the plan. Must include `{{RALPH_ITERATION}}` and `{{RALPH_MAX_ITERATI
 11. **Skip-review mode section** — Behavior when `.ralph-active` has `skipReview: true`
 
 **Acceptance criteria:**
-- [ ] All 11 structural sections present and complete
-- [ ] `{{RALPH_ITERATION}}` and `{{RALPH_MAX_ITERATIONS}}` tokens present in header
-- [ ] Three mode variants for Step 3 are clearly delineated
-- [ ] Mode priority documented: Review-Fix > Review > Implement
-- [ ] Review decision tree includes all three outcomes: approve, changes_requested, auto-approve at cap
-- [ ] Commit message formats match §6: `feat:`, `review:`, `fix:` prefixes
-- [ ] `<promise>COMPLETE</promise>` signal documented with dual condition (all `passes: true` AND all `reviewStatus: "approved"`)
-- [ ] Prompt instructs Claude to read `.ralph-active` for runtime config: `skipReview` (determines mode availability) and `reviewCap` (determines auto-approve threshold in review mode)
-- [ ] Hard rules section is explicit and unambiguous
-- [ ] Skip-review mode behavior clearly documented as a separate section
-- [ ] Self-review in implement/review-fix modes is described as advisory (not enforced)
-- [ ] Context size awareness: mentions that stories too large for the context window should be split
-- [ ] `dependsOn` ordering respected in story selection
-- [ ] Task self-management rules: Claude may add/split/reorder stories, but prd.md is read-only
+- [x] All 11 structural sections present and complete
+- [x] `{{RALPH_ITERATION}}` and `{{RALPH_MAX_ITERATIONS}}` tokens present in header
+- [x] Three mode variants for Step 3 are clearly delineated
+- [x] Mode priority documented: Review-Fix > Review > Implement
+- [x] Review decision tree includes all three outcomes: approve, changes_requested, auto-approve at cap
+- [x] Commit message formats match §6: `feat:`, `review:`, `fix:` prefixes
+- [x] `<promise>COMPLETE</promise>` signal documented with dual condition (all `passes: true` AND all `reviewStatus: "approved"`)
+- [x] Prompt instructs Claude to read `.ralph-active` for runtime config: `skipReview` (determines mode availability) and `reviewCap` (determines auto-approve threshold in review mode)
+- [x] Hard rules section is explicit and unambiguous
+- [x] Skip-review mode behavior clearly documented as a separate section
+- [x] Self-review in implement/review-fix modes is described as advisory (not enforced)
+- [x] Context size awareness: mentions that stories too large for the context window should be split
+- [x] `dependsOn` ordering respected in story selection
+- [x] Task self-management rules: Claude may add/split/reorder stories, but prd.md is read-only
 
 ### 2.2 — Commit Phase 2
 
 **Acceptance criteria:**
-- [ ] prompt.md committed
-- [ ] Commit message: `feat(ralph): add iteration prompt template with three-mode review lifecycle`
+- [x] prompt.md committed
+- [x] Commit message: `feat(ralph): add iteration prompt template with three-mode review lifecycle`
 
 ---
 
@@ -175,15 +175,15 @@ Read `ralph/context-monitor-hook.md` before starting 3.1.
 Per §5a of the plan. PostToolUse hook that estimates context usage from transcript file size.
 
 **Acceptance criteria:**
-- [ ] Reads hook input from stdin as JSON (gets `session_id` and `transcript_path`)
-- [ ] Estimates token usage: `FILE_SIZE / 4` chars-per-token against 200k window (or `CLAUDE_CONTEXT_WINDOW` env var)
-- [ ] Fires graduated alerts at 5 thresholds: 50%, 60% (NOTICE), 70%, 80% (WARNING), 90% (CRITICAL)
-- [ ] Each threshold fires only once per session via state file at `/tmp/claude-context-alerts-${SESSION_ID}`
-- [ ] Alert messages match the three severity tiers from §5a (NOTICE/WARNING/CRITICAL wording)
-- [ ] Returns valid hook JSON: `{"hookSpecificOutput": {"additionalContext": "<message>"}}`
-- [ ] Returns empty/neutral JSON when no alert fires
-- [ ] Handles missing transcript file gracefully (no crash, no alert)
-- [ ] Script is executable
+- [x] Reads hook input from stdin as JSON (gets `session_id` and `transcript_path`)
+- [x] Estimates token usage: `FILE_SIZE / 4` chars-per-token against 200k window (or `CLAUDE_CONTEXT_WINDOW` env var)
+- [x] Fires graduated alerts at 5 thresholds: 50%, 60% (NOTICE), 70%, 80% (WARNING), 90% (CRITICAL)
+- [x] Each threshold fires only once per session via state file at `/tmp/claude-context-alerts-${SESSION_ID}`
+- [x] Alert messages match the three severity tiers from §5a (NOTICE/WARNING/CRITICAL wording)
+- [x] Returns valid hook JSON: `{"hookSpecificOutput": {"additionalContext": "<message>"}}`
+- [x] Returns empty/neutral JSON when no alert fires
+- [x] Handles missing transcript file gracefully (no crash, no alert)
+- [x] Script is executable
 
 ### 3.2 — Create stop loop reminder hook
 
@@ -192,41 +192,41 @@ Per §5a of the plan. PostToolUse hook that estimates context usage from transcr
 Per §5b of the plan. Stop hook with 4 checks. The most logic-dense file in the plugin.
 
 **Check 1 — Task list schema validation:**
-- [ ] Validates `ralph/tasks.json` exists and is valid JSON
-- [ ] Validates required top-level fields: `project`, `branchName`, `description`, `userStories` (array)
-- [ ] Validates every story has required fields: `id` (string), `title` (string), `passes` (boolean), `priority` (number), `acceptanceCriteria` (non-empty array), `reviewStatus` (null or one of `"needs_review"`, `"changes_requested"`, `"approved"`), `reviewCount` (non-negative integer), `reviewFeedback` (string)
-- [ ] Validates `id` values are unique (no duplicates)
-- [ ] Validates no story has `passes: true` with empty `notes`
-- [ ] Blocks with specific error describing which field/story is malformed
+- [x] Validates `ralph/tasks.json` exists and is valid JSON
+- [x] Validates required top-level fields: `project`, `branchName`, `description`, `userStories` (array)
+- [x] Validates every story has required fields: `id` (string), `title` (string), `passes` (boolean), `priority` (number), `acceptanceCriteria` (non-empty array), `reviewStatus` (null or one of `"needs_review"`, `"changes_requested"`, `"approved"`), `reviewCount` (non-negative integer), `reviewFeedback` (string)
+- [x] Validates `id` values are unique (no duplicates)
+- [x] Validates no story has `passes: true` with empty `notes`
+- [x] Blocks with specific error describing which field/story is malformed
 
 **Check 2 — Review integrity enforcement (state invariants):**
-- [ ] Skipped entirely when `.ralph-active` contains `"skipReview": true`
-- [ ] Every story with `passes: true` must have `reviewStatus: "approved"` — blocks with specific message if not
-- [ ] Every story with `reviewStatus: "approved"` must have `passes: true` — bidirectional sync
-- [ ] `reviewStatus: "changes_requested"` requires non-empty `reviewFeedback`
-- [ ] `reviewCount` must be non-negative and not exceed `reviewCap + 1`
+- [x] Skipped entirely when `.ralph-active` contains `"skipReview": true`
+- [x] Every story with `passes: true` must have `reviewStatus: "approved"` — blocks with specific message if not
+- [x] Every story with `reviewStatus: "approved"` must have `passes: true` — bidirectional sync
+- [x] `reviewStatus: "changes_requested"` requires non-empty `reviewFeedback`
+- [x] `reviewCount` must be non-negative and not exceed `reviewCap + 1`
 
 **Check 2.5 — Transition validation (state transitions):**
-- [ ] Skipped entirely when `.ralph-active` contains `"skipReview": true`
-- [ ] Skipped with warning if `preIterationSnapshot` or `iterationMode` missing from `.ralph-active`
-- [ ] Reads `iterationMode` and `preIterationSnapshot` from `.ralph-active`
-- [ ] **Implement mode rules:** All existing stories' `passes`, `reviewStatus`, `reviewCount` must be unchanged EXCEPT at most one story may transition `reviewStatus: null → "needs_review"`. No story may have `passes` changed to `true`, `reviewStatus` changed to `"approved"`, or `reviewCount` changed at all. New stories allowed but must start at `passes: false, reviewStatus: null, reviewCount: 0`
-- [ ] **Review mode rules:** Exactly one story's review fields may change. `reviewCount` must increment by exactly 1. Story transitions to either (approved + passes=true) or (changes_requested + non-empty reviewFeedback). No other story's review fields modified
-- [ ] **Review-fix mode rules:** One story: `reviewStatus: "changes_requested" → "needs_review"`, `reviewFeedback` cleared, `passes` stays false, `reviewCount` unchanged. No other story's review fields modified
-- [ ] Error messages include story ID and specific field/transition that violated rules
+- [x] Skipped entirely when `.ralph-active` contains `"skipReview": true`
+- [x] Skipped with warning if `preIterationSnapshot` or `iterationMode` missing from `.ralph-active`
+- [x] Reads `iterationMode` and `preIterationSnapshot` from `.ralph-active`
+- [x] **Implement mode rules:** All existing stories' `passes`, `reviewStatus`, `reviewCount` must be unchanged EXCEPT at most one story may transition `reviewStatus: null → "needs_review"`. No story may have `passes` changed to `true`, `reviewStatus` changed to `"approved"`, or `reviewCount` changed at all. New stories allowed but must start at `passes: false, reviewStatus: null, reviewCount: 0`
+- [x] **Review mode rules:** Exactly one story's review fields may change. `reviewCount` must increment by exactly 1. Story transitions to either (approved + passes=true) or (changes_requested + non-empty reviewFeedback). No other story's review fields modified
+- [x] **Review-fix mode rules:** One story: `reviewStatus: "changes_requested" → "needs_review"`, `reviewFeedback` cleared, `passes` stays false, `reviewCount` unchanged. No other story's review fields modified
+- [x] Error messages include story ID and specific field/transition that violated rules
 
 **Check 3 — Uncommitted changes:**
-- [ ] Runs `git status --porcelain`
-- [ ] If uncommitted changes exist → blocks with instructions to update progress.txt, consider CLAUDE.md, commit everything
-- [ ] If clean → passes
+- [x] Runs `git status --porcelain`
+- [x] If uncommitted changes exist → blocks with instructions to update progress.txt, consider CLAUDE.md, commit everything
+- [x] If clean → passes
 
 **General:**
-- [ ] Only activates when `.ralph-active` exists (early return otherwise)
-- [ ] Reads `.ralph-active` as JSON for `skipReview`, `reviewCap`, `iterationMode`, `preIterationSnapshot`
-- [ ] All checks must pass for stop to be approved
-- [ ] Returns valid hook JSON: `{"decision": "block", "reason": "..."}` or `{"decision": "approve"}`
-- [ ] Script is executable
-- [ ] Handles edge cases: missing files, malformed JSON in `.ralph-active`, missing optional fields
+- [x] Only activates when `.ralph-active` exists (early return otherwise)
+- [x] Reads `.ralph-active` as JSON for `skipReview`, `reviewCap`, `iterationMode`, `preIterationSnapshot`
+- [x] All checks must pass for stop to be approved
+- [x] Returns valid hook JSON: `{"decision": "block", "reason": "..."}` or `{"decision": "approve"}`
+- [x] Script is executable
+- [x] Handles edge cases: missing files, malformed JSON in `.ralph-active`, missing optional fields
 
 ### 3.3 — Create hooks.json
 
@@ -235,17 +235,17 @@ Per §5b of the plan. Stop hook with 4 checks. The most logic-dense file in the 
 Wires three hook entries across three events.
 
 **Acceptance criteria:**
-- [ ] `PostToolUse` entry: runs `context_monitor.py`, matcher `.*` (all tools)
-- [ ] `Stop` entry: runs `stop_loop_reminder.py`
-- [ ] `SessionStart` entry: inline command to clean up context monitor state file (`/tmp/claude-context-alerts-*`)
-- [ ] Script paths use `${CLAUDE_PLUGIN_ROOT}` for portability (verify pattern against existing `zaksak` plugin)
-- [ ] Valid JSON, parseable
+- [x] `PostToolUse` entry: runs `context_monitor.py`, matcher `.*` (all tools)
+- [x] `Stop` entry: runs `stop_loop_reminder.py`
+- [x] `SessionStart` entry: inline command to clean up context monitor state file (`/tmp/claude-context-alerts-*`)
+- [x] Script paths use `${CLAUDE_PLUGIN_ROOT}` for portability (verify pattern against existing `zaksak` plugin)
+- [x] Valid JSON, parseable
 
 ### 3.4 — Commit Phase 3
 
 **Acceptance criteria:**
-- [ ] All hook files committed
-- [ ] Commit message: `feat(ralph): add context monitor and stop loop reminder hooks`
+- [x] All hook files committed
+- [x] Commit message: `feat(ralph): add context monitor and stop loop reminder hooks`
 
 ---
 
@@ -262,36 +262,36 @@ Read `ralph/sandbox-test-results.md` before starting (specifically Steps 4 and 6
 Per §3 of the plan. This is the outer orchestrator.
 
 **Argument parsing:**
-- [ ] `-n, --max-iterations N` (default: 15)
-- [ ] `--ralph-dir PATH` (default: `./ralph`)
-- [ ] `-d, --project-dir PATH` (default: cwd)
-- [ ] `-m, --model MODEL`
-- [ ] `--sandbox` (force sandbox, error if unavailable)
-- [ ] `--no-sandbox` (force direct mode)
-- [ ] `--skip-review` (disable review cycle)
-- [ ] `--review-cap N` (default: 5)
-- [ ] `-h, --help` (usage text)
+- [x] `-n, --max-iterations N` (default: 15)
+- [x] `--ralph-dir PATH` (default: `./ralph`)
+- [x] `-d, --project-dir PATH` (default: cwd)
+- [x] `-m, --model MODEL`
+- [x] `--sandbox` (force sandbox, error if unavailable)
+- [x] `--no-sandbox` (force direct mode)
+- [x] `--skip-review` (disable review cycle)
+- [x] `--review-cap N` (default: 5)
+- [x] `-h, --help` (usage text)
 
 **Sandbox detection & setup:**
-- [ ] Auto-detects Docker Sandbox availability at startup (`docker sandbox ls` check)
-- [ ] Falls back to direct mode with warning if unavailable (unless `--sandbox` forced)
-- [ ] Uses create + exec + run pattern from §3 (not custom Dockerfile)
-- [ ] Sandbox name: `ralph-$(echo "$PROJECT_DIR" | sed 's#[^A-Za-z0-9._-]#_#g')`
-- [ ] One-time sandbox creation with existence check (`docker sandbox ls | grep`)
-- [ ] Auth symlink setup via `docker sandbox exec -u root` (runs `sandbox/setup.sh` or inline equivalent)
-- [ ] Git config setup inside sandbox
-- [ ] Ensures `~/.dclaude_state/.claude.json` contains valid JSON (`{}` minimum) before sandbox creation — empty file causes parse errors (plan §4)
+- [x] Auto-detects Docker Sandbox availability at startup (`docker sandbox ls` check)
+- [x] Falls back to direct mode with warning if unavailable (unless `--sandbox` forced)
+- [x] Uses create + exec + run pattern from §3 (not custom Dockerfile)
+- [x] Sandbox name: `ralph-$(echo "$PROJECT_DIR" | sed 's#[^A-Za-z0-9._-]#_#g')`
+- [x] One-time sandbox creation with existence check (`docker sandbox ls | grep`)
+- [x] Auth symlink setup via `docker sandbox exec -u root` (runs `sandbox/setup.sh` or inline equivalent)
+- [x] Git config setup inside sandbox
+- [x] Ensures `~/.dclaude_state/.claude.json` contains valid JSON (`{}` minimum) before sandbox creation — empty file causes parse errors (plan §4)
 
 **Loop iteration logic:**
-- [ ] Iterates from 1 to `MAX_ITERATIONS`
-- [ ] Reads `tasks.json` before each iteration
-- [ ] Determines `iterationMode` using priority: any `reviewStatus: "changes_requested"` → `review-fix`, else any `reviewStatus: "needs_review"` → `review`, else → `implement`
-- [ ] Writes pre-iteration snapshot to `.ralph-active` (JSON with `timestamp`, `pid`, `max_iterations`, `mode`, `skipReview`, `reviewCap`, `iterationMode`, `preIterationSnapshot` per story)
-- [ ] Injects `$RALPH_ITERATION` and `$RALPH_MAX_ITERATIONS` into prompt via `sed`
-- [ ] Sandbox mode: `docker sandbox run "$SANDBOX_NAME" -- -p "$PROMPT"`
-- [ ] Direct mode: `claude -p "$PROMPT" --dangerously-skip-permissions`
-- [ ] Passes `--model` flag if specified
-- [ ] Streams output to terminal via `tee /dev/stderr` while capturing for promise detection
+- [x] Iterates from 1 to `MAX_ITERATIONS`
+- [x] Reads `tasks.json` before each iteration
+- [x] Determines `iterationMode` using priority: any `reviewStatus: "changes_requested"` → `review-fix`, else any `reviewStatus: "needs_review"` → `review`, else → `implement`
+- [x] Writes pre-iteration snapshot to `.ralph-active` (JSON with `timestamp`, `pid`, `max_iterations`, `mode`, `skipReview`, `reviewCap`, `iterationMode`, `preIterationSnapshot` per story)
+- [x] Injects `$RALPH_ITERATION` and `$RALPH_MAX_ITERATIONS` into prompt via `sed`
+- [x] Sandbox mode: `docker sandbox run "$SANDBOX_NAME" -- -p "$PROMPT"`
+- [x] Direct mode: `claude -p "$PROMPT" --dangerously-skip-permissions`
+- [x] Passes `--model` flag if specified
+- [x] Streams output to terminal via `tee /dev/stderr` while capturing for promise detection
 
 **Resume-after-pause handling (sandbox mode only):**
 - [ ] Detects if the loop was paused (developer edited files on host between iterations)
@@ -300,29 +300,29 @@ Per §3 of the plan. This is the outer orchestrator.
 - [ ] See plan §3 file sync constraint #1 and `docker-sandbox-isolation.md` "File sync" caveat
 
 **Completion detection:**
-- [ ] Detects `<promise>COMPLETE</promise>` in captured output
-- [ ] Falls back to tasks.json-only check: all stories have `passes: true` AND `reviewStatus: "approved"`
-- [ ] Sandbox mode: 2-3 second sleep before reading tasks.json (file sync latency)
-- [ ] Exits 0 on completion, 1 on max iterations reached
+- [x] Detects `<promise>COMPLETE</promise>` in captured output
+- [x] Falls back to tasks.json-only check: all stories have `passes: true` AND `reviewStatus: "approved"`
+- [x] Sandbox mode: 2-3 second sleep before reading tasks.json (file sync latency)
+- [x] Exits 0 on completion, 1 on max iterations reached
 
 **Error handling & cleanup:**
-- [ ] Creates `.ralph-active` marker on start
-- [ ] `trap` cleans up `.ralph-active` on EXIT/INT/TERM
-- [ ] Handles transient empty responses (exit 0, no output) with retry + cap
-- [ ] Validates `jq` is available at startup
-- [ ] Validates `ralph/` directory exists with required files (tasks.json, prompt.md, prd.md)
+- [x] Creates `.ralph-active` marker on start
+- [x] `trap` cleans up `.ralph-active` on EXIT/INT/TERM
+- [x] Handles transient empty responses (exit 0, no output) with retry + cap
+- [x] Validates `jq` is available at startup
+- [x] Validates `ralph/` directory exists with required files (tasks.json, prompt.md, prd.md)
 
 **General:**
-- [ ] Script is executable
-- [ ] Has usage/help text
-- [ ] Uses `set -euo pipefail` (or equivalent safe defaults)
-- [ ] Dependencies documented in comments: `jq`, `claude` CLI, optionally Docker Desktop 4.58+
+- [x] Script is executable
+- [x] Has usage/help text
+- [x] Uses `set -euo pipefail` (or equivalent safe defaults)
+- [x] Dependencies documented in comments: `jq`, `claude` CLI, optionally Docker Desktop 4.58+
 
 ### 4.2 — Commit Phase 4
 
 **Acceptance criteria:**
-- [ ] ralph.sh committed
-- [ ] Commit message: `feat(ralph): add main loop runner with sandbox/direct mode support`
+- [x] ralph.sh committed
+- [x] Commit message: `feat(ralph): add main loop runner with sandbox/direct mode support`
 
 ---
 
@@ -337,16 +337,16 @@ Per §3 of the plan. This is the outer orchestrator.
 Per §10 of the plan.
 
 **Acceptance criteria:**
-- [ ] Accepts `--project-dir PATH` (default: cwd) and `--name FEATURE_NAME`
-- [ ] Creates `ralph/` directory in the target project
-- [ ] Copies templates: `prompt.md`, `prd-template.md → prd.md`, `tasks-template.json → tasks.json`, `progress-template.md → progress.txt`
-- [ ] Substitutes `{{DATE}}` (current date) and `{{PROJECT_NAME}}` (from `--name` or directory name) in progress.txt
-- [ ] Sets `branchName` in tasks.json to `ralph/<name>` if `--name` provided
-- [ ] Adds `.ralph-active` to `.gitignore` if not already present
-- [ ] Prints next-steps instructions (edit prd.md, run `/ralph-plan` or fill tasks.json manually, run ralph.sh)
-- [ ] Idempotent: warns but doesn't overwrite if `ralph/` already exists (unless `--force`)
-- [ ] Script is executable
-- [ ] Resolves template paths relative to the plugin's install location (not cwd)
+- [x] Accepts `--project-dir PATH` (default: cwd) and `--name FEATURE_NAME`
+- [x] Creates `ralph/` directory in the target project
+- [x] Copies templates: `prompt.md`, `prd-template.md → prd.md`, `tasks-template.json → tasks.json`, `progress-template.md → progress.txt`
+- [x] Substitutes `{{DATE}}` (current date) and `{{PROJECT_NAME}}` (from `--name` or directory name) in progress.txt
+- [x] Sets `branchName` in tasks.json to `ralph/<name>` if `--name` provided
+- [x] Adds `.ralph-active` to `.gitignore` if not already present
+- [x] Prints next-steps instructions (edit prd.md, run `/ralph-plan` or fill tasks.json manually, run ralph.sh)
+- [x] Idempotent: warns but doesn't overwrite if `ralph/` already exists (unless `--force`)
+- [x] Script is executable
+- [x] Resolves template paths relative to the plugin's install location (not cwd)
 
 ### 5.2 — Create ralph-archive.sh
 
@@ -355,14 +355,14 @@ Per §10 of the plan.
 Per §10 of the plan.
 
 **Acceptance criteria:**
-- [ ] Accepts `--project-dir PATH` (default: cwd) and `--label LABEL`
-- [ ] Creates `ralph-archive/<date>-<branch-or-label>/` directory
-- [ ] Moves `prd.md`, `tasks.json`, `progress.txt` to the archive directory
-- [ ] Generates `summary.md` in the archive: stories completed vs total, date range, branch name
-- [ ] Resets `ralph/` to clean state with fresh templates (same as init but preserves prompt.md customizations)
-- [ ] Commits the archive with descriptive message
-- [ ] Validates `ralph/` exists with completed tasks before archiving
-- [ ] Script is executable
+- [x] Accepts `--project-dir PATH` (default: cwd) and `--label LABEL`
+- [x] Creates `ralph-archive/<date>-<branch-or-label>/` directory
+- [x] Moves `prd.md`, `tasks.json`, `progress.txt` to the archive directory
+- [x] Generates `summary.md` in the archive: stories completed vs total, date range, branch name
+- [x] Resets `ralph/` to clean state with fresh templates (same as init but preserves prompt.md customizations)
+- [x] Commits the archive with descriptive message
+- [x] Validates `ralph/` exists with completed tasks before archiving
+- [x] Script is executable
 
 ### 5.3 — Create ralph-plan skill
 
@@ -371,27 +371,27 @@ Per §10 of the plan.
 Per §11 of the plan. User-invocable skill (`/ralph-plan`).
 
 **Acceptance criteria:**
-- [ ] Skill file follows the Claude Code skill format (check existing skills in `zaksak` plugin for pattern)
-- [ ] **Mode 1 (full planning):** Triggers when `ralph/prd.md` is empty or template scaffold. Instructs Claude to ask clarifying questions (unlimited), generate prd.md, derive tasks.json, present for review
-- [ ] **Mode 2 (task derivation):** Triggers when `ralph/prd.md` already has content. Read existing PRD, ask targeted questions only if ambiguous, derive tasks.json
-- [ ] Task derivation rules encoded: one-story-per-iteration sizing, dependency ordering (schema → backend → API → frontend → integration), verifiable acceptance criteria, `dependsOn` set explicitly, `verifyCommands` populated
-- [ ] All stories initialized with `passes: false`, `reviewStatus: null`, `reviewCount: 0`, empty `reviewFeedback`
-- [ ] Prerequisite check: `ralph/` directory must exist (instructs user to run `ralph-init.sh` if not)
-- [ ] Trigger phrases documented: `/ralph-plan`, "plan this feature for ralph", etc.
+- [x] Skill file follows the Claude Code skill format (check existing skills in `zaksak` plugin for pattern)
+- [x] **Mode 1 (full planning):** Triggers when `ralph/prd.md` is empty or template scaffold. Instructs Claude to ask clarifying questions (unlimited), generate prd.md, derive tasks.json, present for review
+- [x] **Mode 2 (task derivation):** Triggers when `ralph/prd.md` already has content. Read existing PRD, ask targeted questions only if ambiguous, derive tasks.json
+- [x] Task derivation rules encoded: one-story-per-iteration sizing, dependency ordering (schema → backend → API → frontend → integration), verifiable acceptance criteria, `dependsOn` set explicitly, `verifyCommands` populated
+- [x] All stories initialized with `passes: false`, `reviewStatus: null`, `reviewCount: 0`, empty `reviewFeedback`
+- [x] Prerequisite check: `ralph/` directory must exist (instructs user to run `ralph-init.sh` if not)
+- [x] Trigger phrases documented: `/ralph-plan`, "plan this feature for ralph", etc.
 
 ### 5.4 — Register skill in plugin manifest
 
 Update `plugin.json` to register the ralph-plan skill (if the plugin manifest schema supports skill registration — verify against Claude Code docs/Context7).
 
 **Acceptance criteria:**
-- [ ] Skill is discoverable via `/ralph-plan` after plugin installation
-- [ ] No changes to existing plugin fields
+- [x] Skill is discoverable via `/ralph-plan` after plugin installation (uses directory-based convention `skills/ralph-plan/SKILL.md` with YAML frontmatter — same pattern as zaksak plugin, no manifest registration needed)
+- [x] No changes to existing plugin fields
 
 ### 5.5 — Commit Phase 5
 
 **Acceptance criteria:**
-- [ ] All utility scripts and skill committed
-- [ ] Commit message: `feat(ralph): add init, archive, and interactive planning utilities`
+- [x] All utility scripts and skill committed
+- [x] Commit message: `feat(ralph): add init, archive, and interactive planning utilities`
 
 ---
 
