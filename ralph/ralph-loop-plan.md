@@ -100,6 +100,8 @@ Core behavior:
 - Each iteration is a fresh `claude -p` process = fresh context window (the sandbox itself persists across iterations — fast reconnect, no re-setup)
 - Uses `sed` to inject `$RALPH_ITERATION` and `$RALPH_MAX_ITERATIONS` into the prompt before passing to Claude
 - Creates `.ralph-active` marker file on start (JSON with timestamp, pid, max_iterations, mode, skipReview, reviewCap) — hooks check for this file to activate ralph-specific behavior and determine review configuration
+- **Before each iteration**, reads `tasks.json` and writes a pre-iteration snapshot to `.ralph-active` (see §5b). This snapshot captures the review-critical fields (`passes`, `reviewStatus`, `reviewCount`) per story and the deterministically-detected iteration mode. The stop hook uses this to enforce legal state transitions, not just state invariants
+- Determines iteration mode using the same deterministic priority the prompt uses: any `reviewStatus: "changes_requested"` → `review-fix`, else any `reviewStatus: "needs_review"` → `review`, else → `implement`
 - Registers `trap` to clean up `.ralph-active` on EXIT/INT/TERM
 - Detects completion via `<promise>COMPLETE</promise>` in output, then verifies with `jq` that all stories in `tasks.json` have `passes: true` AND `reviewStatus: "approved"`
 - Falls back to tasks.json-only check (if agent completed everything but forgot the tag) — requires both `passes: true` and `reviewStatus: "approved"` for all stories
@@ -145,6 +147,25 @@ docker sandbox run "$SANDBOX_NAME" -- -p "$PROMPT"
 2. **Programmatic host→sandbox writes (feedback injection between iterations):** Use `docker sandbox exec` to write directly into the sandbox, bypassing the sync layer entirely.
 
 See `sandbox-test-results.md` Step 4 for the full root cause analysis, follow-up tests, and workaround matrix.
+
+`.ralph-active` payload (updated before each iteration):
+```json
+{
+  "timestamp": "2025-06-15T10:30:00Z",
+  "pid": 12345,
+  "max_iterations": 15,
+  "mode": "sandbox",
+  "skipReview": false,
+  "reviewCap": 5,
+  "iterationMode": "implement",
+  "preIterationSnapshot": {
+    "US-001": { "passes": false, "reviewStatus": null, "reviewCount": 0 },
+    "US-002": { "passes": true, "reviewStatus": "approved", "reviewCount": 1 }
+  }
+}
+```
+
+The `iterationMode` and `preIterationSnapshot` fields are written by `ralph.sh` before each Claude invocation. Since `ralph.sh` is trusted code (not model-controlled), the snapshot cannot be manipulated by the model. The stop hook compares the current `tasks.json` against this snapshot to enforce legal state transitions per mode (see §5b Check 2.5).
 
 Arguments:
 ```
@@ -227,14 +248,27 @@ Runs three checks before allowing Claude to stop. All must pass or the stop is b
 - No story has `passes: true` with an empty `notes` field (enforce documentation of what was done)
 - If validation fails → block with specific error describing which field/story is malformed
 
-**Check 2: Review integrity enforcement** — The structural gate that ensures every completed story has been through a fresh-context review. **Skipped entirely when `.ralph-active` contains `"skipReview": true`** (i.e., `--skip-review` mode).
+**Check 2: Review integrity enforcement (state invariants)** — Validates that the current tasks.json satisfies review invariants. **Skipped entirely when `.ralph-active` contains `"skipReview": true`** (i.e., `--skip-review` mode).
 
 When review mode is active:
 - Every story with `passes: true` MUST have `reviewStatus: "approved"` — if any story has `passes: true` without `"approved"`, block with: `"Story {id} has passes=true but reviewStatus is '{reviewStatus}', not 'approved'. Only review iterations may approve stories. Set passes back to false or complete the review cycle."`
 - Every story with `reviewStatus: "approved"` MUST have `passes: true` — these fields must be in sync
 - No story may have `reviewStatus: "changes_requested"` with an empty `reviewFeedback` field — if review requested changes, it must explain what needs fixing
 - `reviewCount` must be a non-negative integer and must not exceed the configured review cap + 1 (sanity check against corruption)
-- This check is the enforcement mechanism for the iterative review loop. It cannot be bypassed by prompt instructions because it runs as Python code in the stop hook, outside the model's control
+
+**Check 2.5: Transition validation (state transitions)** — The structural enforcement that the model only made mode-appropriate changes to review-critical fields. **Skipped entirely when `.ralph-active` contains `"skipReview": true`**. Requires `iterationMode` and `preIterationSnapshot` in `.ralph-active` (written by `ralph.sh` before each iteration — trusted code, not model-controlled).
+
+Compares the current `tasks.json` against `preIterationSnapshot` for each story. For stories present in the snapshot, validates that `passes`, `reviewStatus`, and `reviewCount` only changed in ways permitted by the `iterationMode`:
+
+| iterationMode | Allowed transitions per story | Block if |
+|---|---|---|
+| **`implement`** | `reviewStatus: null → "needs_review"` (at most one story). All other review fields unchanged. New stories allowed (must start at `passes: false`, `reviewStatus: null`, `reviewCount: 0`). | Any story: `passes: false → true`. Any story: `reviewStatus → "approved"`. Any `reviewCount` changed. Error: `"Implement iterations cannot set passes=true or approve stories. Only review iterations may approve. Story {id} had illegal transition: {field} {old} → {new}."` |
+| **`review`** | Exactly one story: `reviewCount` incremented by 1. That story transitions to EITHER (a) `reviewStatus: "approved"` + `passes: true` OR (b) `reviewStatus: "changes_requested"` + non-empty `reviewFeedback`. No other story's `passes`/`reviewStatus`/`reviewCount` changed. | More than one story's review fields changed. `reviewCount` changed by != 1. Story approved without `reviewCount` increment. Other story's review fields modified. Error: `"Review iteration made illegal transition on story {id}: {details}."` |
+| **`review-fix`** | One story: `reviewStatus: "changes_requested" → "needs_review"`, `reviewFeedback` cleared. `passes` stays `false`. `reviewCount` unchanged. No other story's review fields changed. | `passes` changed. `reviewStatus → "approved"`. `reviewCount` changed. Other story's review fields modified. Error: `"Review-fix iterations cannot approve stories. Story {id} must go back to needs_review for re-review. Illegal transition: {field} {old} → {new}."` |
+
+Why both Check 2 and Check 2.5? Check 2 validates **end-state invariants** (e.g., `passes: true ↔ approved`). Check 2.5 validates **transitions** (e.g., only review iterations can *set* `passes: true`). Without Check 2.5, the model can satisfy all invariants while making illegal transitions — for example, an implementation iteration setting both `passes: true` and `reviewStatus: "approved"` simultaneously, completely bypassing the fresh-context review. Check 2 alone cannot catch this because the end-state is valid. Check 2.5 catches it because the *transition* from the snapshot state is illegal for the `implement` mode.
+
+If `preIterationSnapshot` is missing from `.ralph-active` (e.g., older ralph.sh version), Check 2.5 is skipped with a warning but Check 2 still runs — graceful degradation to invariant-only enforcement.
 
 **Check 3: Uncommitted changes** — Checks `git status --porcelain`:
 - If uncommitted changes exist → block, telling Claude to:
@@ -243,13 +277,13 @@ When review mode is active:
   3. Commit ALL changes including progress.txt and tasks.json updates
 - Claude must address the feedback and try stopping again
 
-If all three checks pass (valid schema + review integrity + no uncommitted changes), approves the stop.
+If all checks pass (valid schema + review invariants + legal transitions + no uncommitted changes), approves the stop.
 
 ### 6. Prompt Template
 
 **File:** `claude-code/plugins/ralph/templates/prompt.md`
 
-The prompt Claude receives each iteration. The prompt operates in **three modes** depending on the state of tasks.json. Mode detection happens in Step 2 and determines which Step 3 variant executes. This enables a structurally enforced review cycle: implementation iterations cannot mark a story as `passes: true` — only review iterations can, after a fresh-context evaluation.
+The prompt Claude receives each iteration. The prompt operates in **three modes** depending on the state of tasks.json. Mode detection happens in Step 2 and determines which Step 3 variant executes. This enables a structurally enforced review cycle: implementation iterations cannot mark a story as `passes: true` — only review iterations can, after a fresh-context evaluation. This is enforced at two levels: the stop hook validates both end-state invariants (Check 2) and mode-appropriate transitions against a pre-iteration snapshot (Check 2.5).
 
 #### Iteration modes
 
@@ -454,7 +488,7 @@ Key fields:
 - `reviewFeedback`: when `reviewStatus` is `"changes_requested"`, contains specific, actionable feedback from the review iteration describing what needs to be fixed. Cleared when the story is re-submitted for review. When the review cap is reached and the story is auto-approved, contains informational notes about any remaining concerns (prefixed with `[AUTO-APPROVED AT CAP]`)
 - `notes`: Claude appends implementation context for future iterations
 
-**Review enforcement rule:** `passes: true` is only valid when `reviewStatus: "approved"`. This invariant is enforced structurally by the stop hook (see §5b), not by prompt instructions alone. Implementation iterations set `reviewStatus: "needs_review"` after committing; only review iterations may transition to `"approved"` and set `passes: true`.
+**Review enforcement rule:** `passes: true` is only valid when `reviewStatus: "approved"`. This invariant is enforced at two levels by the stop hook (see §5b): Check 2 validates the end-state invariant (`passes: true ↔ approved`), and Check 2.5 validates that the *transition* was legal for the current iteration mode (e.g., an implement iteration cannot set `passes: true` or `reviewStatus: "approved"` — only review iterations can). The transition check uses a pre-iteration snapshot written by `ralph.sh` (trusted code) to `.ralph-active`, making it impossible for the model to bypass the review cycle by satisfying invariants through illegal transitions.
 
 **Review cap rule:** When `reviewCount` reaches the configured cap (default: 5), the review iteration must approve the story even if minor issues remain. The rationale: if 5 fresh-context reviews haven't resolved an issue, further reviews are unlikely to help — the issue is either genuinely hard (needs human input) or subjective (the reviewer keeps finding new things to nitpick). The cap prevents infinite review-fix loops while the `reviewCount` data lets the user evaluate whether to adjust the cap up or down for future PRDs.
 
@@ -544,9 +578,9 @@ A user-invocable skill (`/ralph-plan`) that interactively generates `prd.md` and
 1. **Plugin scaffold** — `.claude-plugin/plugin.json` + `marketplace.json` update
 2. **Templates** — `prd-template.md`, `tasks-template.json`, `progress-template.md`, `prompt.md` (static files, no deps)
 3. **Sandbox setup script** — `sandbox/setup.sh` (auth symlinks + git config, run via `docker sandbox exec`; see `sandbox-test-results.md`)
-4. **Hook scripts** — `context_monitor.py`, `stop_loop_reminder.py` (Python, standalone, testable independently)
+4. **Hook scripts** — `context_monitor.py`, `stop_loop_reminder.py` (Python, standalone, testable independently). `stop_loop_reminder.py` includes Check 2.5 (transition validation) which reads `preIterationSnapshot` and `iterationMode` from `.ralph-active`
 5. **hooks.json** — Wire hooks to events (depends on hook scripts)
-6. **ralph.sh** — Main loop runner with sandbox/direct mode detection (depends on templates + sandbox template)
+6. **ralph.sh** — Main loop runner with sandbox/direct mode detection (depends on templates + sandbox template). Includes pre-iteration snapshot logic that writes `iterationMode` + `preIterationSnapshot` to `.ralph-active` before each Claude invocation
 7. **ralph-init.sh** — Initializer (depends on templates existing)
 8. **ralph-archive.sh** — Archiver (depends on file layout)
 9. **ralph-plan skill** — Interactive planner (depends on templates for PRD structure knowledge)
@@ -569,7 +603,8 @@ A user-invocable skill (`/ralph-plan`) that interactively generates `prd.md` and
 | PRD creation workflow      | Single `ralph-plan` skill, two modes    | One skill generates both files from the same understanding; adapts if PRD already exists. Unlimited Q&A until spec is clear — no artificial question cap                 |
 | Completion detection      | Promise tag + tasks.json verification   | Dual check prevents false completion signals                                                                                                                             |
 | Implementation quality    | Mandatory fresh-context review cycle    | Every task goes through implement → review → (fix → re-review)* → approve. Catches anchoring bias that intra-session self-review misses. Structurally enforced via stop hook, not prompt instructions alone |
-| Review enforcement        | Schema invariant in stop hook           | `passes: true` requires `reviewStatus: "approved"` — enforced as Python code in the stop hook, not as a prompt suggestion. Implementation iterations cannot shortcut to completion |
+| Review enforcement (invariants) | State invariant check in stop hook (Check 2) | `passes: true` requires `reviewStatus: "approved"` — enforced as Python code in the stop hook, not as a prompt suggestion |
+| Review enforcement (transitions) | Pre-iteration snapshot + mode-aware validation in stop hook (Check 2.5) | Closes the gap where Check 2 alone can't prevent an implement iteration from setting both `passes: true` and `reviewStatus: "approved"` simultaneously. ralph.sh snapshots review fields before each iteration and writes the detected mode to `.ralph-active`; the stop hook validates that only mode-legal transitions occurred. Snapshot is written by trusted code (ralph.sh), not the model |
 | Intra-iteration self-review | Best-effort prompt instruction         | Advisory self-review during implementation reduces issues before the mandatory fresh-context review. Not structurally enforced because it runs within the session, but improves efficiency by catching obvious issues early |
 | Review mode separation    | Review iterations don't fix code        | Reviewer writes feedback, next iteration fixes. Mixing review and fix in the same context reintroduces anchoring bias. Mirrors the Goose worker/reviewer split pattern |
 | Per-task review count     | `reviewCount` field, cap at 5           | Tracks review cycles per story for post-completion analytics. Cap prevents infinite review-fix loops — if 5 reviews can't resolve it, it needs human input. Auto-approves at cap with informational notes |
@@ -604,7 +639,22 @@ A user-invocable skill (`/ralph-plan`) that interactively generates `prd.md` and
      - Story with `reviewStatus: "changes_requested"` and empty `reviewFeedback` → should block ("feedback required")
      - Story with `reviewStatus: "approved"` and `passes: false` → should block ("out of sync")
      - Story with `reviewCount: -1` → should block (invalid negative value)
-     - `.ralph-active` with `"skipReview": true` → Check 2 should be skipped entirely; story with `passes: true` and `reviewStatus: null` should pass
+     - `.ralph-active` with `"skipReview": true` → Check 2 and 2.5 should be skipped entirely; story with `passes: true` and `reviewStatus: null` should pass
+   - **Transition validation tests (Check 2.5):**
+     - `iterationMode: "implement"` + story `passes` changed `false → true` → should block ("implement iterations cannot set passes=true")
+     - `iterationMode: "implement"` + story `reviewStatus` changed `null → "approved"` → should block ("implement iterations cannot approve")
+     - `iterationMode: "implement"` + story `reviewCount` changed `0 → 1` → should block ("implement iterations cannot increment reviewCount")
+     - `iterationMode: "implement"` + story `reviewStatus` changed `null → "needs_review"` → should pass (legal implement transition)
+     - `iterationMode: "implement"` + new story added with `passes: false, reviewStatus: null, reviewCount: 0` → should pass (legal story creation)
+     - `iterationMode: "implement"` + new story added with `passes: true` → should block (new stories must start incomplete)
+     - `iterationMode: "review"` + story `reviewCount` changed `1 → 2`, `reviewStatus` changed `"needs_review" → "approved"`, `passes` changed `false → true` → should pass (legal approval)
+     - `iterationMode: "review"` + story `reviewCount` changed `1 → 2`, `reviewStatus` changed `"needs_review" → "changes_requested"`, non-empty `reviewFeedback` → should pass (legal rejection)
+     - `iterationMode: "review"` + story `reviewCount` unchanged → should block ("review must increment reviewCount")
+     - `iterationMode: "review"` + TWO stories' review fields changed → should block ("review may only modify one story")
+     - `iterationMode: "review-fix"` + story `passes` changed `false → true` → should block ("review-fix cannot approve")
+     - `iterationMode: "review-fix"` + story `reviewStatus` changed `"changes_requested" → "needs_review"` → should pass (legal re-submit)
+     - `iterationMode: "review-fix"` + story `reviewCount` changed → should block ("review-fix cannot increment reviewCount")
+     - Missing `preIterationSnapshot` in `.ralph-active` → Check 2.5 skipped with warning, Check 2 still enforced (graceful degradation)
 4. **ralph-init.sh** — Run in a temp directory, verify all files created correctly
 5. **ralph.sh (sandbox mode)** — Run with `--sandbox --max-iterations 1` against a simple single-story task list in a test project
 6. **ralph.sh (direct mode)** — Run with `--no-sandbox --max-iterations 1` to verify fallback works
@@ -618,7 +668,7 @@ A user-invocable skill (`/ralph-plan`) that interactively generates `prd.md` and
      - Iteration 2 (review): `reviewCount` incremented to 1. If approved → `reviewStatus: "approved"`, `passes: true`. If changes requested → `reviewStatus: "changes_requested"`, `reviewFeedback` is non-empty
      - If changes requested: Iteration 3 (review-fix) addresses feedback, sets `reviewStatus: "needs_review"` again, `reviewCount` stays 1 (only incremented by review iterations)
      - Iteration 4 (re-review): `reviewCount` incremented to 2. Approves → `passes: true`
-   - Verify that an implementation iteration that tries to set `passes: true` directly is blocked by the stop hook
+   - Verify that an implementation iteration that tries to set `passes: true` directly is blocked by the stop hook (Check 2.5 transition validation, not just Check 2 invariant check)
    - Verify that the loop does NOT output `<promise>COMPLETE</promise>` until all stories have both `passes: true` AND `reviewStatus: "approved"`
    - **Review cap test:** Set `--review-cap 1`. Verify that on the first review, if issues are found, the story is auto-approved with `[AUTO-APPROVED AT CAP]` prefix in `reviewFeedback`
    - **Skip-review test:** Run with `--skip-review`. Verify implementation iteration sets `passes: true` directly, `reviewStatus` stays null, `reviewCount` stays 0, stop hook passes without review integrity check
