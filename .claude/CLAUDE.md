@@ -10,7 +10,7 @@ This repository centralizes configuration, plugins, and tooling for AI-powered c
 
 ## Plugin Marketplace
 
-This repo doubles as a Claude Code plugin marketplace. `marketplace.json` at the repo root points to plugins under `claude-code/plugins/` via relative paths. See `PLUGIN-SETUP.md` for the full mental model.
+This repo doubles as a Claude Code plugin marketplace. `.claude-plugin/marketplace.json` points to plugins under `claude-code/plugins/` via relative paths. See `PLUGIN-SETUP.md` for the full mental model.
 
 ## Conventions
 

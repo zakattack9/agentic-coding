@@ -26,7 +26,7 @@ fail() { FAIL=$((FAIL + 1)); ERRORS+=("$1: $2"); echo "  FAIL  $1: $2"; }
 test_marketplace_plugin_chain() {
   # marketplace.json → plugin source → plugin.json → hooks.json chain
   local plugin_source
-  plugin_source=$(jq -r '.plugins[] | select(.name == "ralph") | .source' "$REPO_ROOT/marketplace.json")
+  plugin_source=$(jq -r '.plugins[] | select(.name == "ralph") | .source' "$REPO_ROOT/.claude-plugin/marketplace.json")
 
   if [[ -z "$plugin_source" || "$plugin_source" == "null" ]]; then
     fail "marketplace_plugin_chain" "ralph not found in marketplace.json"
@@ -81,7 +81,7 @@ test_all_json_valid() {
     "$PLUGIN_ROOT/.claude-plugin/plugin.json"
     "$PLUGIN_ROOT/hooks/hooks.json"
     "$PLUGIN_ROOT/templates/tasks-template.json"
-    "$REPO_ROOT/marketplace.json"
+    "$REPO_ROOT/.claude-plugin/marketplace.json"
   )
 
   for jf in "${json_files[@]}"; do
