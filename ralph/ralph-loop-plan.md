@@ -4,7 +4,7 @@
 
 The Ralph Loop is an outer orchestration pattern that repeatedly invokes Claude Code CLI against file-based specifications. Each iteration gets a fresh context window, avoiding context rot. State persists on disk between iterations via progress files, task lists, and memory files. A bash script drives the loop.
 
-This plan builds a **standalone `ralph` plugin** under `claude-code/plugins/ralph/`, separate from the `zaksak` plugin. This keeps the ralph workflow self-contained and independently installable via the marketplace. The design draws from the synthesized research in `research/ralph-loops/`. Key differentiators from reference implementations: **Docker Sandbox microVM isolation** as the primary safety mechanism (with a PreToolUse hook blocklist as fallback), explicit separation of loop-scoped vs repo-scoped memory, context-aware wrap-up guidance, and self-managing task iteration.
+This plan builds a **standalone `ralph` plugin** under `claude-code/plugins/ralph/`, separate from the `zaksak` plugin. This keeps the ralph workflow self-contained and independently installable via the marketplace. The design draws from the synthesized research in `research/ralph-loops/`. Key differentiators from reference implementations: **Docker Sandbox microVM isolation** as the primary safety mechanism (with a PreToolUse hook blocklist as fallback), explicit separation of loop-scoped vs repo-scoped memory, context-aware wrap-up guidance, self-managing task iteration, and a **structurally enforced iterative review cycle** where every task must pass a fresh-context review before it can be marked complete — preventing the "one-shot assumption" that plagues most Ralph loop implementations.
 
 ### Prerequisites
 
@@ -101,8 +101,8 @@ Core behavior:
 - Uses `sed` to inject `$RALPH_ITERATION` and `$RALPH_MAX_ITERATIONS` into the prompt before passing to Claude
 - Creates `.ralph-active` marker file on start (JSON with timestamp, pid, max_iterations, mode) — hooks check for this file to activate ralph-specific behavior
 - Registers `trap` to clean up `.ralph-active` on EXIT/INT/TERM
-- Detects completion via `<promise>COMPLETE</promise>` in output, then verifies with `jq` that all stories in `tasks.json` have `passes: true`
-- Falls back to tasks.json-only check (if agent completed everything but forgot the tag)
+- Detects completion via `<promise>COMPLETE</promise>` in output, then verifies with `jq` that all stories in `tasks.json` have `passes: true` AND `reviewStatus: "approved"`
+- Falls back to tasks.json-only check (if agent completed everything but forgot the tag) — requires both `passes: true` and `reviewStatus: "approved"` for all stories
 - Streams output to terminal via `tee /dev/stderr` while capturing for promise detection
 - In sandbox mode, adds a 2-3 second sleep between iterations to allow sandbox→host file sync to settle before reading `tasks.json` on the host
 - Handles transient empty responses (exit 0 with no text output) by retrying the iteration, with a cap on retries
@@ -212,46 +212,151 @@ Fires graduated alerts at 5 thresholds — each threshold triggers only once per
 **Event:** `Stop`
 **Conditionally active:** only when `.ralph-active` exists
 
-Runs two checks before allowing Claude to stop. Both must pass or the stop is blocked:
+Runs three checks before allowing Claude to stop. All must pass or the stop is blocked:
 
 **Check 1: Task list schema validation** — Validates `ralph/tasks.json` structure:
 - File exists and is valid JSON
 - Required top-level fields: `project`, `branchName`, `description`, `userStories` (array)
-- Every story has required fields: `id` (string), `title` (string), `passes` (boolean), `priority` (number), `acceptanceCriteria` (non-empty array)
+- Every story has required fields: `id` (string), `title` (string), `passes` (boolean), `priority` (number), `acceptanceCriteria` (non-empty array), `reviewStatus` (null or one of `"needs_review"`, `"changes_requested"`, `"approved"`), `reviewFeedback` (string)
 - `id` values are unique (no duplicates)
 - No story has `passes: true` with an empty `notes` field (enforce documentation of what was done)
 - If validation fails → block with specific error describing which field/story is malformed
 
-**Check 2: Uncommitted changes** — Checks `git status --porcelain`:
+**Check 2: Review integrity enforcement** — The structural gate that ensures every completed story has been through a fresh-context review:
+- Every story with `passes: true` MUST have `reviewStatus: "approved"` — if any story has `passes: true` without `"approved"`, block with: `"Story {id} has passes=true but reviewStatus is '{reviewStatus}', not 'approved'. Only review iterations may approve stories. Set passes back to false or complete the review cycle."`
+- Every story with `reviewStatus: "approved"` MUST have `passes: true` — these fields must be in sync
+- No story may have `reviewStatus: "changes_requested"` with an empty `reviewFeedback` field — if review requested changes, it must explain what needs fixing
+- This check is the enforcement mechanism for the iterative review loop. It cannot be bypassed by prompt instructions because it runs as Python code in the stop hook, outside the model's control
+
+**Check 3: Uncommitted changes** — Checks `git status --porcelain`:
 - If uncommitted changes exist → block, telling Claude to:
   1. Update `ralph/progress.txt` with what was accomplished + learnings
   2. Consider if any lasting patterns belong in CLAUDE.md or `.claude/rules/`
   3. Commit ALL changes including progress.txt and tasks.json updates
 - Claude must address the feedback and try stopping again
 
-If both checks pass (valid task list + no uncommitted changes), approves the stop.
+If all three checks pass (valid schema + review integrity + no uncommitted changes), approves the stop.
 
 ### 6. Prompt Template
 
 **File:** `claude-code/plugins/ralph/templates/prompt.md`
 
-The prompt Claude receives each iteration. Structure:
+The prompt Claude receives each iteration. The prompt operates in **three modes** depending on the state of tasks.json. Mode detection happens in Step 2 and determines which Step 3 variant executes. This enables a structurally enforced review cycle: implementation iterations cannot mark a story as `passes: true` — only review iterations can, after a fresh-context evaluation.
+
+#### Iteration modes
+
+| Mode | Trigger condition | Purpose |
+| --- | --- | --- |
+| **Implement** | Any story has `passes: false` AND `reviewStatus: null` | Normal implementation of a new story |
+| **Review** | Any story has `reviewStatus: "needs_review"` | Fresh-context review of a previously implemented story |
+| **Review-Fix** | Any story has `reviewStatus: "changes_requested"` | Fix issues identified by a prior review iteration |
+
+Mode priority: **Review-Fix > Review > Implement**. This ensures review feedback is addressed before new reviews are attempted, and pending reviews are completed before new implementation begins.
+
+#### Prompt structure
 
 1. **Header** — Identifies this as Ralph Loop iteration N of M
+
 2. **Step 1: Orient** — Read progress.txt (especially Codebase Patterns section at top), read prd.md for requirements context, read tasks.json for task state, check `git log` and `git status`
-3. **Step 2: Select & Right-Size** — Pick highest-priority story where `passes: false` (respecting `dependsOn`). If too large for the context window (~60% of context is usable working space), break it into sub-stories in tasks.json and work on the first one. Claude can also add new tasks, reorder priorities, or restructure the task list as needed.
-4. **Step 3: Implement** — Read existing code first, follow patterns, implement one story, run project verification commands (from `tasks.json.verifyCommands`). Respect constraints from prd.md throughout.
-5. **Step 4: Document Progress** — Append structured entry to progress.txt (what was done, files changed, verification results, learnings). Curate the Codebase Patterns section at the top with reusable discoveries
+
+3. **Step 2: Select & Determine Mode** — Scan tasks.json and select the active story based on mode priority:
+
+   - **Review-Fix mode:** Any story with `reviewStatus: "changes_requested"` → select it, read its `reviewFeedback` field for specific issues to address
+   - **Review mode:** Any story with `reviewStatus: "needs_review"` → select it for fresh-context review
+   - **Implement mode:** Highest-priority story where `passes: false` and `reviewStatus: null` (respecting `dependsOn`) → select it for implementation. If too large for the context window (~60% of context is usable working space), break it into sub-stories in tasks.json and work on the first one. Claude can also add new tasks, reorder priorities, or restructure the task list as needed.
+
+4. **Step 3 (mode-dependent):**
+
+   **Step 3-implement: Implement (Implement mode)**
+   - Read existing code first, follow patterns from progress.txt Codebase Patterns section
+   - Implement the selected story. Respect constraints from prd.md throughout
+   - Run project verification commands (from `tasks.json.verifyCommands`)
+   - Perform a **best-effort self-review** before committing:
+     - Run `git diff` and read every changed line
+     - Check each acceptance criterion — is it genuinely met?
+     - Look for edge cases, error handling gaps, leftover TODOs
+     - If issues found, fix them and re-run verifyCommands
+   - This self-review is advisory (not structurally enforced) — it reduces work for the mandatory fresh-context review that follows
+
+   **Step 3-review: Fresh-Context Review (Review mode)**
+   - You are reviewing work from a PREVIOUS iteration. You did not write this code in this session. Review it as if reading someone else's work.
+   - Read the story's acceptance criteria from tasks.json
+   - Run `git log --oneline -5` to see recent commits for this story
+   - Run `git diff` against the appropriate commit range to see all changes for this story
+   - For EACH acceptance criterion individually:
+     - Find the specific code that implements it
+     - Verify it actually works as intended, not just that it looks right
+     - Check edge cases and error paths
+   - Run verifyCommands to confirm automated checks still pass
+   - **Decision:**
+     - All criteria genuinely met, no issues → set `reviewStatus: "approved"` AND `passes: true`
+     - Issues found → set `reviewStatus: "changes_requested"`, write specific actionable feedback to `reviewFeedback` describing exactly what needs to be fixed and where. Do NOT attempt to fix it yourself — the next iteration handles fixes in review-fix mode with a fresh context
+
+   **Step 3-review-fix: Address Review Feedback (Review-Fix mode)**
+   - Read `reviewFeedback` for the selected story — this contains specific issues from the review
+   - Address each piece of feedback explicitly
+   - Run verifyCommands after fixes
+   - Perform the same best-effort self-review as in implement mode
+   - Clear `reviewFeedback` and set `reviewStatus: "needs_review"` to trigger another fresh-context review
+
+5. **Step 4: Document Progress** — Append structured entry to progress.txt (what was done, files changed, verification results, learnings). Include the iteration mode (implement/review/review-fix) in the entry header. Curate the Codebase Patterns section at the top with reusable discoveries
+
 6. **Step 5: Consider Memory Updates** — Update CLAUDE.md or `.claude/rules/` ONLY for rules that persist beyond this ralph loop (e.g., "this project uses bun not npm"). Skip this step if nothing universal was learned
-7. **Step 6: Commit & Signal** — Set `passes: true` in tasks.json, commit with `feat: [US-xxx] - [Title]`, check if ALL stories complete → output `<promise>COMPLETE</promise>`
+
+7. **Step 6: Commit & Signal** — Commit with mode-appropriate message:
+   - Implement mode: `feat: [US-xxx] - [Title]` — set `reviewStatus: "needs_review"` (NOT `passes: true`)
+   - Review mode (approved): `review: [US-xxx] - approved` — set `reviewStatus: "approved"` AND `passes: true`
+   - Review mode (changes requested): `review: [US-xxx] - changes requested` — set `reviewStatus: "changes_requested"` with feedback
+   - Review-Fix mode: `fix: [US-xxx] - address review feedback` — set `reviewStatus: "needs_review"` for re-review
+   - After committing, check if ALL stories have `passes: true` AND `reviewStatus: "approved"` → output `<promise>COMPLETE</promise>`
 
 Hard rules embedded in the prompt:
 - One story per iteration, never start a second
-- Don't mark `passes: true` until verification passes
+- **Implementation iterations NEVER set `passes: true`** — only review iterations can, and only when approving
 - Don't weaken tests to make them pass
 - If stuck, document the blocker in progress.txt for the next iteration
 - Claude may add/split/reorder stories in tasks.json as needed (self-management)
 - prd.md is read-only — never modify the PRD during the loop
+- Review iterations do not fix code — they evaluate and provide feedback. Mixing review and fix in the same context defeats the purpose of fresh-context review
+- Review-fix iterations address ALL feedback items, not just the easy ones
+
+#### Task lifecycle diagram
+
+```
+                    ┌─────────────────────────────────┐
+                    │                                  │
+                    ▼                                  │
+  ┌──────────────────────┐                             │
+  │ reviewStatus: null    │ ◄── initial state           │
+  │ passes: false         │                             │
+  └──────────┬───────────┘                             │
+             │ implement iteration                     │
+             ▼                                         │
+  ┌──────────────────────┐                             │
+  │ reviewStatus:         │                             │
+  │   "needs_review"     │                             │
+  │ passes: false         │                             │
+  └──────────┬───────────┘                             │
+             │ review iteration                        │
+             ▼                                         │
+        ┌─────────┐                                    │
+        │ Verdict │                                    │
+        └────┬────┘                                    │
+             │                                         │
+     ┌───────┴────────┐                                │
+     ▼                ▼                                │
+  approved      changes_requested                      │
+     │                │                                │
+     ▼                ▼                                │
+  ┌────────┐   ┌──────────────────────┐                │
+  │passes: │   │ reviewStatus:         │                │
+  │  true  │   │  "changes_requested" │                │
+  │approved│   │ reviewFeedback: "..." │                │
+  └────────┘   └──────────┬───────────┘                │
+     ✓ done               │ review-fix iteration       │
+                          │                            │
+                          └────────────────────────────┘
+```
 
 ### 7. PRD Template
 
@@ -303,6 +408,8 @@ The machine-readable execution state tracker. Claude reads and modifies this fil
       "acceptanceCriteria": [],
       "priority": 1,
       "passes": false,
+      "reviewStatus": null,
+      "reviewFeedback": "",
       "notes": "",
       "dependsOn": []
     }
@@ -313,8 +420,16 @@ The machine-readable execution state tracker. Claude reads and modifies this fil
 Key fields:
 - `verifyCommands`: project-specific checks Claude runs each iteration (tests, lint, typecheck)
 - `dependsOn`: ordering constraints between stories
-- `passes`: boolean, toggled by Claude when acceptance criteria + verification pass
+- `passes`: boolean, set to `true` ONLY by a review iteration after approval — never by an implementation iteration
+- `reviewStatus`: tracks the review lifecycle for each story. Values:
+  - `null` — not yet implemented
+  - `"needs_review"` — implemented and committed, awaiting fresh-context review in the next iteration
+  - `"changes_requested"` — review found issues; actionable feedback written to `reviewFeedback`
+  - `"approved"` — fresh-context review passed; `passes` may now be set to `true`
+- `reviewFeedback`: when `reviewStatus` is `"changes_requested"`, contains specific, actionable feedback from the review iteration describing what needs to be fixed. Cleared when the story is re-submitted for review
 - `notes`: Claude appends implementation context for future iterations
+
+**Review enforcement rule:** `passes: true` is only valid when `reviewStatus: "approved"`. This invariant is enforced structurally by the stop hook (see §5b), not by prompt instructions alone. Implementation iterations set `reviewStatus: "needs_review"` after committing; only review iterations may transition to `"approved"` and set `passes: true`.
 
 **Separation of concerns:** prd.md provides the *context* (what, why, constraints, technical design). tasks.json provides the *execution state* (stories, completion, priority). The PRD is the specification; the task list is the checklist.
 
@@ -373,7 +488,7 @@ A user-invocable skill (`/ralph-plan`) that interactively generates `prd.md` and
 **Mode 1 — Full planning** (prd.md is empty or template scaffold):
 1. Ask the user clarifying questions — as many as needed until the requirements are clear. No fixed limit. Focus on: problem/goal, core functionality, scope boundaries, technical context, constraints, success criteria. Continue asking until confident the specification is complete.
 2. Generate `ralph/prd.md` with all relevant sections filled in (following the PRD template structure)
-3. Derive `ralph/tasks.json` — break requirements into right-sized stories (each completable in one iteration/context window), set dependency ordering via `dependsOn`, write verifiable acceptance criteria, include `verifyCommands`
+3. Derive `ralph/tasks.json` — break requirements into right-sized stories (each completable in one iteration/context window), set dependency ordering via `dependsOn`, write verifiable acceptance criteria, include `verifyCommands`. All stories start with `passes: false`, `reviewStatus: null`, and empty `reviewFeedback`
 4. Present both files for user review
 
 **Mode 2 — Task derivation** (prd.md already has content):
@@ -424,6 +539,10 @@ A user-invocable skill (`/ralph-plan`) that interactively generates `prd.md` and
 | PRD / task list separation | prd.md (context) + tasks.json (state)   | PRD is the specification (what, why, constraints); tasks.json is the checklist (stories, completion). Avoids cramming rich requirements into JSON strings                |
 | PRD creation workflow      | Single `ralph-plan` skill, two modes    | One skill generates both files from the same understanding; adapts if PRD already exists. Unlimited Q&A until spec is clear — no artificial question cap                 |
 | Completion detection      | Promise tag + tasks.json verification   | Dual check prevents false completion signals                                                                                                                             |
+| Implementation quality    | Mandatory fresh-context review cycle    | Every task goes through implement → review → (fix → re-review)* → approve. Catches anchoring bias that intra-session self-review misses. Structurally enforced via stop hook, not prompt instructions alone |
+| Review enforcement        | Schema invariant in stop hook           | `passes: true` requires `reviewStatus: "approved"` — enforced as Python code in the stop hook, not as a prompt suggestion. Implementation iterations cannot shortcut to completion |
+| Intra-iteration self-review | Best-effort prompt instruction         | Advisory self-review during implementation reduces issues before the mandatory fresh-context review. Not structurally enforced because it runs within the session, but improves efficiency by catching obvious issues early |
+| Review mode separation    | Review iterations don't fix code        | Reviewer writes feedback, next iteration fixes. Mixing review and fix in the same context reintroduces anchoring bias. Mirrors the Goose worker/reviewer split pattern |
 | Hook language             | All Python                              | Consistent codebase, built-in JSON handling (no `jq` dep), cleaner task list validation                                                                                  |
 | Prompt variable injection | `sed` substitution                      | No external dependency (vs `envsubst` requiring `gettext`)                                                                                                               |
 
@@ -445,6 +564,13 @@ A user-invocable skill (`/ralph-plan`) that interactively generates `prd.md` and
    - Create a fake transcript file, pass its path via JSON stdin to `context_monitor.py` → verify alerts fire at correct thresholds and each threshold fires only once
    - Create `.ralph-active` → run `stop_loop_reminder.py` with valid/invalid tasks.json → verify schema validation blocks on malformed task list, passes on valid
    - Create `.ralph-active` → run `stop_loop_reminder.py` with uncommitted changes → should return block decision
+   - **Review integrity enforcement tests:**
+     - Story with `passes: true` and `reviewStatus: null` → should block ("not approved")
+     - Story with `passes: true` and `reviewStatus: "needs_review"` → should block ("not approved")
+     - Story with `passes: true` and `reviewStatus: "changes_requested"` → should block ("not approved")
+     - Story with `passes: true` and `reviewStatus: "approved"` → should pass
+     - Story with `reviewStatus: "changes_requested"` and empty `reviewFeedback` → should block ("feedback required")
+     - Story with `reviewStatus: "approved"` and `passes: false` → should block ("out of sync")
 4. **ralph-init.sh** — Run in a temp directory, verify all files created correctly
 5. **ralph.sh (sandbox mode)** — Run with `--sandbox --max-iterations 1` against a simple single-story task list in a test project
 6. **ralph.sh (direct mode)** — Run with `--no-sandbox --max-iterations 1` to verify fallback works
@@ -452,7 +578,15 @@ A user-invocable skill (`/ralph-plan`) that interactively generates `prd.md` and
 8. **ralph-plan skill** — Test both modes:
    - Mode 1: Run `/ralph-plan` with empty prd.md → verify it asks questions, generates both prd.md and tasks.json, stories are right-sized and dependency-ordered
    - Mode 2: Drop a pre-written prd.md into `ralph/`, run `/ralph-plan` → verify it reads existing PRD and derives tasks.json without regenerating the PRD
-9. **End-to-end** — Run a 2-3 story task list through full ralph loop completion in sandbox mode
+9. **Review loop lifecycle** — Verify the full implement → review → (fix → re-review) cycle:
+   - Create a 1-story task list. Run the loop. Verify:
+     - Iteration 1 (implement): story gets `reviewStatus: "needs_review"`, `passes` stays `false`
+     - Iteration 2 (review): if approved → `reviewStatus: "approved"`, `passes: true`. If changes requested → `reviewStatus: "changes_requested"`, `reviewFeedback` is non-empty
+     - If changes requested: Iteration 3 (review-fix) addresses feedback, sets `reviewStatus: "needs_review"` again
+     - Iteration 4 (re-review): approves → `passes: true`
+   - Verify that an implementation iteration that tries to set `passes: true` directly is blocked by the stop hook
+   - Verify that the loop does NOT output `<promise>COMPLETE</promise>` until all stories have both `passes: true` AND `reviewStatus: "approved"`
+10. **End-to-end** — Run a 2-3 story task list through full ralph loop completion in sandbox mode, exercising the full review cycle for each story
 
 ## Reference Documents
 
@@ -481,3 +615,17 @@ The current plan does not explicitly address running multiple ralph loops simult
 - Should `.ralph-active` act as a PID-aware lock to prevent same-directory double-start?
 - Should the plan formally recommend git worktrees for same-repo parallel features?
 - Are Docker resource considerations (multiple concurrent VMs) worth documenting in ralph.sh `--help` or init output?
+
+### Review cycle iteration budget and default max iterations
+
+The mandatory review cycle means each task requires a minimum of 2 iterations (implement + review), and tasks that need revisions take 4+ iterations (implement + review + fix + re-review). For a 10-story task list, this means ~20-40 iterations minimum instead of ~10.
+
+**Implications:**
+- The default `MAX_ITERATIONS` of 10 is too low for most projects with the review cycle enabled. A 10-story list would need 20-40 iterations. Consider raising the default to 30 or calculating it dynamically based on story count (e.g., `story_count * 4`).
+- API costs roughly double vs the no-review approach, since review iterations consume context even though they don't produce code. The trade-off is higher quality per task — fewer bugs shipped, fewer regressions, less rework in later iterations.
+- The `ralph-plan` skill should factor review iterations into its "right-sizing" guidance: if a story is borderline too large, the review cycle adds additional iteration pressure.
+
+**To resolve before or during implementation:**
+- Should `MAX_ITERATIONS` default be raised, or dynamically calculated from the story count?
+- Should `ralph.sh` display estimated iteration budget at startup (e.g., "10 stories × ~3 iterations each = ~30 iterations needed, max set to 40")?
+- Should there be a `--skip-review` flag for low-stakes tasks where the user explicitly opts out of the review cycle? If so, the stop hook would need to check whether review mode is active before enforcing the `reviewStatus: "approved"` invariant
