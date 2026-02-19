@@ -35,9 +35,10 @@ Or, if developing locally, add the plugin directly:
 
 ### 1. Initialize a ralph loop in your project
 
-```bash
-cd /path/to/your/project
-/path/to/ralph-init.sh --name my-feature
+All commands are available as slash commands after plugin install:
+
+```
+/ralph-init --name my-feature
 ```
 
 This creates a `ralph/` directory with:
@@ -58,24 +59,24 @@ The skill asks clarifying questions until the spec is clear, then generates both
 
 ### 3. Run the loop
 
-```bash
+```
 # Recommended: sandbox mode (auto-detected if Docker is available)
-ralph.sh
+/ralph
 
 # Direct mode (no Docker, uses --dangerously-skip-permissions)
-ralph.sh --no-sandbox
+/ralph --no-sandbox
 
 # Skip the review cycle for low-stakes tasks
-ralph.sh --skip-review
+/ralph --no-sandbox --skip-review
 
 # Limit iterations
-ralph.sh --max-iterations 10
+/ralph --max-iterations 10
 ```
 
 ### 4. Archive when done
 
-```bash
-ralph-archive.sh --label v1
+```
+/ralph-archive --label v1
 ```
 
 Moves completed artifacts to `ralph-archive/`, generates a summary, and resets `ralph/` for the next feature.
