@@ -1,6 +1,8 @@
-# Dangerous Command Patterns — PreToolUse Hook Reference
+# PreToolUse Hook Reference — Dangerous Command Patterns
 
-> Comprehensive list of bash/shell command patterns to block in the Ralph Loop `block-dangerous-commands.py` PreToolUse hook. This hook guards an autonomous agent running with `--dangerously-skip-permissions`.
+> **Fallback safety mechanism.** This document is the implementation reference for the `block_dangerous_commands.py` PreToolUse hook, used when Docker Sandbox isolation is unavailable. The primary safety mechanism is Docker Sandbox microVM isolation (see `docker-sandbox-isolation.md`), which makes this hook unnecessary via OS-level containment.
+>
+> When running in direct mode (`ralph.sh --no-sandbox`), this hook guards an autonomous agent running with `--dangerously-skip-permissions` by pattern-matching commands against a blocklist.
 
 ---
 
