@@ -16,7 +16,9 @@ import tempfile
 import shutil
 
 # Resolve paths relative to the ralph plugin root
-PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Tests live at ralph/tests/, plugin lives at claude-code/plugins/ralph/
+PLUGIN_ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                           "claude-code", "plugins", "ralph")
 CONTEXT_MONITOR = os.path.join(PLUGIN_ROOT, "hooks", "scripts", "context_monitor.py")
 STOP_HOOK = os.path.join(PLUGIN_ROOT, "hooks", "scripts", "stop_loop_reminder.py")
 

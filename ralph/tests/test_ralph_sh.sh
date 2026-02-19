@@ -9,7 +9,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PLUGIN_ROOT="$(dirname "$SCRIPT_DIR")"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PLUGIN_ROOT="$REPO_ROOT/claude-code/plugins/ralph"
 RALPH_SH="$PLUGIN_ROOT/scripts/ralph.sh"
 
 PASS=0
