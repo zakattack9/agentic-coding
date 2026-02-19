@@ -19,9 +19,9 @@ claude-code/plugins/ralph/
 ├── hooks/
 │   ├── hooks.json                           # NEW: plugin hook definitions
 │   └── scripts/
-│       ├── block-dangerous-commands.py      # NEW: PreToolUse safety guard
-│       ├── context-monitor.sh              # NEW: PostToolUse context usage alerts
-│       └── stop-loop-reminder.sh            # NEW: Stop hook — enforce progress + commit
+│       ├── block_dangerous_commands.py      # NEW: PreToolUse safety guard
+│       ├── context_monitor.py              # NEW: PostToolUse context usage alerts
+│       └── stop_loop_reminder.py            # NEW: Stop hook — PRD validation + enforce commit
 ├── scripts/
 │   ├── ralph.sh                             # NEW: main loop runner
 │   ├── ralph-init.sh                        # NEW: initialize a ralph loop in a project
@@ -108,9 +108,11 @@ Dependencies: `jq` (for PRD verification), `claude` CLI.
 
 Wires three hooks across three events (PreToolUse, PostToolUse, Stop), plus a SessionStart cleanup:
 
+All hook scripts are written in Python for consistency, robust JSON handling (no `jq` dependency), and cleaner PRD validation logic.
+
 #### 4a. Dangerous Command Blocker (Always-on)
 
-**File:** `hooks/scripts/block-dangerous-commands.py`
+**File:** `hooks/scripts/block_dangerous_commands.py`
 **Event:** `PreToolUse`, matcher: `Bash`
 **Always active** — general safety for any session with the ralph plugin enabled
 
@@ -126,7 +128,7 @@ Exit 2 to block (stderr message shown to Claude), exit 0 to allow. Standard `rm`
 
 #### 4b. Context Monitor (Always-on, graduated alerts)
 
-**File:** `hooks/scripts/context-monitor.sh`
+**File:** `hooks/scripts/context_monitor.py`
 **Event:** `PostToolUse`, matcher: `.*`
 **Always active** — fires after every tool call
 
@@ -150,18 +152,28 @@ Fires graduated alerts at 5 thresholds — each threshold triggers only once per
 
 #### 4c. End-of-Loop Stop Reminder (Ralph-only)
 
-**File:** `hooks/scripts/stop-loop-reminder.sh`
+**File:** `hooks/scripts/stop_loop_reminder.py`
 **Event:** `Stop`
 **Conditionally active:** only when `.ralph-active` exists
 
-When Claude tries to stop, checks `git status --porcelain`. If uncommitted changes exist:
-- Returns `{"decision": "block", "reason": "..."}` telling Claude to:
+Runs two checks before allowing Claude to stop. Both must pass or the stop is blocked:
+
+**Check 1: PRD schema validation** — Validates `ralph/prd.json` structure with `jq`:
+- File exists and is valid JSON
+- Required top-level fields: `project`, `branchName`, `description`, `userStories` (array)
+- Every story has required fields: `id` (string), `title` (string), `passes` (boolean), `priority` (number), `acceptanceCriteria` (non-empty array)
+- `id` values are unique (no duplicates)
+- No story has `passes: true` with an empty `notes` field (enforce documentation of what was done)
+- If validation fails → block with specific error describing which field/story is malformed
+
+**Check 2: Uncommitted changes** — Checks `git status --porcelain`:
+- If uncommitted changes exist → block, telling Claude to:
   1. Update `ralph/progress.txt` with what was accomplished + learnings
   2. Consider if any lasting patterns belong in CLAUDE.md or `.claude/rules/`
   3. Commit ALL changes including progress.txt and prd.json updates
 - Claude must address the feedback and try stopping again
 
-If no uncommitted changes, approves the stop.
+If both checks pass (valid PRD + no uncommitted changes), approves the stop.
 
 ### 5. Prompt Template
 
@@ -267,7 +279,7 @@ What it does:
 
 1. **Plugin scaffold** — `.claude-plugin/plugin.json` + `marketplace.json` update
 2. **Templates** — `prd-template.json`, `progress-template.md`, `prompt.md` (static files, no deps)
-3. **Hook scripts** — `block-dangerous-commands.py`, `context-monitor.sh`, `stop-loop-reminder.sh` (standalone, testable independently)
+3. **Hook scripts** — `block_dangerous_commands.py`, `context_monitor.py`, `stop_loop_reminder.py` (all Python, standalone, testable independently)
 4. **hooks.json** — Wire hooks to events (depends on hook scripts)
 5. **ralph.sh** — Main loop runner (depends on templates for file layout knowledge)
 6. **ralph-init.sh** — Initializer (depends on templates existing)
@@ -287,6 +299,7 @@ What it does:
 | Progress.txt format | Append-only with curated top section | Loop-scoped memory; patterns section is edited, entries are append-only |
 | Memory file separation | progress.txt (loop) vs CLAUDE.md (repo) | Clear boundary: task state vs lasting conventions |
 | Completion detection | Promise tag + PRD verification | Dual check prevents false completion signals |
+| Hook language | All Python | Consistent codebase, built-in JSON handling (no `jq` dep), cleaner PRD validation |
 | Prompt variable injection | `sed` substitution | No external dependency (vs `envsubst` requiring `gettext`) |
 
 ---
@@ -294,10 +307,11 @@ What it does:
 ## Verification Plan
 
 1. **Hook scripts** — Test each independently:
-   - `echo '{"tool_name":"Bash","tool_input":{"command":"rm -rf /"}}' | python3 block-dangerous-commands.py` → should exit 2
-   - `echo '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | python3 block-dangerous-commands.py` → should exit 0
-   - Create a fake transcript file, pass its path via JSON stdin to `context-monitor.sh` → verify alerts fire at correct thresholds and each threshold fires only once
-   - Create `.ralph-active` → run `stop-loop-reminder.sh` with uncommitted changes → should return block decision
+   - `echo '{"tool_name":"Bash","tool_input":{"command":"rm -rf /"}}' | python3 block_dangerous_commands.py` → should exit 2
+   - `echo '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | python3 block_dangerous_commands.py` → should exit 0
+   - Create a fake transcript file, pass its path via JSON stdin to `context_monitor.py` → verify alerts fire at correct thresholds and each threshold fires only once
+   - Create `.ralph-active` → run `stop_loop_reminder.py` with valid/invalid prd.json → verify schema validation blocks on malformed PRD, passes on valid
+   - Create `.ralph-active` → run `stop_loop_reminder.py` with uncommitted changes → should return block decision
 2. **ralph-init.sh** — Run in a temp directory, verify all files created correctly
 3. **ralph.sh** — Run with `--max-iterations 1` against a simple single-story PRD in a test project to verify the full loop
 4. **ralph-archive.sh** — Run after a completed loop, verify archive structure and clean reset

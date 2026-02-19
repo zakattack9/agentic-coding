@@ -15,4 +15,3 @@ This repo doubles as a Claude Code plugin marketplace. `marketplace.json` at the
 ## Conventions
 
 - Keep tool-specific content inside its tool directory. Do not put Claude Code files at the root or in `codex-cli/`.
-- When working inside a tool directory, read that directory's `CLAUDE.md` for scoped rules before making changes.
