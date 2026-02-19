@@ -5,9 +5,9 @@
   },
   "plugins": [
     {
-      "name": "claude-rules",
-      "source": "./claude-code/plugins/claude-rules",
-      "description": "Skills for writing effective CLAUDE.md files and rules",
+      "name": "zaksak",
+      "source": "./claude-code/plugins/zaksak",
+      "description": "A collection of Claude Code utilities by Zak Sakata",
       "version": "0.1.0"
     }
   ]
