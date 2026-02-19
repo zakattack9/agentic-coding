@@ -1,5 +1,5 @@
 {
   "name": "ralph",
   "description": "Ralph Loop — autonomous agentic coding workflow with sandbox isolation, scoped memory, and self-managing task iteration",
-  "version": "0.1.0"
+  "version": "0.1.1"
 }
