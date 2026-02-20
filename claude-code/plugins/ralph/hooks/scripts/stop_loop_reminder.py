@@ -8,7 +8,7 @@ Runs three checks (plus a transition validation sub-check) before allowing Claud
   Check 3: Uncommitted changes
 
 All checks must pass or the stop is blocked.
-Only activates when .ralph-active exists.
+Only activates when .ralph/.ralph-active exists.
 
 Input: JSON on stdin (hook metadata)
 Output: JSON with decision: "approve" or "block" + reason
@@ -43,9 +43,9 @@ def approve():
 
 
 def find_ralph_dir() -> str:
-    """Find the ralph/ directory relative to cwd."""
-    if os.path.isdir("ralph"):
-        return "ralph"
+    """Find the .ralph/ directory relative to cwd."""
+    if os.path.isdir(".ralph"):
+        return ".ralph"
     return ""
 
 
@@ -400,7 +400,7 @@ def check_uncommitted_changes() -> str | None:
         if result.stdout.strip():
             return (
                 "You have uncommitted changes. Before stopping, you must:\n"
-                "1. Update ralph/progress.txt with what was accomplished + learnings\n"
+                "1. Update .ralph/progress.txt with what was accomplished + learnings\n"
                 "2. Consider if any lasting patterns belong in CLAUDE.md or .claude/rules/\n"
                 "3. Commit ALL changes including progress.txt and tasks.json updates"
             )
@@ -411,18 +411,18 @@ def check_uncommitted_changes() -> str | None:
 
 
 def main():
-    # Only activate when .ralph-active exists
-    if not os.path.isfile(".ralph-active"):
+    # Only activate when .ralph/.ralph-active exists
+    if not os.path.isfile(".ralph/.ralph-active"):
         approve()
         return
 
     # Load .ralph-active
-    ralph_active = load_json_file(".ralph-active") or {}
+    ralph_active = load_json_file(".ralph/.ralph-active") or {}
 
     # Find ralph directory
     ralph_dir = find_ralph_dir()
     if not ralph_dir:
-        block("Cannot find ralph/ directory")
+        block("Cannot find .ralph/ directory")
         return
 
     tasks_path = os.path.join(ralph_dir, "tasks.json")

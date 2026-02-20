@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
 # ralph-init.sh — Initialize a ralph loop in a project
 #
-# Creates the ralph/ directory with template files ready for the user
-# to fill in the PRD and task list.
+# Creates state files in .ralph/ from locally installed templates.
+# Requires .ralph/templates/ to already exist (run /ralph-install first).
 #
 # Usage: ralph-init.sh [--project-dir PATH] [--name FEATURE_NAME] [--force]
 
 set -euo pipefail
 
-# Resolve template directory relative to this script's location
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TEMPLATE_DIR="$SCRIPT_DIR/../templates"
+# Templates are installed locally by ralph-install.sh
+TEMPLATE_DIR=".ralph/templates"
 
 # Defaults
 PROJECT_DIR="$(pwd)"
@@ -31,7 +30,7 @@ while [[ $# -gt 0 ]]; do
       echo "Options:"
       echo "  --project-dir PATH    Project root (default: cwd)"
       echo "  --name FEATURE_NAME   Feature name (used for branch name and progress log)"
-      echo "  --force               Overwrite existing ralph/ directory"
+      echo "  --force               Overwrite existing state files"
       echo "  -h, --help            Show this help"
       exit 0
       ;;
@@ -40,27 +39,26 @@ while [[ $# -gt 0 ]]; do
 done
 
 cd "$PROJECT_DIR"
-RALPH_DIR="ralph"
+RALPH_DIR=".ralph"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Pre-flight checks
 # ──────────────────────────────────────────────────────────────────────────────
 if [[ ! -d "$TEMPLATE_DIR" ]]; then
   echo "Error: Template directory not found at $TEMPLATE_DIR" >&2
-  echo "Ensure the ralph plugin is properly installed." >&2
+  echo "Run /ralph-install first to set up the project." >&2
   exit 1
 fi
 
-if [[ -d "$RALPH_DIR" ]] && ! $FORCE; then
-  echo "Warning: $RALPH_DIR/ already exists." >&2
-  echo "Use --force to overwrite, or remove it manually." >&2
+if [[ -f "$RALPH_DIR/tasks.json" ]] && ! $FORCE; then
+  echo "Warning: $RALPH_DIR/ already has state files (tasks.json exists)." >&2
+  echo "Use --force to overwrite, or remove them manually." >&2
   exit 1
 fi
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Create ralph/ directory and copy templates
+# Copy templates into .ralph/ as state files
 # ──────────────────────────────────────────────────────────────────────────────
-mkdir -p "$RALPH_DIR"
 
 # Copy templates with renames
 cp "$TEMPLATE_DIR/prompt.md"            "$RALPH_DIR/prompt.md"
@@ -92,17 +90,17 @@ if [[ -n "$FEATURE_NAME" ]]; then
 fi
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Add .ralph-active to .gitignore
+# Add .ralph/.ralph-active to .gitignore
 # ──────────────────────────────────────────────────────────────────────────────
 if [[ -f ".gitignore" ]]; then
-  if ! grep -q '\.ralph-active' ".gitignore"; then
+  if ! grep -q '\.ralph/\.ralph-active' ".gitignore"; then
     echo "" >> ".gitignore"
     echo "# Ralph Loop runtime marker" >> ".gitignore"
-    echo ".ralph-active" >> ".gitignore"
+    echo ".ralph/.ralph-active" >> ".gitignore"
   fi
 else
   echo "# Ralph Loop runtime marker" > ".gitignore"
-  echo ".ralph-active" >> ".gitignore"
+  echo ".ralph/.ralph-active" >> ".gitignore"
 fi
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -120,5 +118,5 @@ echo ""
 echo "Next steps:"
 echo "  1. Edit $RALPH_DIR/prd.md with your requirements"
 echo "  2. Run /ralph-plan to generate tasks, or fill $RALPH_DIR/tasks.json manually"
-echo "  3. Run ralph.sh to start the loop"
+echo "  3. Run .ralph/scripts/ralph.sh to start the loop"
 echo ""

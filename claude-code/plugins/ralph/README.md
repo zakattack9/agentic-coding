@@ -18,6 +18,8 @@ Key features:
 
 ## Install
 
+### Step 1: Plugin install (one-time)
+
 Add the marketplace, then install the ralph plugin:
 
 ```bash
@@ -31,16 +33,31 @@ Or, if developing locally, add the plugin directly:
 /plugin add ./claude-code/plugins/ralph
 ```
 
+### Step 2: Per-project install
+
+Run `/ralph-install` in Claude Code, or manually via curl:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zakattack9/agentic-coding/main/claude-code/plugins/ralph/scripts/ralph-install.sh | bash
+```
+
+To pin to a specific branch:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zakattack9/agentic-coding/main/claude-code/plugins/ralph/scripts/ralph-install.sh | bash -s -- --branch v1.0
+```
+
+This creates the `.ralph/` directory with scripts, templates, and sandbox setup.
+
 ## Quick Start
 
 ### 1. Initialize a ralph loop in your project
 
 ```bash
-cd /path/to/your/project
-/path/to/ralph-init.sh --name my-feature
+.ralph/scripts/ralph-init.sh --name my-feature
 ```
 
-This creates a `ralph/` directory with:
+This creates state files in `.ralph/`:
 - `prd.md` — fill in your requirements (what to build, constraints, technical design)
 - `tasks.json` — user stories that Claude works through one per iteration
 - `progress.txt` — append-only iteration log (loop-scoped memory)
@@ -48,7 +65,7 @@ This creates a `ralph/` directory with:
 
 ### 2. Plan your feature
 
-Either fill in `ralph/prd.md` and `ralph/tasks.json` manually, or use the interactive planner:
+Either fill in `.ralph/prd.md` and `.ralph/tasks.json` manually, or use the interactive planner:
 
 ```
 /ralph-plan
@@ -60,31 +77,31 @@ The skill asks clarifying questions until the spec is clear, then generates both
 
 ```bash
 # Recommended: sandbox mode (auto-detected if Docker is available)
-ralph.sh
+.ralph/scripts/ralph.sh
 
 # Direct mode (no Docker, uses --dangerously-skip-permissions)
-ralph.sh --no-sandbox
+.ralph/scripts/ralph.sh --no-sandbox
 
 # Skip the review cycle for low-stakes tasks
-ralph.sh --skip-review
+.ralph/scripts/ralph.sh --skip-review
 
 # Limit iterations
-ralph.sh --max-iterations 10
+.ralph/scripts/ralph.sh --max-iterations 10
 ```
 
 ### 4. Archive when done
 
 ```bash
-ralph-archive.sh --label v1
+.ralph/scripts/ralph-archive.sh --label v1
 ```
 
-Moves completed artifacts to `ralph-archive/`, generates a summary, and resets `ralph/` for the next feature.
+Moves completed artifacts to `.ralph/archive/`, generates a summary, and resets `.ralph/` for the next feature.
 
 ## How It Works
 
 Each iteration, `ralph.sh`:
 1. Reads `tasks.json` and determines the **iteration mode** based on story state
-2. Writes a pre-iteration snapshot to `.ralph-active` (used by the stop hook for transition validation)
+2. Writes a pre-iteration snapshot to `.ralph/.ralph-active` (used by the stop hook for transition validation)
 3. Injects the iteration number into the prompt template
 4. Invokes `claude -p` with the prompt (fresh context every time)
 5. Checks for completion (`<promise>COMPLETE</promise>` tag or tasks.json verification)
@@ -115,9 +132,9 @@ The stop hook enforces that only review iterations can approve stories. Implemen
 ## Options Reference
 
 ```
-ralph.sh [OPTIONS]
+.ralph/scripts/ralph.sh [OPTIONS]
   -n, --max-iterations N    Max loop iterations (default: 15)
-  --ralph-dir PATH          Path to ralph/ directory (default: ./ralph)
+  --ralph-dir PATH          Path to .ralph/ directory (default: ./.ralph)
   -d, --project-dir PATH    Project root (default: cwd)
   -m, --model MODEL         Claude model to use (e.g., opus, sonnet)
   --sandbox                 Force Docker Sandbox mode (error if unavailable)
@@ -126,13 +143,13 @@ ralph.sh [OPTIONS]
   --review-cap N            Max reviews per story before auto-approve (default: 5)
   -h, --help                Show usage
 
-ralph-init.sh [OPTIONS]
+.ralph/scripts/ralph-init.sh [OPTIONS]
   --project-dir PATH        Project root (default: cwd)
   --name FEATURE_NAME       Feature name (sets branch name and progress log header)
-  --force                   Overwrite existing ralph/ directory
+  --force                   Overwrite existing state files
   -h, --help                Show usage
 
-ralph-archive.sh [OPTIONS]
+.ralph/scripts/ralph-archive.sh [OPTIONS]
   --project-dir PATH        Project root (default: cwd)
   --label LABEL             Archive label (default: git branch name)
   -h, --help                Show usage
@@ -142,24 +159,36 @@ ralph-archive.sh [OPTIONS]
 
 The plugin registers three hooks that activate automatically:
 
-| Event            | Script                  | Behavior                                                                                                                                                       |
-| ---------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **PostToolUse**  | `context_monitor.py`    | Graduated context usage alerts at 50/60/70/80/90%                                                                                                              |
-| **Stop**         | `stop_loop_reminder.py` | Validates tasks.json schema, review integrity, legal transitions, and uncommitted changes. Only active when `.ralph-active` exists (i.e., during a ralph loop) |
-| **SessionStart** | inline                  | Cleans up context monitor state files                                                                                                                          |
+| Event            | Script                  | Behavior                                                                                                                                                               |
+| ---------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **PostToolUse**  | `context_monitor.py`    | Graduated context usage alerts at 50/60/70/80/90%                                                                                                                      |
+| **Stop**         | `stop_loop_reminder.py` | Validates tasks.json schema, review integrity, legal transitions, and uncommitted changes. Only active when `.ralph/.ralph-active` exists (i.e., during a ralph loop) |
+| **SessionStart** | inline                  | Cleans up context monitor state files                                                                                                                                  |
 
 ## File Layout
 
-After initialization, your project will have:
+After running `/ralph-install` and `ralph-init.sh`, your project will have:
 
 ```
 your-project/
-├── ralph/
-│   ├── prd.md            # Requirements (you write this, Claude reads it)
-│   ├── tasks.json        # Execution state (Claude modifies this)
-│   ├── progress.txt      # Iteration log (Claude appends to this)
-│   └── prompt.md         # Iteration prompt (customizable)
-└── .ralph-active          # Runtime marker (auto-created, gitignored)
+└── .ralph/
+    ├── scripts/
+    │   ├── ralph.sh           # Main loop runner
+    │   ├── ralph-init.sh      # Initialize state files
+    │   └── ralph-archive.sh   # Archive completed loop
+    ├── templates/
+    │   ├── prompt.md           # Iteration prompt template
+    │   ├── prd-template.md     # PRD scaffold
+    │   ├── tasks-template.json # Task list scaffold
+    │   └── progress-template.md # Progress log scaffold
+    ├── sandbox/
+    │   └── setup.sh            # Docker sandbox auth setup
+    ├── archive/                # Created by ralph-archive.sh
+    ├── prd.md                  # Requirements (you write this, Claude reads it)
+    ├── tasks.json              # Execution state (Claude modifies this)
+    ├── progress.txt            # Iteration log (Claude appends to this)
+    ├── prompt.md               # Iteration prompt (customizable)
+    └── .ralph-active           # Runtime marker (auto-created, gitignored)
 ```
 
 ## tasks.json Schema

@@ -14,7 +14,7 @@ set -euo pipefail
 # Defaults
 # ──────────────────────────────────────────────────────────────────────────────
 MAX_ITERATIONS=15
-RALPH_DIR="./ralph"
+RALPH_DIR="./.ralph"
 PROJECT_DIR="$(pwd)"
 MODEL=""
 FORCE_SANDBOX=""
@@ -33,7 +33,7 @@ Usage: ralph.sh [OPTIONS]
 
 Options:
   -n, --max-iterations N    Max loop iterations (default: 15)
-  --ralph-dir PATH          Path to ralph/ directory (default: ./ralph)
+  --ralph-dir PATH          Path to .ralph/ directory (default: ./.ralph)
   -d, --project-dir PATH    Project root (default: cwd)
   -m, --model MODEL         Claude model to use (e.g., opus, sonnet)
   --sandbox                 Force Docker Sandbox mode (error if unavailable)
@@ -84,8 +84,8 @@ fi
 cd "$PROJECT_DIR"
 
 if [[ ! -d "$RALPH_DIR" ]]; then
-  echo "Error: ralph directory not found at $RALPH_DIR" >&2
-  echo "Run ralph-init.sh first to set up the project." >&2
+  echo "Error: .ralph directory not found at $RALPH_DIR" >&2
+  echo "Run /ralph-install first, then ralph-init.sh to set up the project." >&2
   exit 1
 fi
 
@@ -179,7 +179,7 @@ fi
 # ──────────────────────────────────────────────────────────────────────────────
 # .ralph-active marker + cleanup trap
 # ──────────────────────────────────────────────────────────────────────────────
-RALPH_ACTIVE=".ralph-active"
+RALPH_ACTIVE=".ralph/.ralph-active"
 MY_PID=$$
 
 write_ralph_active() {
@@ -366,5 +366,5 @@ done
 
 echo ""
 echo "[ralph] Max iterations ($MAX_ITERATIONS) reached without completion." >&2
-echo "[ralph] Check ralph/tasks.json for remaining work." >&2
+echo "[ralph] Check .ralph/tasks.json for remaining work." >&2
 exit 1

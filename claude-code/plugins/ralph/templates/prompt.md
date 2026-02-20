@@ -1,6 +1,6 @@
 # Ralph Loop — Iteration {{RALPH_ITERATION}} of {{RALPH_MAX_ITERATIONS}}
 
-You are operating inside a **Ralph Loop** — an autonomous agentic coding workflow. Each iteration gets a fresh context window. State persists on disk between iterations via `ralph/tasks.json`, `ralph/progress.txt`, and `ralph/prd.md`.
+You are operating inside a **Ralph Loop** — an autonomous agentic coding workflow. Each iteration gets a fresh context window. State persists on disk between iterations via `.ralph/tasks.json`, `.ralph/progress.txt`, and `.ralph/prd.md`.
 
 ---
 
@@ -8,12 +8,12 @@ You are operating inside a **Ralph Loop** — an autonomous agentic coding workf
 
 Before doing anything else, read these files to understand the current state:
 
-1. **`ralph/progress.txt`** — Read the **Codebase Patterns** section at the top first (reusable patterns from prior iterations), then skim recent entries for continuity
-2. **`ralph/prd.md`** — The requirements specification. Read it fully to understand what you're building, the constraints, and the technical design. **This file is read-only — never modify it**
-3. **`ralph/tasks.json`** — The execution state. Read it to see which stories are done, in progress, or pending review
+1. **`.ralph/progress.txt`** — Read the **Codebase Patterns** section at the top first (reusable patterns from prior iterations), then skim recent entries for continuity
+2. **`.ralph/prd.md`** — The requirements specification. Read it fully to understand what you're building, the constraints, and the technical design. **This file is read-only — never modify it**
+3. **`.ralph/tasks.json`** — The execution state. Read it to see which stories are done, in progress, or pending review
 4. **`git log --oneline -10`** — Recent commits for continuity with prior iterations
 5. **`git status`** — Check for any uncommitted state left by a prior iteration
-6. **`.ralph-active`** — Read this JSON file for runtime configuration:
+6. **`.ralph/.ralph-active`** — Read this JSON file for runtime configuration:
    - `skipReview`: if `true`, skip the review cycle entirely (implement mode only)
    - `reviewCap`: max fresh-context reviews per story before auto-approve (default: 5)
    - `iterationMode`: the mode detected by ralph.sh for this iteration (`implement`, `review`, or `review-fix`)
@@ -71,7 +71,7 @@ You are reviewing work from a **PREVIOUS iteration**. You did not write this cod
 
    - **All criteria genuinely met, no issues** → Set `reviewStatus: "approved"` AND `passes: true`. Commit with: `review: [US-xxx] - approved`
 
-   - **Issues found AND `reviewCount` < review cap** (read `reviewCap` from `.ralph-active`, default 5) → Set `reviewStatus: "changes_requested"`. Write specific, actionable feedback to `reviewFeedback` describing exactly what needs fixing and where. **Do NOT attempt to fix the code yourself** — the next iteration handles fixes in review-fix mode with a fresh context. Commit with: `review: [US-xxx] - changes requested`
+   - **Issues found AND `reviewCount` < review cap** (read `reviewCap` from `.ralph/.ralph-active`, default 5) → Set `reviewStatus: "changes_requested"`. Write specific, actionable feedback to `reviewFeedback` describing exactly what needs fixing and where. **Do NOT attempt to fix the code yourself** — the next iteration handles fixes in review-fix mode with a fresh context. Commit with: `review: [US-xxx] - changes requested`
 
    - **Issues found BUT `reviewCount` >= review cap** → **Auto-approve**: Set `reviewStatus: "approved"` AND `passes: true`. Write remaining concerns to `reviewFeedback` prefixed with `[AUTO-APPROVED AT CAP]` for the user's awareness. Commit with: `review: [US-xxx] - auto-approved at cap`
 
@@ -93,7 +93,7 @@ You are fixing issues identified by a prior review iteration.
 
 ## Step 4: Document Progress
 
-Append a structured entry to `ralph/progress.txt`:
+Append a structured entry to `.ralph/progress.txt`:
 
 ```
 ### Iteration {{RALPH_ITERATION}} — [mode: implement|review|review-fix] — [US-xxx] [Title]
@@ -148,7 +148,7 @@ These rules are non-negotiable. Violating them will cause the stop hook to block
 2. **Implementation iterations NEVER set `passes: true`** — Only review iterations can approve a story. Set `reviewStatus: "needs_review"` after implementing, not `passes: true`
 3. **Don't weaken tests to make them pass** — Fix the code, not the tests. If a test is genuinely wrong, explain why in the notes field
 4. **If stuck, document the blocker** — Write what's blocking you in progress.txt and the story's notes field. The next iteration will pick up from there
-5. **`ralph/prd.md` is read-only** — Never modify the PRD during the loop. If you disagree with a requirement, note it in progress.txt
+5. **`.ralph/prd.md` is read-only** — Never modify the PRD during the loop. If you disagree with a requirement, note it in progress.txt
 6. **Review iterations do not fix code** — They evaluate and provide feedback. Mixing review and fix in the same context defeats the purpose of fresh-context review
 7. **Review-fix iterations address ALL feedback** — Don't cherry-pick the easy items. Address every point in `reviewFeedback`
 8. **Task self-management** — You may add, split, reorder, or restructure stories in tasks.json as needed. But respect `dependsOn` constraints and never remove completed stories
@@ -158,7 +158,7 @@ These rules are non-negotiable. Violating them will cause the stop hook to block
 
 ## Skip-Review Mode
 
-When `.ralph-active` contains `"skipReview": true`, the review cycle is disabled:
+When `.ralph/.ralph-active` contains `"skipReview": true`, the review cycle is disabled:
 
 - **Only Implement mode is available** — Steps 3-review and 3-review-fix are never triggered
 - **Implementation iterations set `passes: true` directly** after verifyCommands pass (the original pre-review behavior)

@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 # ralph-archive.sh — Archive a completed ralph loop
 #
-# Moves ralph/ artifacts to an archive directory and resets ralph/ for the next loop.
+# Moves .ralph/ artifacts to an archive directory and resets .ralph/ for the next loop.
 #
 # Usage: ralph-archive.sh [--project-dir PATH] [--label LABEL]
 
 set -euo pipefail
 
-# Resolve template directory relative to this script's location
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TEMPLATE_DIR="$SCRIPT_DIR/../templates"
+# Templates are installed locally by ralph-install.sh
+TEMPLATE_DIR=".ralph/templates"
 
 # Defaults
 PROJECT_DIR="$(pwd)"
@@ -36,7 +35,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 cd "$PROJECT_DIR"
-RALPH_DIR="ralph"
+RALPH_DIR=".ralph"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Pre-flight checks
@@ -73,7 +72,7 @@ fi
 
 # Sanitize label for use as directory name
 SAFE_LABEL=$(echo "$LABEL" | sed 's#[^A-Za-z0-9._-]#-#g')
-ARCHIVE_DIR="ralph-archive/${DATE}-${SAFE_LABEL}"
+ARCHIVE_DIR=".ralph/archive/${DATE}-${SAFE_LABEL}"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Create archive
@@ -110,15 +109,15 @@ EOF
 echo "[ralph-archive] Archive created at $ARCHIVE_DIR/"
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Reset ralph/ with fresh templates (preserve prompt.md customizations)
+# Reset .ralph/ with fresh templates (preserve prompt.md customizations)
 # ──────────────────────────────────────────────────────────────────────────────
 if [[ -d "$TEMPLATE_DIR" ]]; then
   cp "$TEMPLATE_DIR/prd-template.md"      "$RALPH_DIR/prd.md"
   cp "$TEMPLATE_DIR/tasks-template.json"  "$RALPH_DIR/tasks.json"
   cp "$TEMPLATE_DIR/progress-template.md" "$RALPH_DIR/progress.txt"
-  echo "[ralph-archive] ralph/ reset with fresh templates (prompt.md preserved)"
+  echo "[ralph-archive] .ralph/ reset with fresh templates (prompt.md preserved)"
 else
-  echo "[ralph-archive] WARNING: Template directory not found — ralph/ not reset" >&2
+  echo "[ralph-archive] WARNING: Template directory not found — .ralph/ not reset" >&2
 fi
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -134,4 +133,4 @@ fi
 
 echo ""
 echo "Archive complete: $ARCHIVE_DIR/"
-echo "ralph/ has been reset for the next loop."
+echo ".ralph/ has been reset for the next loop."

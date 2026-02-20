@@ -7,16 +7,16 @@ description: Interactively generate a PRD and task list for a Ralph Loop — inv
 
 You are helping the user plan a feature for execution by the Ralph Loop. Your goal is to produce two artifacts:
 
-1. **`ralph/prd.md`** — A complete requirements specification
-2. **`ralph/tasks.json`** — A task list with right-sized user stories
+1. **`.ralph/prd.md`** — A complete requirements specification
+2. **`.ralph/tasks.json`** — A task list with right-sized user stories
 
 ---
 
 ## Prerequisite Check
 
-First, check if `ralph/` directory exists in the project root. If it does not:
+First, check if `.ralph/` directory exists in the project root. If it does not:
 
-> The `ralph/` directory doesn't exist yet. Run `ralph-init.sh` first to set up the project structure, then invoke `/ralph-plan` again.
+> The `.ralph/` directory doesn't exist yet. Run `/ralph-install` first to set up the project, then `.ralph/scripts/ralph-init.sh --name my-feature` to initialize state files, then invoke `/ralph-plan` again.
 
 Stop here if the directory doesn't exist.
 
@@ -24,7 +24,7 @@ Stop here if the directory doesn't exist.
 
 ## Determine Mode
 
-Read `ralph/prd.md`. Determine which mode to use:
+Read `.ralph/prd.md`. Determine which mode to use:
 
 ### Mode 1: Full Planning (prd.md is empty or template scaffold)
 
@@ -39,7 +39,7 @@ If prd.md contains only the template scaffold (section headers with HTML comment
    - What does success look like?
    - Continue asking until you are confident the specification is complete
 
-2. **Generate `ralph/prd.md`** — Fill in all relevant sections following the PRD template structure:
+2. **Generate `.ralph/prd.md`** — Fill in all relevant sections following the PRD template structure:
    - Summary, Problem Statement, Goals, Non-Goals
    - Background & Context (architecture, key files, patterns)
    - Technical Design (only relevant subsections)
@@ -48,7 +48,7 @@ If prd.md contains only the template scaffold (section headers with HTML comment
    - Risks & Mitigations (if applicable)
    - Open Questions (if any remain)
 
-3. **Derive `ralph/tasks.json`** — Break requirements into user stories (see Task Derivation Rules below)
+3. **Derive `.ralph/tasks.json`** — Break requirements into user stories (see Task Derivation Rules below)
 
 4. **Present both files** for user review before writing them
 
@@ -56,9 +56,9 @@ If prd.md contains only the template scaffold (section headers with HTML comment
 
 If prd.md already contains real requirements content:
 
-1. **Read existing `ralph/prd.md`** thoroughly
+1. **Read existing `.ralph/prd.md`** thoroughly
 2. **Ask targeted questions** only if requirements are ambiguous or incomplete
-3. **Derive `ralph/tasks.json`** from the specification (see Task Derivation Rules below)
+3. **Derive `.ralph/tasks.json`** from the specification (see Task Derivation Rules below)
 4. **Present tasks** for user review before writing
 
 ---
