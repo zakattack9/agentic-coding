@@ -1,49 +1,21 @@
 ---
 name: ralph-install
 description: Install Ralph Loop scripts and templates into the current project's .ralph/ directory
+allowed-tools: Bash(curl:*), Bash(chmod:*)
 ---
 
 # Ralph Install — Per-Project Setup
 
-This skill sets up a project for Ralph Loop by downloading scripts and templates into a `.ralph/` directory.
+!`curl -fsSL https://raw.githubusercontent.com/zakattack9/agentic-coding/main/claude-code/plugins/ralph/scripts/ralph-install.sh | bash`
 
-## What to Do
+## Result
 
-Run the following command to install Ralph into the current project:
+The install script above has been executed. Report the output to the user.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/zakattack9/agentic-coding/main/claude-code/plugins/ralph/scripts/ralph-install.sh | bash
-```
+If the install succeeded, tell the user their next steps:
 
-### Version Pinning
+1. **Plan the feature (Claude Code):** Run `/ralph-plan` to interactively generate a PRD and task list
+2. **Initialize a loop (terminal):** `.ralph/scripts/ralph-init.sh --name my-feature`
+3. **Run the loop (terminal):** `.ralph/scripts/ralph.sh` (use `--no-sandbox` if Docker is unavailable)
 
-To pin to a specific branch or tag, pass `--branch`:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/zakattack9/agentic-coding/main/claude-code/plugins/ralph/scripts/ralph-install.sh | bash -s -- --branch v1.0
-```
-
-## What It Creates
-
-```
-.ralph/
-├── scripts/
-│   ├── ralph.sh           # Main loop runner
-│   ├── ralph-init.sh      # Initialize state files for a new feature
-│   └── ralph-archive.sh   # Archive completed loop artifacts
-├── templates/
-│   ├── prompt.md           # Iteration prompt template
-│   ├── prd-template.md     # PRD scaffold
-│   ├── tasks-template.json # Task list scaffold
-│   └── progress-template.md # Progress log scaffold
-└── sandbox/
-    └── setup.sh            # Docker sandbox auth setup
-```
-
-## Next Steps
-
-After installation, tell the user:
-
-1. **Initialize a feature:** `.ralph/scripts/ralph-init.sh --name my-feature`
-2. **Plan the feature:** `/ralph-plan` to interactively generate PRD and task list
-3. **Run the loop:** `.ralph/scripts/ralph.sh --no-sandbox` (or omit `--no-sandbox` if Docker is available)
+Note: Only `/ralph-plan` runs inside Claude Code. Initialization and running the loop must be done from the terminal.

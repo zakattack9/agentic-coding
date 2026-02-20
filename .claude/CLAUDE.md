@@ -17,6 +17,4 @@ This repo doubles as a Claude Code plugin marketplace. `.claude-plugin/marketpla
 - Keep tool-specific content inside its tool directory. Do not put Claude Code files at the root or in `codex-cli/`.
 
 ## Versioning
-**ALWAYS ENSURE THAT THE PLUGIN IS VERSION BUMPED WHEN CHANGES ARE MADE TO A PLUGIN; YOU MUST MODIFY THE FOLLOWING:**
-- .claude-plugin/marketplace.json
-- claude-code/plugins/**/.claude-plugin/plugin.json
+**ALWAYS bump the plugin version in `.claude-plugin/marketplace.json` when changes are made to a plugin.** Versions are managed solely in `marketplace.json` — do not add a `version` field to individual `plugin.json` files.
