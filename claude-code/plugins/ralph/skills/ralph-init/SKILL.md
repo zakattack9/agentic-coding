@@ -2,6 +2,7 @@
 name: ralph-init
 description: Initialize a new Ralph Loop in the current project with state files from templates
 argument-hint: [--name feature-name] [--force]
+allowed-tools: Bash(*)
 ---
 
 # Ralph Init — Initialize Loop State

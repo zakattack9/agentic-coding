@@ -1,7 +1,7 @@
 ---
 name: ralph-install
 description: Install Ralph Loop scripts and templates into the current project's .ralph/ directory
-allowed-tools: Bash(curl:*), Bash(chmod:*)
+allowed-tools: Bash(*)
 ---
 
 # Ralph Install — Per-Project Setup

@@ -1,7 +1,7 @@
 ---
 name: ralph-plan
 description: Interactively generate a PRD and task list for a Ralph Loop — invoke to plan a feature before running ralph.sh
-allowed-tools: Bash(ls:*), Bash(cat:*), Read, Write, AskUserQuestion
+allowed-tools: Bash(*), Read, Write, AskUserQuestion
 ---
 
 # Ralph Plan — Interactive PRD & Task List Generator

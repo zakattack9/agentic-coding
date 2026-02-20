@@ -2,6 +2,7 @@
 name: ralph-archive
 description: Archive the current Ralph Loop and reset state files for the next loop
 argument-hint: [--label archive-label]
+allowed-tools: Bash(*)
 ---
 
 # Ralph Archive — Archive Completed Loop
