@@ -66,6 +66,9 @@ cp "$TEMPLATE_DIR/prd-template.md"      "$RALPH_DIR/prd.md"
 cp "$TEMPLATE_DIR/tasks-template.json"  "$RALPH_DIR/tasks.json"
 cp "$TEMPLATE_DIR/progress-template.md" "$RALPH_DIR/progress.txt"
 
+# Create planning directory for subagent research/planning output
+mkdir -p "$RALPH_DIR/planning"
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Substitute placeholders
 # ──────────────────────────────────────────────────────────────────────────────
@@ -76,16 +79,12 @@ PROJECT_NAME="${FEATURE_NAME:-$(basename "$PROJECT_DIR")}"
 sed -i '' "s/{{DATE}}/$DATE/g" "$RALPH_DIR/progress.txt"
 sed -i '' "s/{{PROJECT_NAME}}/$PROJECT_NAME/g" "$RALPH_DIR/progress.txt"
 
-# tasks.json: set branchName if --name provided
+# tasks.json: set project name if --name provided
 if [[ -n "$FEATURE_NAME" ]]; then
-  # Use jq to safely set the branch name
   if command -v jq &>/dev/null; then
     tmp=$(mktemp)
-    jq --arg branch "ralph/$FEATURE_NAME" '.branchName = $branch' "$RALPH_DIR/tasks.json" > "$tmp"
+    jq --arg name "$FEATURE_NAME" '.project = $name' "$RALPH_DIR/tasks.json" > "$tmp"
     mv "$tmp" "$RALPH_DIR/tasks.json"
-  else
-    # Fallback: sed replacement
-    sed -i '' "s|ralph/feature-name|ralph/$FEATURE_NAME|g" "$RALPH_DIR/tasks.json"
   fi
 fi
 
@@ -114,6 +113,7 @@ echo "  $RALPH_DIR/prd.md        — Fill in your requirements"
 echo "  $RALPH_DIR/tasks.json    — Define user stories (or use /ralph-plan)"
 echo "  $RALPH_DIR/progress.txt  — Iteration log (auto-maintained)"
 echo "  $RALPH_DIR/prompt.md     — Iteration prompt (customizable)"
+echo "  $RALPH_DIR/planning/     — Subagent research & planning output"
 echo ""
 echo "Next steps:"
 echo "  1. Edit $RALPH_DIR/prd.md with your requirements"

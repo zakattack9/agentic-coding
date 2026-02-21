@@ -7,7 +7,7 @@ allowed-tools: Bash(*)
 
 # Ralph Init — Initialize Loop State
 
-!`.ralph/scripts/ralph-init.sh $ARGUMENTS`
+!`bash .ralph/scripts/ralph-init.sh $ARGUMENTS`
 
 ## Result
 

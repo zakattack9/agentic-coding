@@ -63,8 +63,8 @@ fi
 DATE=$(date +%Y-%m-%d)
 
 if [[ -z "$LABEL" ]]; then
-  # Try to get branch name from tasks.json
-  LABEL=$(jq -r '.branchName // empty' "$RALPH_DIR/tasks.json" 2>/dev/null || true)
+  # Try to get project name from tasks.json
+  LABEL=$(jq -r '.project // empty' "$RALPH_DIR/tasks.json" 2>/dev/null || true)
   if [[ -z "$LABEL" ]]; then
     LABEL=$(git branch --show-current 2>/dev/null || echo "unnamed")
   fi
@@ -84,19 +84,22 @@ mv "$RALPH_DIR/prd.md"       "$ARCHIVE_DIR/prd.md"
 mv "$RALPH_DIR/tasks.json"   "$ARCHIVE_DIR/tasks.json"
 mv "$RALPH_DIR/progress.txt" "$ARCHIVE_DIR/progress.txt"
 
+# Archive planning folder if it exists and has content
+if [[ -d "$RALPH_DIR/planning" ]] && [ "$(ls -A "$RALPH_DIR/planning" 2>/dev/null)" ]; then
+  mv "$RALPH_DIR/planning" "$ARCHIVE_DIR/planning"
+fi
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Generate summary
 # ──────────────────────────────────────────────────────────────────────────────
 TOTAL_STORIES=$(jq '.userStories | length' "$ARCHIVE_DIR/tasks.json")
 COMPLETED_STORIES=$(jq '[.userStories[] | select(.passes == true)] | length' "$ARCHIVE_DIR/tasks.json")
-BRANCH_NAME=$(jq -r '.branchName // "N/A"' "$ARCHIVE_DIR/tasks.json")
 PROJECT_NAME=$(jq -r '.project // "N/A"' "$ARCHIVE_DIR/tasks.json")
 
 cat > "$ARCHIVE_DIR/summary.md" <<EOF
 # Ralph Loop Archive — $SAFE_LABEL
 
 - **Project:** $PROJECT_NAME
-- **Branch:** $BRANCH_NAME
 - **Archived:** $DATE
 - **Stories:** $COMPLETED_STORIES / $TOTAL_STORIES completed
 
@@ -104,6 +107,7 @@ cat > "$ARCHIVE_DIR/summary.md" <<EOF
 - \`prd.md\` — Requirements specification
 - \`tasks.json\` — Final task state
 - \`progress.txt\` — Iteration log
+- \`planning/\` — Subagent research & planning output (if present)
 EOF
 
 echo "[ralph-archive] Archive created at $ARCHIVE_DIR/"
@@ -115,6 +119,7 @@ if [[ -d "$TEMPLATE_DIR" ]]; then
   cp "$TEMPLATE_DIR/prd-template.md"      "$RALPH_DIR/prd.md"
   cp "$TEMPLATE_DIR/tasks-template.json"  "$RALPH_DIR/tasks.json"
   cp "$TEMPLATE_DIR/progress-template.md" "$RALPH_DIR/progress.txt"
+  mkdir -p "$RALPH_DIR/planning"
   echo "[ralph-archive] .ralph/ reset with fresh templates (prompt.md preserved)"
 else
   echo "[ralph-archive] WARNING: Template directory not found — .ralph/ not reset" >&2

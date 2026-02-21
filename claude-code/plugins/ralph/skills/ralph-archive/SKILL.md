@@ -7,7 +7,7 @@ allowed-tools: Bash(*)
 
 # Ralph Archive — Archive Completed Loop
 
-!`.ralph/scripts/ralph-archive.sh $ARGUMENTS`
+!`bash .ralph/scripts/ralph-archive.sh $ARGUMENTS`
 
 ## Result
 

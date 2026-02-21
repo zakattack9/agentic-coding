@@ -61,7 +61,7 @@ def load_json_file(path: str) -> dict | None:
 def check_schema(tasks: dict, ralph_dir: str) -> str | None:
     """Check 1: Validate tasks.json schema. Returns error message or None."""
     # Top-level fields
-    for field in ("project", "branchName", "description"):
+    for field in ("project", "description"):
         if field not in tasks:
             return f"tasks.json missing required top-level field: '{field}'"
 

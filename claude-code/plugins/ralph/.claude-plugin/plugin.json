@@ -1,4 +1,5 @@
 {
   "name": "ralph",
-  "description": "Ralph Loop — autonomous agentic coding workflow with sandbox isolation, scoped memory, and self-managing task iteration"
+  "description": "Ralph Loop — autonomous agentic coding workflow with sandbox isolation, scoped memory, and self-managing task iteration",
+  "mcpServers": "./.mcp.json"
 }

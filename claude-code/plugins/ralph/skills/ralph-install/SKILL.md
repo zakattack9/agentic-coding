@@ -6,7 +6,7 @@ allowed-tools: Bash(*)
 
 # Ralph Install — Per-Project Setup
 
-!`curl -fsSL https://raw.githubusercontent.com/zakattack9/agentic-coding/main/claude-code/plugins/ralph/scripts/ralph-install.sh | bash`
+!`bash -c 'curl -fsSL https://raw.githubusercontent.com/zakattack9/agentic-coding/main/claude-code/plugins/ralph/scripts/ralph-install.sh | bash'`
 
 ## Result
 

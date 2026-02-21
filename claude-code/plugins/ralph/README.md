@@ -8,11 +8,14 @@ Key features:
 - **Self-managing task iteration** — Claude can add, split, and reorder stories as it works
 - **Graduated context alerts** — warns Claude as the context window fills up
 - **Stop hook enforcement** — validates task list schema, review integrity, and legal state transitions before allowing Claude to stop
+- **Planning subagents** — dedicated agents for codebase exploration, documentation research, web research, and task architecture during `/ralph-plan`
+- **Context7 MCP integration** — bundled MCP server for real-time library documentation lookup during planning
 
 ## Prerequisites
 
 - **Claude Code CLI** installed on host
 - **jq** — `brew install jq`
+- **Node.js/npx** — required for the bundled Context7 MCP server
 - **Docker Desktop 4.58+** with Sandboxes enabled (recommended, optional)
 - macOS with Apple Silicon (primary target)
 
@@ -32,6 +35,8 @@ Or, if developing locally, add the plugin directly:
 ```bash
 /plugin add ./claude-code/plugins/ralph
 ```
+
+The plugin bundles the Context7 MCP server, which starts automatically when the plugin is enabled. This provides documentation lookup capabilities to the planning subagents.
 
 ### Step 2: Per-project install
 
@@ -62,6 +67,7 @@ This creates state files in `.ralph/`:
 - `tasks.json` — user stories that Claude works through one per iteration
 - `progress.txt` — append-only iteration log (loop-scoped memory)
 - `prompt.md` — the prompt Claude receives each iteration (customizable)
+- `planning/` — directory for subagent research and planning output
 
 ### 2. Plan your feature
 
@@ -71,7 +77,14 @@ Either fill in `.ralph/prd.md` and `.ralph/tasks.json` manually, or use the inte
 /ralph-plan
 ```
 
-The skill asks clarifying questions until the spec is clear, then generates both the PRD and a right-sized task list.
+The planner:
+1. Launches research subagents to explore the codebase, look up documentation, and search the web (as needed)
+2. Asks informed, targeted questions based on research findings
+3. Generates a PRD optimized for Claude's context window
+4. Uses a task architecture subagent to break requirements into right-sized stories
+5. Produces the final `tasks.json` for user approval
+
+Research and planning outputs are saved to `.ralph/planning/` for reference.
 
 ### 3. Run the loop
 
@@ -95,7 +108,7 @@ The skill asks clarifying questions until the spec is clear, then generates both
 .ralph/scripts/ralph-archive.sh --label v1
 ```
 
-Moves completed artifacts to `.ralph/archive/`, generates a summary, and resets `.ralph/` for the next feature.
+Moves completed artifacts (including planning output) to `.ralph/archive/`, generates a summary, and resets `.ralph/` for the next feature.
 
 ## How It Works
 
@@ -129,6 +142,21 @@ null/false ──implement──> needs_review/false ──review──> approve
 
 The stop hook enforces that only review iterations can approve stories. Implementation iterations cannot set `passes: true` — this is validated against a pre-iteration snapshot, not just prompt instructions.
 
+## Planning Subagents
+
+The plugin includes four dedicated subagents used during `/ralph-plan`:
+
+| Agent | Purpose | Output |
+|-------|---------|--------|
+| **ralph-explore** | Scans codebase structure, tech stack, patterns, relevant files, and verification commands | `.ralph/planning/ralph-explore.md` |
+| **ralph-docs** | Looks up library/framework documentation via Context7 MCP | `.ralph/planning/ralph-docs.md` |
+| **ralph-web** | Searches the web for current information on APIs, services, and technology decisions | `.ralph/planning/ralph-web.md` |
+| **ralph-plan-tasks** | Architects task hierarchies sized for fresh context windows after research and requirements are gathered | `.ralph/planning/ralph-plan-tasks.md` |
+
+Each subagent writes detailed findings to `.ralph/planning/` and returns a concise summary to the main planning agent. The main agent uses these findings to ask informed questions and generate better PRDs and task lists.
+
+Subagents are defined in `agents/` within the plugin directory and are automatically available when the plugin is installed.
+
 ## Options Reference
 
 ```
@@ -145,13 +173,13 @@ The stop hook enforces that only review iterations can approve stories. Implemen
 
 .ralph/scripts/ralph-init.sh [OPTIONS]
   --project-dir PATH        Project root (default: cwd)
-  --name FEATURE_NAME       Feature name (sets branch name and progress log header)
+  --name FEATURE_NAME       Feature name (sets project name and progress log header)
   --force                   Overwrite existing state files
   -h, --help                Show usage
 
 .ralph/scripts/ralph-archive.sh [OPTIONS]
   --project-dir PATH        Project root (default: cwd)
-  --label LABEL             Archive label (default: git branch name)
+  --label LABEL             Archive label (default: project name from tasks.json)
   -h, --help                Show usage
 ```
 
@@ -183,6 +211,7 @@ your-project/
     │   └── progress-template.md # Progress log scaffold
     ├── sandbox/
     │   └── setup.sh            # Docker sandbox auth setup
+    ├── planning/               # Subagent research & planning output
     ├── archive/                # Created by ralph-archive.sh
     ├── prd.md                  # Requirements (you write this, Claude reads it)
     ├── tasks.json              # Execution state (Claude modifies this)
@@ -196,7 +225,6 @@ your-project/
 ```json
 {
   "project": "my-project",
-  "branchName": "ralph/my-feature",
   "description": "Feature description",
   "verifyCommands": ["npm test", "npm run lint"],
   "userStories": [
