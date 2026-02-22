@@ -29,7 +29,7 @@ while [[ $# -gt 0 ]]; do
       echo ""
       echo "Options:"
       echo "  --project-dir PATH    Project root (default: cwd)"
-      echo "  --name FEATURE_NAME   Feature name (used for branch name and progress log)"
+      echo "  --name FEATURE_NAME   Feature/project name (used in tasks.json and progress log)"
       echo "  --force               Overwrite existing state files"
       echo "  -h, --help            Show this help"
       exit 0

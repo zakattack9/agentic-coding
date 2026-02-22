@@ -31,13 +31,14 @@ If `$ARGUMENTS` is empty or not provided, ask the user what feature they'd like 
 !`bash -c 'test -f .ralph/templates/prd-template.md && echo "TEMPLATES: installed" || echo "TEMPLATES: MISSING"'`
 !`bash -c 'test -f .ralph/prd.md && echo "PRD: exists" || echo "PRD: MISSING"'`
 !`bash -c 'test -f .ralph/tasks.json && echo "TASKS: exists" || echo "TASKS: MISSING"'`
-!`bash -c 'mkdir -p .ralph/planning && echo "PLANNING_DIR: ready"'`
+!`bash -c 'test -d .ralph/planning && echo "PLANNING_DIR: exists" || echo "PLANNING_DIR: MISSING"'`
 
 Evaluate the status outputs above:
 
 - If **RALPH_DIR is MISSING**: Tell the user to run `/ralph-install` first, then `/ralph-init --name my-feature`, then `/ralph-plan` again. **Stop here.**
 - If **TEMPLATES is MISSING**: Tell the user to run `/ralph-install` to restore templates. **Stop here.**
 - If **PRD is MISSING** or **TASKS is MISSING**: Tell the user to run `/ralph-init --name my-feature` to initialize state files, then `/ralph-plan` again. **Stop here.**
+- If **PLANNING_DIR is MISSING**: Tell the user to run `/ralph-init --name my-feature` (or `mkdir -p .ralph/planning`) to restore the planning directory. **Stop here.**
 - If all checks pass: proceed to Phase 1.
 
 ---
@@ -46,9 +47,19 @@ Evaluate the status outputs above:
 
 Before asking the user ANY questions, perform targeted research to build your own understanding of the project and the proposed feature. Research findings persist in `.ralph/planning/` so they can be referenced throughout planning and by future subagents.
 
+### Acknowledge user input
+
+Start by briefly summarizing your understanding of the user's request from the `$ARGUMENTS` above (1-2 sentences). This confirms you've internalized the feature description before launching subagents.
+
+### Check for existing research
+
+!`bash -c 'ls .ralph/planning/*.md 2>/dev/null || echo "NO_PRIOR_RESEARCH"'`
+
+If prior research files exist, review their contents before deciding whether to re-run subagents. Prior findings may still be relevant — especially if the user is iterating on a plan. Reuse what's still accurate, re-run only what's stale or missing.
+
 ### Assess what research is needed
 
-Based on the user's initial description of the feature, determine which research subagents to launch. **Not every task needs all types** — use judgment. In rare cases where the feature is simple and well-described, you may skip research entirely.
+Based on the user's feature description, determine which research subagents to launch. **Not every task needs all types** — use judgment. In rare cases where the feature is simple and well-described, you may skip research entirely.
 
 | Research type | When to use | Subagent |
 |---|---|---|
@@ -69,6 +80,20 @@ Each subagent will:
 - Write comprehensive findings to `.ralph/planning/{agent-name}.md`
 - Return a concise summary (10-20 bullet points) of key findings to you
 
+**Example prompt for ralph-explore:**
+
+> We're adding a real-time notifications system to this project. I need you to explore:
+>
+> 1. What WebSocket or real-time infrastructure already exists (if any)?
+> 2. How are existing API routes structured — what patterns should new endpoints follow?
+> 3. What notification-related components or models already exist?
+>
+> Scope: Focus on the backend API layer and any existing event/messaging code. Ignore test files, CI/CD config, and documentation. The project root is the current working directory.
+
+### If a subagent fails
+
+If a subagent errors, times out, or returns poor-quality findings: note what information is missing, then either retry with a narrower scope or proceed without it — flagging the gap when asking the user questions so they can fill in what the research couldn't.
+
 ### After research completes
 
 Synthesize the returned summaries. If any summary lacks critical detail, read the full findings file from `.ralph/planning/` directly. Reference specific discoveries when asking the user questions in Phase 2 (e.g., "I see the project uses Next.js with the app router — should this feature follow the same pattern as the existing `/dashboard` routes?").
@@ -79,11 +104,11 @@ Synthesize the returned summaries. If any summary lacks critical detail, read th
 
 !`bash -c 'cat .ralph/prd.md 2>/dev/null || echo "NO_PRD_CONTENT"'`
 
-Read the prd.md content above to determine which mode to use:
+Read the prd.md content above to determine which mode to use. To decide, check if the **Summary section** (section 1) has any real content beyond the HTML comment placeholder. If it's empty or only contains the template comment, the PRD hasn't been filled in yet.
 
-### Mode 1: Full Planning (prd.md is empty or template scaffold)
+### Mode 1: Full Planning (prd.md is unwritten)
 
-If prd.md contains only the template scaffold (section headers with HTML comments, no real content), use full planning mode:
+If the Summary section has no real content (only the template HTML comment or blank), use full planning mode:
 
 1. **Gather requirements via AskUserQuestion** — Use your research findings to ask informed, specific questions. Your questions should demonstrate understanding of the codebase and narrow in on decisions the user needs to make — NOT ask about things you already discovered through research. Focus on:
    - What problem are we solving? Who is the user?
@@ -174,6 +199,7 @@ Follow the template structure in `.ralph/templates/prd-template.md`. Key princip
 - **Background & Context** — Include key file paths, architecture patterns, naming conventions, and relevant existing code. This section prevents Claude from "rediscovering" the codebase structure each iteration. Use a file/directory listing format where possible.
 - **Technical Design** — Only include subsections relevant to this feature. Delete the rest. Write in a format Claude can act on: pseudocode, explicit API signatures, schema definitions — not narrative descriptions.
 - **Constraints** — Cross-cutting rules Claude must follow in ALL stories. Write these as imperative instructions: "Use date-fns for all date formatting" not "We prefer date-fns".
+- **Open Questions** — Resolve all open questions during planning before the loop starts. The ralph loop cannot pause to ask for clarification. Either answer them with research findings and user input, or remove the section entirely if none remain.
 - **Delete unused sections** — Empty sections waste context budget. Remove any section that doesn't apply.
 
 ---
