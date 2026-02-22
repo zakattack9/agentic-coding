@@ -15,12 +15,23 @@ These two files have **complementary roles** — the PRD provides stable context
 
 ---
 
+## User Input
+
+The user's initial prompt/instructions for this planning session:
+
+> $ARGUMENTS
+
+If `$ARGUMENTS` is empty or not provided, ask the user what feature they'd like to plan before proceeding.
+
+---
+
 ## Prerequisite Check
 
 !`bash -c 'test -d .ralph && echo "RALPH_DIR: installed" || echo "RALPH_DIR: MISSING"'`
 !`bash -c 'test -f .ralph/templates/prd-template.md && echo "TEMPLATES: installed" || echo "TEMPLATES: MISSING"'`
 !`bash -c 'test -f .ralph/prd.md && echo "PRD: exists" || echo "PRD: MISSING"'`
 !`bash -c 'test -f .ralph/tasks.json && echo "TASKS: exists" || echo "TASKS: MISSING"'`
+!`bash -c 'mkdir -p .ralph/planning && echo "PLANNING_DIR: ready"'`
 
 Evaluate the status outputs above:
 
@@ -34,12 +45,6 @@ Evaluate the status outputs above:
 ## Phase 1: Research & Discovery
 
 Before asking the user ANY questions, perform targeted research to build your own understanding of the project and the proposed feature. Research findings persist in `.ralph/planning/` so they can be referenced throughout planning and by future subagents.
-
-### Setup
-
-Create the planning directory if it doesn't exist:
-
-!`bash -c 'mkdir -p .ralph/planning'`
 
 ### Assess what research is needed
 
