@@ -7,7 +7,7 @@ description: Write concise, scannable feature specs that contain everything need
 
 ## Inputs
 
-Ask the user what the change is and where to save the spec file. Use `AskUserQuestion` to clarify any ambiguous requirements before writing — don't guess at behavior.
+Ask the user what the change is and where to save the spec file. Use `AskUserQuestion` to clarify any ambiguous requirements before writing — don't guess at behavior. It is better to ask one too many questions than to produce an incomplete or inaccurate spec.
 
 ## Writing Philosophy
 
