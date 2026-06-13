@@ -24,7 +24,7 @@ Subcommands:
   new-plugin     Scaffold a new plugin and register it in the catalog.
   remove-skill   Delete a skill from a central plugin and push the removal.
   remove-plugin  Delete a plugin, unregister it, and push the removal.
-  status         Catalog + what's enabled in this project + a health check.
+  status         Catalog + what's enabled here + a health check (--fix to auto-repair).
   validate       Lint marketplace.json, every plugin.json, and every SKILL.md (CI-friendly).
   refresh        Update the marketplace so a new/changed plugin is picked up.
   version-bump   Patch-bump a plugin's version in marketplace.json.
@@ -664,10 +664,16 @@ def cmd_status(args):
         info("(no plugins in the catalog yet — create one with skillctl new-plugin <name>)")
 
     info("\nHealth:")
-    _health(cfg)
+    _health(cfg, fix=getattr(args, "fix", False))
 
 
-def _health(cfg: dict):
+def _health(cfg: dict, fix: bool = False):
+    """Health check. With fix=True, auto-repair the failures that are safe to fix without
+    new input from the user: marketplace registration and user-scope plugin enablement.
+    Failures that need a decision (missing checkout, no origin, no claude CLI, unpushed
+    commits) are reported with a hint, never silently actioned."""
+    fixed: list[str] = []
+
     def check(label, condition, hint=""):
         status = "ok " if condition else "FAIL"
         line = f"  [{status}] {label}"
@@ -688,19 +694,42 @@ def _health(cfg: dict):
                 check("local in sync with origin", n == 0,
                       f"{n} commit(s) not pushed yet — run: git -C {repo} push")
     check("marketplace.json present", marketplace_json_path(cfg).exists())
-    check("'claude' CLI on PATH", have("claude"),
+
+    have_claude = have("claude")
+    check("'claude' CLI on PATH", have_claude,
           "install Claude Code so headless plugin commands work")
-    if have("claude"):
-        ml = run(["claude", "plugin", "marketplace", "list"], check=False, quiet=True)
-        check(f"marketplace '{cfg['marketplace']}' registered",
-              cfg["marketplace"] in (ml.stdout or ""),
+    if have_claude:
+        def _registered():
+            ml = run(["claude", "plugin", "marketplace", "list"], check=False, quiet=True)
+            return cfg["marketplace"] in (ml.stdout or "")
+        registered = _registered()
+        if not registered and fix:
+            _ensure_registered(cfg)
+            if _registered():
+                registered = True
+                fixed.append(f"registered marketplace '{cfg['marketplace']}'")
+        check(f"marketplace '{cfg['marketplace']}' registered", registered,
               f"claude plugin marketplace add {cfg['repoSlug']}")
-    us = read_json(USER_SETTINGS, {})
+
     for p in cfg.get("userPlugins", []):
         key = f"{p}@{cfg['marketplace']}"
-        check(f"user-enabled: {key}",
-              (us.get("enabledPlugins") or {}).get(key) is True,
+        enabled = (read_json(USER_SETTINGS, {}).get("enabledPlugins") or {}).get(key) is True
+        if not enabled and fix:
+            apply_settings(USER_SETTINGS, cfg, enable=[p])
+            if (read_json(USER_SETTINGS, {}).get("enabledPlugins") or {}).get(key) is True:
+                enabled = True
+                fixed.append(f"enabled {key} at user scope")
+        check(f"user-enabled: {key}", enabled,
               f"skillctl enable {p}  (or re-run init)")
+
+    if fix:
+        if fixed:
+            info("\nFixed:")
+            for f in fixed:
+                info(f"  - {f}")
+            info("Run /reload-plugins to apply.")
+        else:
+            info("\nNothing to auto-fix — any remaining failures need a manual step (see hints).")
 
 
 # ---------------------------------------------------------------------------
@@ -888,7 +917,10 @@ def build_parser() -> argparse.ArgumentParser:
     rp.add_argument("--no-refresh", action="store_true")
     rp.set_defaults(func=cmd_remove_plugin)
 
-    sub.add_parser("status", help="catalog + project enablement + health").set_defaults(func=cmd_status)
+    st = sub.add_parser("status", help="catalog + project enablement + health")
+    st.add_argument("--fix", action="store_true",
+                    help="auto-repair fixable health issues (re-register marketplace, re-enable user plugins)")
+    st.set_defaults(func=cmd_status)
     sub.add_parser("validate", help="lint the repo (CI-friendly)").set_defaults(func=cmd_validate)
     sub.add_parser("refresh", help="update the marketplace so changes are picked up").set_defaults(func=cmd_refresh)
 
