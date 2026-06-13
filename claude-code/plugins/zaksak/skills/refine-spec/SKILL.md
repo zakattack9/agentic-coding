@@ -5,6 +5,11 @@ argument-hint: [@path/to/spec.md] [focus areas]
 model: opus
 effort: xhigh
 allowed-tools: Read, Grep, Glob, Edit, Write, Task
+hooks:
+  Stop:
+    - hooks:
+        - type: command
+          command: "${CLAUDE_PLUGIN_ROOT}/skills/refine-spec/stop_refine_spec.py"
 ---
 
 # Refine Spec
@@ -27,6 +32,36 @@ Run the five-step pass below repeatedly. Keep looping until a pass produces **no
 ```
 Verify → Reconcile → Resolve → Refine → Re-check ↺
 ```
+
+### Loop ledger — this loop is enforced, not optional
+
+A **`Stop` hook blocks you from ending your turn** until the spec is genuinely ready, so you cannot quit a pass early. It reads a ledger you maintain at:
+
+`/tmp/claude-refine-spec-${CLAUDE_SESSION_ID}.json`
+
+**At the start of the run, and at the start of every pass,** write the ledger with the `Write` tool (overwrite it each time — that also keeps it fresh so the loop doesn't expire mid-run):
+
+```json
+{
+  "spec": "<absolute path to the spec file>",
+  "gate": {
+    "claims_verified": false,
+    "no_open_questions": false,
+    "no_overengineering": false,
+    "no_bloat": false,
+    "implementable_cold": false
+  },
+  "openQuestions": [
+    { "q": "short text of an open question you found", "resolved": false }
+  ]
+}
+```
+
+- Add **every** open question you find to `openQuestions`; set its `resolved` to `true` only once the user has given it a disposition — a concrete answer **or** an explicit "leave it / defer".
+- Set each `gate` flag to `true` only when that dimension genuinely holds. The five flags map 1:1 to the **Readiness gate** below.
+- The hook also scans the spec for leftover `TODO` / `TBD` / `FIXME` / `???` / "to be decided" / "open question" — those block the stop too, so don't leave them in the spec.
+
+When every flag is `true`, every question is `resolved`, and the spec is clean, the hook removes the ledger and lets you stop. **If the user redirects to unrelated work, delete the ledger file and stop** instead of continuing to refine.
 
 ### 1. Verify — ground every claim against reality
 
@@ -68,21 +103,23 @@ Apply, as one coherent edit per pass:
 
 ### 5. Re-check — did the edit settle or stir?
 
-Re-read the edited spec. Edits can introduce new claims, new ambiguities, or new contradictions. If the pass changed anything, **loop** and verify again. If a full pass produced no fixes and no questions, evaluate the readiness gate.
+Re-read the edited spec. Edits can introduce new claims, new ambiguities, or new contradictions. If the pass changed anything, **loop** and verify again. If a full pass produced no fixes and no questions, evaluate the readiness gate with the independent judge (below) — don't sign off on your own work. Before you try to stop, make the ledger reflect reality — unresolved questions marked, gate flags set only where they truly hold. The `Stop` hook bounces you back here if anything is still open.
 
 ## Readiness gate
 
-Finish only when **all** of these hold. Report the gate's status at the end of each pass.
+Finish only when **all** of these hold. Report the gate's status at the end of each pass. Each maps to a ledger flag (in parentheses).
 
-- [ ] Every factual claim is verified against the codebase or confirmed by the user — zero unverified "currently X" statements.
-- [ ] No open questions, TBDs, "decide later", or contradictions remain anywhere in the spec.
-- [ ] No speculative scope or gold-plating — everything present serves the stated goal.
-- [ ] No historical prose, rationale-for-its-own-sake, restated field names, or duplicated information.
-- [ ] A developer who has never seen this work could implement it end-to-end without asking a question.
+**The agent that did the refining does not get to declare it done.** Before setting any gate flag to `true`, dispatch a fresh **readiness judge** — an independent subagent (`Task`) with no memory of your edits — and hand it the current spec plus the criteria below. Instruct it to be adversarial: *read the spec and the codebase and hunt for any remaining inaccuracy, ambiguity, over-engineering, bloat, or missing detail that would block implementation; return a per-criterion `PASS`/`FAIL` with specific reasons.* Set each `gate` flag `true` only for the criteria the judge passes; every `FAIL` becomes findings for another pass. This mirrors Claude Code's own `/goal`, where a fresh model — not the one doing the work — decides completion.
+
+- [ ] Every factual claim is verified against the codebase or confirmed by the user — zero unverified "currently X" statements. (`claims_verified`)
+- [ ] No open questions, TBDs, "decide later", or contradictions remain anywhere in the spec. (`no_open_questions`)
+- [ ] No speculative scope or gold-plating — everything present serves the stated goal. (`no_overengineering`)
+- [ ] No historical prose, rationale-for-its-own-sake, restated field names, or duplicated information. (`no_bloat`)
+- [ ] A developer who has never seen this work could implement it end-to-end without asking a question. (`implementable_cold`)
 
 ## Handoff
 
-When the gate passes, give a short summary: what you corrected, what you cut, and which open questions you resolved (with the user's answers). State plainly that the spec is ready to implement. **Stop there — do not begin implementation** unless the user asks.
+When the gate passes, give a short summary: what you corrected, what you cut, and which open questions you resolved (with the user's answers). State plainly that the spec is ready to implement. The `Stop` hook clears the ledger automatically once the gate passes. **Stop there — do not begin implementation** unless the user asks.
 
 ## Guardrails
 
