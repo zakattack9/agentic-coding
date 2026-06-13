@@ -4,7 +4,7 @@ description: Review, verify, and tighten an existing feature spec until it is ac
 argument-hint: [@path/to/spec.md] [focus areas]
 model: opus
 effort: xhigh
-allowed-tools: Read, Grep, Glob, Edit, Write, Task
+allowed-tools: Read, Grep, Glob, Edit, Write, Bash, Task
 hooks:
   Stop:
     - hooks:
@@ -67,9 +67,9 @@ When every flag is `true`, every question is `resolved`, and the spec is clean, 
 
 List every **checkable claim** in the spec: file paths, function / class / method names, table / column names, routes, config or env keys, library or framework behavior, "the system currently does X" statements, data shapes, and counts.
 
-Dispatch **parallel `Explore` subagents** (the `Task` tool, `subagent_type: Explore`) to check these claims against the actual codebase — they are read-only and fast. Split the claims by area (e.g. one agent per subsystem, model layer, or route group) and scale the agent count to the spec: a short spec may need a single verifier; a large one, several. Give each agent the relevant spec excerpt plus its claim list, and require a structured verdict per claim:
+Dispatch **parallel `Explore` subagents** (the `Task` tool, `subagent_type: Explore`) to check these claims against **ground truth, never against other docs** — they are read-only and fast. Ground truth, in order of authority: the **actual codebase at branch HEAD**; the **latest git commits** (`git log` / `git diff` on the working branch — specs drift after out-of-band commits and dev→infra merges, so re-ground against HEAD rather than trusting the spec's own history); and, for infra/ops specs, **live state via the named CLI** (e.g. `aws`, `gh`). Treat sibling or "completed" specs as **possibly stale — never as ground truth**. Split the claims by area (e.g. one agent per subsystem, model layer, or route group) and scale the agent count to the spec: a short spec may need a single verifier; a large one, several. Give each agent the relevant spec excerpt plus its claim list, and require a structured verdict per claim:
 
-> For each claim return one of: `confirmed` / `wrong` (give the correct value and `file:line`) / `not found in codebase`. Quote the supporting evidence. Do not speculate — if you cannot verify it, say so.
+> For each claim return one of: `confirmed` / `wrong` (give the correct value and where you found it — `file:line`, a commit SHA, or CLI output) / `not found`. Quote the supporting evidence. Do not speculate — if you cannot verify it, say so.
 
 Run one more agent (or do it yourself) as a **skeptic lens**: read the whole spec hunting for internal contradictions, over-engineering, speculative scope, and anything an implementer could not actually act on.
 
@@ -82,7 +82,7 @@ Dedupe the findings and bucket each one:
 | **Inaccuracy**       | Contradicts the codebase                                                                                                                                                                                                                                              | Fix to the verified value |
 | **Open question**    | Cannot be verified; needs a human decision                                                                                                                                                                                                                            | Queue for **Resolve**     |
 | **Over-engineering** | Speculative, gold-plated, or beyond the stated goal                                                                                                                                                                                                                   | Propose cutting           |
-| **Bloat**            | Text not needed to *build* it: historical/background prose, rationale or "why / previously / originally", problem statements, changelog, out-of-scope narrative, restated field names, duplication. **Decision, config, and field tables are pertinent — keep them.** | Cut                       |
+| **Bloat**            | Text not needed to *build* it: historical/background prose, rationale or "why / previously / originally", problem statements, changelog, speculative out-of-scope narrative, restated field names, duplication. **Decision, config, and field tables are pertinent — keep them.** | Cut                       |
 
 ### 3. Resolve — ask the user
 
@@ -100,6 +100,8 @@ Apply, as one coherent edit per pass:
 - **Simplification** — tighten so another dev can grasp the objective and the details fast, following the `write-spec` philosophy: say things once, in the right place; describe behavior, not implementation; show with tables / mermaid / examples instead of prose; bold the key terms; every sentence must earn its place.
 
 **Preserve every detail an implementer needs.** Simplify *wording and structure*, never silently drop substance. If you are unsure whether a detail is load-bearing, ask before cutting it. Keep edits reviewable as a clean git diff.
+
+**Prove no silent loss on a rewrite.** If the spec is already tracked in git and this pass rewrote or heavily condensed it, diff the result against the prior committed version (`git diff`, or `git show HEAD:<path>`) and surface a short **`removed:`** list of any non-bloat content you cut, so the user can veto a wrongful drop. Skip this for a brand-new, untracked spec.
 
 ### 5. Re-check — did the edit settle or stir?
 

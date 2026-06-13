@@ -9,6 +9,8 @@ description: Write concise, scannable feature specs that contain everything need
 
 Ask the user what the change is and where to save the spec file. Use `AskUserQuestion` to clarify any ambiguous requirements before writing — don't guess at behavior. It is better to ask one too many questions than to produce an incomplete or inaccurate spec.
 
+**Don't assert ungrounded facts.** When the spec states a concrete detail — a file path, table or column name, route, or config key — confirm it cheaply against the codebase before writing it. If you can't confirm it cheaply, write it as an explicit open question or ask via `AskUserQuestion` rather than asserting a "currently X" claim that might be wrong. Keep this light: a quick check or a question, not a full verification pass — fact-checking the finished spec is `refine-spec`'s job.
+
 ## Writing Philosophy
 
 The goal is a spec that a human can scan in under 2 minutes and know exactly what to build. Every piece of the spec should pass a simple test: "Would removing this cause someone to build the wrong thing?" If no, cut it.
@@ -39,7 +41,11 @@ Use **bold** on terms the reader needs to remember or cross-reference — behavi
 
 ### Every sentence earns its place
 
-If a sentence restates what a field name already implies (e.g., "The minimum days field specifies the minimum number of days"), it's noise. If a section explains why the old thing was bad ("Problem Statement"), the reader doesn't need that context — they need to know what to build. If a list describes things you're NOT building ("Out of Scope"), you're introducing concepts that weren't on the table. If it's not in the spec, it doesn't exist.
+If a sentence restates what a field name already implies (e.g., "The minimum days field specifies the minimum number of days"), it's noise. If a section explains why the old thing was bad ("Problem Statement"), the reader doesn't need that context — they need to know what to build. Cut speculative "Out of Scope" lists of things you considered but won't build — they introduce concepts that weren't on the table. The one exception: when the user gave an explicit carve-out that prevents a likely scope error (e.g. "don't touch prod", "ignore multi-tenancy"), capture it as a single bounded line — not a narrative. If it's not in the spec, it doesn't exist.
+
+### Self-contained for a zero-context reader
+
+A spec is often read in isolation by someone with no prior context — a teammate or downstream dev who receives just this file. It must stand alone: don't reference other specs, docs, or prior conversation the reader may not have; inline the few facts they'd otherwise have to chase down. Write as if the reader has zero context on the work.
 
 ### Keep the TL;DR tight
 
