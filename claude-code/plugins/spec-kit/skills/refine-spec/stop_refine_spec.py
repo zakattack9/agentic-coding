@@ -4,26 +4,38 @@
 Deterministically enforces the refine-spec review loop: while a run is active,
 Claude cannot end its turn until the spec is actually ready.
 
-Activates ONLY when a session-scoped marker exists at
+Activates ONLY when a session-scoped marker (the "ledger") exists at
   /tmp/claude-refine-spec-<session_id>.json
-so normal sessions (and other skills) are never affected. The marker is written
-by the skill at the start of, and during, a refine-spec run, and removed here
-once the readiness gate passes.
+so normal sessions (and other skills) are never affected. The ledger is written
+by the skill at the start of, and during, a run, and removed here once the
+readiness gate passes.
 
-Readiness = ALL of:
-  1. Every gate flag in the marker is true   (agent attestation per dimension)
-  2. Every open question in the marker is resolved   (agent ledger)
-  3. The spec file contains no leftover not-finalized markers   (mechanical scan)
+The ledger is authored by the model, so it is treated as UNTRUSTED input and
+validated strictly. The guardrail must never be silently disabled by an AI
+mistake (malformed JSON, wrong types, bad path):
 
-Safety valves (so a run can never hard-trap a user who walked away):
-  - Freshness: the marker's file mtime must be recent. If the agent stops
-    refreshing it (stuck or abandoned), it goes stale and the loop releases.
-  - Any read/parse error releases rather than blocks.
-  - The block reason tells Claude how to bail out if the user has moved on.
+  fail-SAFE  — while a run is active, a malformed/invalid/unreadable ledger
+               BLOCKS with an exact correction message (it does not allow the
+               stop and does not crash). An AI mistake forces a fix, not a pass.
+  fail-OPEN  — only the "can't even tell a run is active" cases release:
+               unreadable stdin, no session id, or no ledger file. Plus the
+               mtime escape below, so a run can never hard-trap a user.
+
+Escape valves (so enforcement can never permanently trap someone):
+  - Freshness: if the ledger's mtime is older than STALE_SECONDS (the agent
+    stopped refreshing it — stuck or abandoned), it is removed and released.
+  - The user can interrupt the turn at any time.
+  - The block reason tells Claude to delete the ledger and stop if the user
+    has redirected to unrelated work.
+
+Readiness (all required) once the ledger is valid:
+  1. Every gate flag is true        (agent attestation per dimension)
+  2. Every open question is resolved (agent ledger)
+  3. The spec file has no leftover not-finalized markers (mechanical scan)
 
 Input:  JSON on stdin (hook payload; uses `session_id`).
-Output: nothing / {"decision":"approve"} to allow stop;
-        {"decision":"block","reason":...} to force another pass.
+Output: nothing to allow the stop; {"decision":"block","reason":...} to force
+        another pass.
 """
 
 import json
@@ -32,9 +44,9 @@ import re
 import sys
 import time
 
-# Marker is considered abandoned/stuck if not rewritten within this window.
+# Ledger is considered abandoned/stuck if not rewritten within this window.
 # Long enough for a heavy pass (parallel verification subagents + user Q&A),
-# short enough that a leaked marker frees the session on its own.
+# short enough that a leaked ledger frees the session on its own.
 STALE_SECONDS = 45 * 60
 
 # Heuristic "this spec is not finalized" markers. Case-insensitive.
@@ -51,9 +63,24 @@ NOT_DONE_PATTERNS = [
 ]
 NOT_DONE_RE = re.compile("|".join(NOT_DONE_PATTERNS), re.IGNORECASE)
 
+# Canonical ledger shape, shown to the agent whenever its ledger is rejected.
+SCHEMA_HINT = (
+    '{\n'
+    '  "spec": "<absolute path to the spec file>",\n'
+    '  "gate": {\n'
+    '    "claims_verified": false,\n'
+    '    "no_open_questions": false,\n'
+    '    "no_overengineering": false,\n'
+    '    "no_bloat": false,\n'
+    '    "implementable_cold": false\n'
+    '  },\n'
+    '  "openQuestions": [ { "q": "short text", "resolved": false } ]\n'
+    '}'
+)
+
 
 def allow():
-    """Permit the stop (default behavior)."""
+    """Permit the stop (default behavior). No output == allow."""
     sys.exit(0)
 
 
@@ -69,8 +96,134 @@ def remove(path: str):
         pass
 
 
+def reject_ledger(marker_path: str, problems: list):
+    """Block because the model-authored ledger is invalid. Keep the ledger so
+    the block persists until the agent rewrites it correctly."""
+    block(
+        "Your refine-spec ledger at "
+        + marker_path
+        + " is invalid, so the readiness gate cannot be evaluated. Do NOT stop. "
+        "Rewrite it as STRICT, valid JSON exactly matching this schema "
+        "(flags and `resolved` must be JSON booleans true/false, not strings):\n\n"
+        + SCHEMA_HINT
+        + "\n\nProblems found:\n"
+        + "\n".join(f"- {p}" for p in problems)
+        + "\n\nIf the user has redirected to unrelated work, delete that file and stop instead."
+    )
+
+
+def validate_ledger(m):
+    """Return a list of structural problems with the parsed ledger (empty == ok).
+    Strict: the ledger is untrusted, model-authored input."""
+    if not isinstance(m, dict):
+        return ["the ledger must be a JSON object"]
+
+    problems = []
+
+    # spec: required, non-empty string (existence is checked separately).
+    spec = m.get("spec")
+    if not isinstance(spec, str) or not spec.strip():
+        problems.append("'spec' must be a non-empty string (absolute path to the spec file)")
+
+    # gate: required, non-empty object whose values are all JSON booleans.
+    gate = m.get("gate")
+    if not isinstance(gate, dict) or not gate:
+        problems.append("'gate' must be a non-empty JSON object of boolean flags")
+    else:
+        non_bool = [k for k, v in gate.items() if not isinstance(v, bool)]
+        if non_bool:
+            problems.append(
+                "every 'gate' flag must be a JSON boolean (true/false); "
+                "not boolean: " + ", ".join(sorted(non_bool))
+            )
+
+    # openQuestions: optional (defaults to []); if present must be a list of
+    # {q: str, resolved: bool}.
+    oq = m.get("openQuestions", [])
+    if not isinstance(oq, list):
+        problems.append("'openQuestions' must be a JSON array")
+    else:
+        for i, q in enumerate(oq):
+            if not isinstance(q, dict):
+                problems.append(f"openQuestions[{i}] must be an object with 'q' and 'resolved'")
+                continue
+            if not isinstance(q.get("q"), str) or not q.get("q").strip():
+                problems.append(f"openQuestions[{i}].q must be a non-empty string")
+            if not isinstance(q.get("resolved"), bool):
+                problems.append(f"openQuestions[{i}].resolved must be a JSON boolean (true/false)")
+
+    return problems
+
+
+def evaluate(marker_path: str, marker: dict):
+    """Validated-ledger path: enforce readiness or block with specifics."""
+    problems = validate_ledger(marker)
+    if problems:
+        reject_ledger(marker_path, problems)
+        return
+
+    spec_path = marker["spec"].strip()
+    gate = marker["gate"]
+    open_questions = marker.get("openQuestions", []) or []
+
+    failures = []
+
+    # 1. Gate-flag attestations (validated as booleans above).
+    unmet = sorted(name for name, ok in gate.items() if ok is not True)
+    if unmet:
+        failures.append("Readiness gate flags still unmet: " + ", ".join(unmet))
+
+    # 2. Open-question ledger fully resolved.
+    unresolved = [q["q"] for q in open_questions if q.get("resolved") is not True]
+    if unresolved:
+        preview = "; ".join(unresolved[:5])
+        more = f" (+{len(unresolved) - 5} more)" if len(unresolved) > 5 else ""
+        failures.append(f"Unresolved open questions: {preview}{more}")
+
+    # 3. Mechanical scan of the spec for not-finalized markers.
+    #    An unreadable spec path is an AI mistake (wrong path) -> block, don't allow.
+    try:
+        with open(spec_path, "r", errors="replace") as f:
+            hits = []
+            for n, line in enumerate(f, 1):
+                if NOT_DONE_RE.search(line):
+                    hits.append(f"L{n}: {line.strip()[:80]}")
+                    if len(hits) >= 10:
+                        break
+    except OSError:
+        reject_ledger(
+            marker_path,
+            [f"'spec' path is not a readable file: {spec_path!r} — set it to the correct absolute path"],
+        )
+        return
+    if hits:
+        failures.append(
+            "Spec still contains not-finalized markers "
+            "(TODO/TBD/FIXME/???/'to be decided'/'open question'):\n  "
+            + "\n  ".join(hits)
+        )
+
+    # Ready: tear down the ledger and let Claude stop.
+    if not failures:
+        remove(marker_path)
+        allow()
+        return
+
+    # Not ready: force another pass.
+    block(
+        "refine-spec loop is still active and the spec is not implementation-"
+        "ready. Do NOT stop — run another refinement pass to clear these:\n\n"
+        + "\n".join(f"- {f}" for f in failures)
+        + "\n\nThen update the ledger at "
+        + marker_path
+        + " (set the gate flags true / mark questions resolved) and try again.\n"
+        + "If the user has redirected to unrelated work, delete that file and stop instead."
+    )
+
+
 def main():
-    # Read the hook payload; on any trouble, never block.
+    # Read the hook payload. If we can't even parse it, we cannot determine
+    # whether a run is active -> allow (never break unrelated sessions).
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
@@ -84,12 +237,13 @@ def main():
 
     marker_path = f"/tmp/claude-refine-spec-{session_id}.json"
 
-    # Fast path: no active refine-spec run → don't touch this stop.
+    # Fast path: no active refine-spec run -> don't touch this stop.
     if not os.path.isfile(marker_path):
         allow()
         return
 
-    # Stale marker (agent stopped refreshing it) → release and clean up.
+    # Stale ledger (agent stopped refreshing it) -> release. This runs BEFORE
+    # parsing so an abandoned, even-malformed ledger always frees the session.
     try:
         if time.time() - os.path.getmtime(marker_path) > STALE_SECONDS:
             remove(marker_path)
@@ -99,78 +253,25 @@ def main():
         allow()
         return
 
-    # Parse the ledger; corruption releases rather than traps.
+    # Active run. From here on, fail SAFE: any problem blocks with a fix
+    # message rather than allowing a premature stop or crashing the hook.
     try:
         with open(marker_path, "r") as f:
             marker = json.load(f)
-    except (OSError, json.JSONDecodeError, ValueError):
-        remove(marker_path)
+    except (json.JSONDecodeError, ValueError):
+        reject_ledger(marker_path, ["the file is not valid JSON"])
+        return
+    except OSError:
+        # Can't read a ledger we just confirmed exists — transient; don't trap.
         allow()
         return
 
-    spec_path = str(marker.get("spec", "")).strip()
-    gate = marker.get("gate", {}) or {}
-    open_questions = marker.get("openQuestions", []) or []
-
-    failures = []
-
-    # 1. Gate-flag attestations the agent must explicitly set true.
-    unmet = [name for name, ok in gate.items() if ok is not True]
-    if not gate:
-        unmet = ["gate is empty — populate it"]
-    if unmet:
-        failures.append("Readiness gate flags still unmet: " + ", ".join(sorted(unmet)))
-
-    # 2. Open-question ledger must be fully resolved.
-    unresolved = [
-        str(q.get("q", "?")) for q in open_questions
-        if isinstance(q, dict) and q.get("resolved") is not True
-    ]
-    if unresolved:
-        preview = "; ".join(unresolved[:5])
-        more = f" (+{len(unresolved) - 5} more)" if len(unresolved) > 5 else ""
-        failures.append(f"Unresolved open questions: {preview}{more}")
-
-    # 3. Mechanical scan of the spec for not-finalized markers.
-    if spec_path:
-        try:
-            with open(spec_path, "r", errors="replace") as f:
-                hits = []
-                for n, line in enumerate(f, 1):
-                    if NOT_DONE_RE.search(line):
-                        hits.append(f"L{n}: {line.strip()[:80]}")
-                        if len(hits) >= 10:
-                            break
-            if hits:
-                failures.append(
-                    "Spec still contains not-finalized markers "
-                    "(TODO/TBD/FIXME/???/'to be decided'/'open question'):\n  "
-                    + "\n  ".join(hits)
-                )
-        except OSError:
-            # Can't read the spec — don't trap the session over it.
-            remove(marker_path)
-            allow()
-            return
-
-    # Ready: tear down the marker and let Claude stop.
-    if not failures:
-        remove(marker_path)
-        allow()
-        return
-
-    # Not ready: force another pass.
-    reason = (
-        "refine-spec loop is still active and the spec is not implementation-"
-        "ready. Do NOT stop — run another refinement pass to clear these:\n\n"
-        + "\n".join(f"- {f}" for f in failures)
-        + "\n\nAfter resolving them, update the ledger at "
-        + marker_path
-        + " (set the gate flags true / mark questions resolved) and try again.\n"
-        + "If the user has redirected to unrelated work, delete that marker file "
-        + "and stop instead of continuing to refine."
-    )
-    block(reason)
+    try:
+        evaluate(marker_path, marker)
+    except SystemExit:
+        raise  # allow()/block() use sys.exit — let it through
+    except Exception as e:  # noqa: BLE001 — never crash into a fail-open
+        reject_ledger(marker_path, [f"unexpected ledger processing error: {e}"])
 
 
 if __name__ == "__main__":

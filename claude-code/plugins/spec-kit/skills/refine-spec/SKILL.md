@@ -39,7 +39,7 @@ A **`Stop` hook blocks you from ending your turn** until the spec is genuinely r
 
 `/tmp/claude-refine-spec-${CLAUDE_SESSION_ID}.json`
 
-**At the start of the run, and at the start of every pass,** write the ledger with the `Write` tool (overwrite it each time — that also keeps it fresh so the loop doesn't expire mid-run):
+**At the start of the run, and at the start of every pass,** write the ledger with the `Write` tool (overwrite it each time — that also keeps it fresh so the loop doesn't expire mid-run). **Write strict, valid JSON exactly matching the schema below** — `gate` flags and `resolved` must be JSON booleans (`true`/`false`, not strings), and `spec` must be the correct absolute path. The hook validates the ledger and will block you with a correction message if it is malformed, so a typo can't silently disable the gate:
 
 ```json
 {
