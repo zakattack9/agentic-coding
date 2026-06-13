@@ -82,7 +82,7 @@ Dedupe the findings and bucket each one:
 | **Inaccuracy** | Contradicts the codebase | Fix to the verified value |
 | **Open question** | Cannot be verified; needs a human decision | Queue for **Resolve** |
 | **Over-engineering** | Speculative, gold-plated, or beyond the stated goal | Propose cutting |
-| **Bloat** | Historical prose, rationale, restated field names, duplication | Cut |
+| **Bloat** | Text not needed to *build* it: historical/background prose, rationale or "why / previously / originally", problem statements, changelog, out-of-scope narrative, restated field names, duplication. **Decision, config, and field tables are pertinent — keep them.** | Cut |
 
 ### 3. Resolve — ask the user
 
@@ -114,7 +114,7 @@ Finish only when **all** of these hold. Report the gate's status at the end of e
 - [ ] Every factual claim is verified against the codebase or confirmed by the user — zero unverified "currently X" statements. (`claims_verified`)
 - [ ] No open questions, TBDs, "decide later", or contradictions remain anywhere in the spec. (`no_open_questions`)
 - [ ] No speculative scope or gold-plating — everything present serves the stated goal. (`no_overengineering`)
-- [ ] No historical prose, rationale-for-its-own-sake, restated field names, or duplicated information. (`no_bloat`)
+- [ ] No text that exists *only* for history, context, or rationale (the **Bloat** row above) — nothing a builder doesn't need. Decision/config/field **tables** stay. (`no_bloat`)
 - [ ] A developer who has never seen this work could implement it end-to-end without asking a question. (`implementable_cold`)
 
 ## Handoff
@@ -125,5 +125,4 @@ When the gate passes, give a short summary: what you corrected, what you cut, an
 
 - **Never invent facts** to fill a gap. Verify it, or ask.
 - **Refine, don't redesign.** If you believe the design itself is wrong, raise it as a question — don't unilaterally rewrite the approach.
-- Simplify presentation, **never** remove implementation-critical detail. When in doubt, ask.
 - Respect `.gitignore` — never read or edit ignored files (secrets, env, build artifacts) while verifying claims.
