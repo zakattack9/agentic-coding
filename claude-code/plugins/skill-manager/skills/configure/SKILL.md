@@ -16,7 +16,7 @@ Enable the plugins this project needs. The selection is written to `.claude/sett
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" configure
    ```
-2. If the user named plugins, use those. Otherwise present the catalog and ask which to enable (one question).
+2. If the user named plugins, use those. Otherwise present the catalog and ask which to enable (one question). Use the exact plugin names from the catalog output — don't invent names; the tool will warn on any it doesn't recognize.
 3. Write the selection:
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" configure --plugins <comma,separated,list>

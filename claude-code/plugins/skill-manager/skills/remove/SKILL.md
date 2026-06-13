@@ -23,3 +23,11 @@ Delete a central skill (or a whole plugin), clean up the catalog and bump the ve
    ```
    `--force` is the confirmation. Run the command without it first if you want the tool to print exactly what it will delete before doing it.
 3. Tell the user to `/reload-plugins`. **Surface any push-failure WARNING.** Removing a plugin can't clean up its enablement in *other* projects — mention that if relevant.
+
+## Stay grounded — this is destructive and writes to git
+
+- **Confirm the exact name against `/skill-manager:status` before removing**, and get the
+  user's explicit OK. Never guess a skill or plugin name — a wrong name could delete the
+  wrong thing or fail confusingly.
+- **Relay the tool's actual output.** Only report success if it confirmed the removal, and
+  surface any push-failure `WARNING` — until the push lands, the removal is local-only.

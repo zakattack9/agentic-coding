@@ -25,6 +25,18 @@ Take a skill from this project's `.claude/skills/<name>/` and publish or update 
 5. Report the result: the skill is invoked as `/<plugin>:<skill>`; tell the user to `/reload-plugins`. **If the tool prints a push-failure WARNING, surface it prominently** — the change is committed locally but not on the remote until the push succeeds.
 6. If this project doesn't enable that plugin yet, offer `/skill-manager:configure` (or `skillctl enable <plugin>`).
 
+## Stay grounded — this writes to git
+
+The engine does all the file/version/git work deterministically; your job is to feed it
+correct inputs and report its results honestly. Two things prevent mistakes:
+
+- **Get names from real data, never guess.** The project skill comes from `.claude/skills/`;
+  the target plugin comes from `/skill-manager:status`. A mistyped `--plugin` silently
+  creates a brand-new plugin, so confirm the name against the catalog before a new push.
+- **Relay what the tool actually printed.** Only report a publish/sync as done if the tool
+  printed its success line. If it printed a `WARNING` (e.g. the push failed) or an error,
+  surface that verbatim — the change may be committed locally but not on the remote.
+
 Notes:
 - Keep the original skill name; don't rename on push.
 - `--plugin` is only needed for a brand-new skill; for updates the owning plugin is auto-detected.

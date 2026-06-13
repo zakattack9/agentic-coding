@@ -22,6 +22,6 @@ Wire skill-manager to the GitHub repo where the user keeps their skills. It oper
    - Add `--plugins-dir <dir>` only if auto-detection is wrong (use `.` for plugins at the repo root; for a monorepo it's inferred from existing entries).
    - Add `--user-plugins a,b` to enable specific plugins for every project at user scope.
 3. Report what init did (config written, marketplace created/registered) and surface any push-failure WARNING — the repo must have a reachable `origin` for the marketplace to work from other machines.
-4. Tell the user the one remaining manual step: turn ON auto-update for the marketplace (third-party marketplaces default off) via `/plugin` → Marketplaces, then `/reload-plugins`.
+4. Tell the user the optional last step: turn ON auto-update for the marketplace via `/plugin` → Marketplaces so new sessions pick up changes automatically (otherwise they refresh on demand). Then `/reload-plugins`.
 
 After init, `/skill-manager:status`, `:configure`, `:push`, and `:remove` work in every project. To create the first skill, use the native **skill-creator** skill, then `/skill-manager:push` it.

@@ -349,8 +349,8 @@ def cmd_init(args):
     _ensure_registered(cfg)
 
     info("\nInit complete.")
-    info(f"  • Turn ON auto-update for '{marketplace}' so new sessions pick up changes "
-         f"(/plugin -> Marketplaces; third-party marketplaces default off).")
+    info(f"  • Turn ON auto-update for '{marketplace}' via /plugin -> Marketplaces so new "
+         f"sessions pick up changes (otherwise refresh on demand with /reload-plugins).")
     info("  • Author a skill with the skill-creator skill, then publish it with "
          "/skill-manager:push.")
     info("  • Then /reload-plugins (or start a new session).")
@@ -408,6 +408,15 @@ def _skill_src_in_project(name: str) -> Path:
 def cmd_push(args):
     cfg = load_config()
     src = _skill_src_in_project(args.skill)
+
+    # Deterministic guard: never publish a malformed skill, even if asked to.
+    errs, warns, _ = _check_skill_md(src)
+    for w in warns:
+        warn(w)
+    if errs:
+        die("this skill would be broken once published:\n  - " + "\n  - ".join(errs)
+            + "\nFix it (the skill-creator skill can help), then retry.")
+
     existing = _find_plugin_for_skill(cfg, args.skill)
 
     if existing:
@@ -669,6 +678,30 @@ def _frontmatter(text: str) -> dict | None:
     return out
 
 
+def _check_skill_md(skill_dir: Path):
+    """Deterministic lint of one skill directory. Returns (errors, warnings, frontmatter).
+    Used both by `validate` and as a pre-publish guard in `push`, so a malformed skill can
+    never be committed to the marketplace by mistake."""
+    smd = skill_dir / "SKILL.md"
+    if not smd.exists():
+        return ([f"{skill_dir}: missing SKILL.md"], [], None)
+    fm = _frontmatter(smd.read_text())
+    if fm is None:
+        return ([f"{smd}: missing or malformed YAML frontmatter"], [], None)
+    errors: list[str] = []
+    warnings: list[str] = []
+    desc = fm.get("description", "")
+    if not desc:
+        errors.append(f"{smd}: no 'description' in frontmatter (it's how the skill triggers)")
+    elif len(desc) > 1536:
+        warnings.append(f"{smd}: description is {len(desc)} chars (listing cap is 1536)")
+    nm = fm.get("name")
+    if nm and nm != skill_dir.name:
+        warnings.append(f"{smd}: frontmatter name '{nm}' != directory '{skill_dir.name}' "
+                        f"(skills are invoked by directory name)")
+    return (errors, warnings, fm)
+
+
 def cmd_validate(args):
     cfg = load_config(required=False)
     repo = repo_path(cfg) if cfg else Path.cwd()
@@ -706,20 +739,10 @@ def cmd_validate(args):
         for skill in (sorted(sdir.glob("*")) if sdir.exists() else []):
             if not skill.is_dir():
                 continue
-            smd = skill / "SKILL.md"
-            if not smd.exists():
-                errors.append(f"{skill}: missing SKILL.md")
-                continue
-            fm = _frontmatter(smd.read_text())
-            if fm is None:
-                errors.append(f"{smd}: missing or malformed YAML frontmatter")
-                continue
-            if "description" not in fm:
-                errors.append(f"{smd}: no 'description' in frontmatter")
-            if len(fm.get("description", "")) > 1536:
-                warnings.append(f"{smd}: description is {len(fm['description'])} chars "
-                                f"(listing cap is 1536)")
-            sk = fm.get("name", skill.name)
+            errs, warns, fm = _check_skill_md(skill)
+            errors.extend(errs)
+            warnings.extend(warns)
+            sk = (fm or {}).get("name", skill.name)
             if sk in seen:
                 errors.append(f"plugin '{name}': duplicate skill name '{sk}'")
             seen.add(sk)

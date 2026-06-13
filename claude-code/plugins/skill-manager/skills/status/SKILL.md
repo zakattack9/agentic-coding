@@ -15,3 +15,5 @@ python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" status
 If it reports "not configured", point the user at `/skill-manager:init`.
 
 To turn plugins on/off for this project, use `/skill-manager:configure`. If a health check line fails, walk the user through the fix — the tool prints a `->` hint under each failure.
+
+Present what the tool prints — the catalog, the `[on]`/`[  ]` markers, and the health lines are the ground truth. Don't infer enablement, versions, or health beyond its output.
