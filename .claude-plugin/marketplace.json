@@ -8,6 +8,12 @@
       "name": "zaksak",
       "source": "./claude-code/plugins/zaksak",
       "description": "A collection of Claude Code utilities by Zak Sakata",
+      "version": "0.2.0"
+    },
+    {
+      "name": "spec-kit",
+      "source": "./claude-code/plugins/spec-kit",
+      "description": "Spec workflow: write-spec drafts concise feature specs; refine-spec hardens a draft into an accurate, implementation-ready spec via a grounded multi-pass review loop.",
       "version": "0.1.0"
     },
     {
