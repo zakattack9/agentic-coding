@@ -1,0 +1,25 @@
+---
+name: remove
+description: Remove a skill from a central plugin, or delete an entire plugin from the marketplace, then push the removal. Use when the user says "remove this skill", "delete this skill from the marketplace", "deprecate this skill", "delete this plugin", or "unregister a plugin". Destructive and pushes to git; user-invoked only.
+disable-model-invocation: true
+allowed-tools: Bash(python3 *) Bash(git *)
+argument-hint: "<skill-name> | --plugin <plugin>"
+---
+
+# Remove a skill or plugin from the marketplace
+
+Delete a central skill (or a whole plugin), clean up the catalog and bump the version, commit, and push.
+
+## Steps
+
+1. Confirm exactly what to remove — a single skill, or an entire plugin (which deletes all its skills). Confirm with the user first; this is destructive and pushes to git.
+2. Remove a skill (owning plugin auto-detected):
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" remove-skill <skill> --force
+   ```
+   Remove a whole plugin (also unregisters it and clears user-scope enablement):
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" remove-plugin <plugin> --force
+   ```
+   `--force` is the confirmation. Run the command without it first if you want the tool to print exactly what it will delete before doing it.
+3. Tell the user to `/reload-plugins`. **Surface any push-failure WARNING.** Removing a plugin can't clean up its enablement in *other* projects — mention that if relevant.

@@ -1,0 +1,4 @@
+{
+  "name": "skill-manager",
+  "description": "Manage Claude Code skills across any project and marketplace: configure which plugins a project uses, push local skills up to a central marketplace, keep them in sync, and remove them. Adapts to any repo layout. Authoring new skills is delegated to the native skill-creator skill."
+}

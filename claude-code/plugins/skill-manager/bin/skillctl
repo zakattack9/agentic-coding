@@ -1,0 +1,805 @@
+#!/usr/bin/env python3
+"""
+skillctl — manage Claude Code skills across any project and marketplace.
+
+The engine behind the skill-manager plugin. The plugin's skills invoke this via
+${CLAUDE_PLUGIN_ROOT}/bin/skillctl, and you can also run it straight from a terminal.
+Stdlib only, no dependencies. Targets macOS/Linux.
+
+It operates on your *existing local checkout* of a marketplace repo (no second clone),
+and adapts to any layout: plugins at the repo root (source "./<name>") or nested in a
+monorepo (source "./path/to/plugins/<name>"). Versions live in marketplace.json.
+
+Authoring a skill from scratch is delegated to the native `skill-creator` skill — this
+tool only handles the *ops*: configure a project, push skills central, remove them.
+
+Config: ~/.claude/skill-manager.json (written by `skillctl init`).
+
+Subcommands:
+  init           One-time setup: point at your checkout, register the marketplace.
+  configure      Choose which plugins this project uses (writes settings.local.json).
+  enable/disable Toggle a plugin in this project's settings.
+  push           Publish a project-local skill central, or sync edits up (auto-detected).
+  pull           Copy a central skill down into this project to iterate on it.
+  new-plugin     Scaffold a new plugin and register it in the catalog.
+  remove-skill   Delete a skill from a central plugin and push the removal.
+  remove-plugin  Delete a plugin, unregister it, and push the removal.
+  status         Catalog + what's enabled in this project + a health check.
+  validate       Lint marketplace.json, every plugin.json, and every SKILL.md (CI-friendly).
+  refresh        Update the marketplace so a new/changed plugin is picked up.
+  version-bump   Patch-bump a plugin's version in marketplace.json.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+CONFIG_PATH = Path(os.path.expanduser("~/.claude/skill-manager.json"))
+USER_SETTINGS = Path(os.path.expanduser("~/.claude/settings.json"))
+
+
+# ---------------------------------------------------------------------------
+# small utilities
+# ---------------------------------------------------------------------------
+
+def die(msg: str, code: int = 1):
+    print(f"skillctl: error: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def info(msg: str):
+    print(msg)
+
+
+def warn(msg: str):
+    print(f"skillctl: warning: {msg}", file=sys.stderr)
+
+
+def expand(p: str) -> Path:
+    return Path(os.path.expanduser(p)).resolve()
+
+
+def read_json(path: Path, default=None):
+    if not path.exists():
+        return default
+    try:
+        return json.loads(path.read_text())
+    except json.JSONDecodeError as e:
+        die(f"{path} is not valid JSON: {e}")
+
+
+def write_json(path: Path, data, backup: bool = True):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if backup and path.exists():
+        shutil.copy2(path, path.with_suffix(path.suffix + ".bak"))
+    path.write_text(json.dumps(data, indent=2) + "\n")
+
+
+def deep_merge(base: dict, overlay: dict) -> dict:
+    """Merge overlay into base without clobbering sibling keys. Dicts merge; everything
+    else is replaced. Used so we never destroy existing settings content."""
+    out = dict(base)
+    for k, v in overlay.items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = deep_merge(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+def run(cmd: list[str], cwd: Path | None = None, check: bool = True, quiet: bool = False):
+    if not quiet:
+        info("  $ " + " ".join(cmd))
+    res = subprocess.run(cmd, cwd=str(cwd) if cwd else None,
+                         capture_output=True, text=True)
+    if check and res.returncode != 0:
+        die(f"command failed ({res.returncode}): {' '.join(cmd)}\n{res.stderr.strip()}")
+    return res
+
+
+def have(binary: str) -> bool:
+    return shutil.which(binary) is not None
+
+
+# ---------------------------------------------------------------------------
+# config + layout resolution (any layout: root-level or nested/monorepo)
+# ---------------------------------------------------------------------------
+
+def load_config(required: bool = True) -> dict:
+    cfg = read_json(CONFIG_PATH)
+    if cfg is None and required:
+        die("not configured yet. Run: skillctl init --repo <owner/name> --path <local-checkout>")
+    return cfg or {}
+
+
+def repo_path(cfg: dict) -> Path:
+    return expand(cfg["repoPath"])
+
+
+def plugins_base(cfg: dict) -> Path:
+    """Directory under the repo where plugins live. '' or '.' means the repo root."""
+    pd = (cfg.get("pluginsDir") or "").strip().strip("/")
+    return repo_path(cfg) / pd if pd not in ("", ".") else repo_path(cfg)
+
+
+def rel_source(cfg: dict, name: str) -> str:
+    """The marketplace.json `source` value for a plugin in this layout."""
+    pd = (cfg.get("pluginsDir") or "").strip().strip("/")
+    return f"./{name}" if pd in ("", ".") else f"./{pd}/{name}"
+
+
+def marketplace_json_path(cfg: dict) -> Path:
+    return repo_path(cfg) / ".claude-plugin" / "marketplace.json"
+
+
+def catalog(cfg: dict) -> list[dict]:
+    mkt = read_json(marketplace_json_path(cfg), {})
+    return mkt.get("plugins", []) or []
+
+
+def _entry(cfg: dict, name: str) -> dict | None:
+    for e in catalog(cfg):
+        if e.get("name") == name:
+            return e
+    return None
+
+
+def plugin_dir(cfg: dict, name: str) -> Path:
+    """Resolve a plugin's directory. Prefer the registered source; fall back to the
+    configured plugins dir (for a plugin about to be created)."""
+    e = _entry(cfg, name)
+    if e and e.get("source"):
+        src = e["source"]
+        rel = src[2:] if src.startswith("./") else src
+        return repo_path(cfg) / rel
+    return plugins_base(cfg) / name
+
+
+def plugin_manifest_path(cfg: dict, name: str) -> Path:
+    return plugin_dir(cfg, name) / ".claude-plugin" / "plugin.json"
+
+
+def _find_plugin_for_skill(cfg: dict, skill: str) -> str | None:
+    for e in catalog(cfg):
+        if (plugin_dir(cfg, e["name"]) / "skills" / skill).exists():
+            return e["name"]
+    return None
+
+
+# ---------------------------------------------------------------------------
+# project settings (settings.local.json by default; --shared -> settings.json)
+# ---------------------------------------------------------------------------
+
+def project_settings_path(shared: bool = False) -> Path:
+    name = "settings.json" if shared else "settings.local.json"
+    return Path.cwd() / ".claude" / name
+
+
+def settings_block(cfg: dict, plugins: list[str]) -> dict:
+    mkt = cfg["marketplace"]
+    return {
+        "extraKnownMarketplaces": {
+            mkt: {"source": {"source": "github", "repo": cfg["repoSlug"]}}
+        },
+        "enabledPlugins": {f"{p}@{mkt}": True for p in plugins},
+    }
+
+
+def apply_settings(path: Path, cfg: dict, enable: list[str] = (), disable: list[str] = ()):
+    current = read_json(path, {})
+    merged = deep_merge(current, settings_block(cfg, list(enable)))
+    mkt = cfg["marketplace"]
+    for p in disable:
+        merged.setdefault("enabledPlugins", {}).pop(f"{p}@{mkt}", None)
+    write_json(path, merged)
+    return path
+
+
+def project_enabled(cfg: dict) -> set[str]:
+    out: set[str] = set()
+    for p in (project_settings_path(False), project_settings_path(True)):
+        s = read_json(p, {})
+        for k, on in (s.get("enabledPlugins") or {}).items():
+            if on and k.endswith("@" + cfg["marketplace"]):
+                out.add(k.split("@")[0])
+    return out
+
+
+# ---------------------------------------------------------------------------
+# git (scoped adds, surfaced push failures)
+# ---------------------------------------------------------------------------
+
+def _commit_push(cfg: dict, message: str, paths: list[str]) -> bool:
+    """Stage only the given paths, commit, push. Returns False (loudly) if push fails so
+    the caller can warn the user the change never reached the remote."""
+    repo = repo_path(cfg)
+    run(["git", "-C", str(repo), "add", "-A", "--"] + [p for p in paths if p])
+    res = run(["git", "-C", str(repo), "commit", "-m", message], check=False)
+    if res.returncode != 0:
+        if "nothing to commit" in (res.stdout + res.stderr):
+            info("  (nothing to commit)")
+            return True
+        die(f"git commit failed:\n{(res.stdout + res.stderr).strip()}")
+    push = run(["git", "-C", str(repo), "push"], check=False)
+    if push.returncode != 0:
+        print(f"skillctl: git push failed:\n{push.stderr.strip()}", file=sys.stderr)
+        return False
+    return True
+
+
+# ---------------------------------------------------------------------------
+# versioning (marketplace.json only)
+# ---------------------------------------------------------------------------
+
+def _bump_version(cfg: dict, plugin: str) -> str:
+    mpath = marketplace_json_path(cfg)
+    mkt = read_json(mpath, {})
+    for e in mkt.get("plugins", []):
+        if e.get("name") == plugin:
+            parts = ((e.get("version") or "0.0.0").split(".") + ["0", "0", "0"])[:3]
+            try:
+                parts[2] = str(int(parts[2]) + 1)
+            except ValueError:
+                parts = ["0", "1", "0"]
+            e["version"] = ".".join(parts)
+            write_json(mpath, mkt, backup=False)
+            return e["version"]
+    die(f"plugin '{plugin}' not found in marketplace.json")
+
+
+def cmd_version_bump(args):
+    cfg = load_config()
+    info(f"Bumped {args.plugin} -> v{_bump_version(cfg, args.plugin)}.")
+
+
+# ---------------------------------------------------------------------------
+# init
+# ---------------------------------------------------------------------------
+
+def _detect_slug(path: Path) -> str | None:
+    r = run(["git", "-C", str(path), "remote", "get-url", "origin"], check=False, quiet=True)
+    m = re.search(r"[:/]([^/:]+)/([^/]+?)(?:\.git)?$", r.stdout.strip())
+    return f"{m.group(1)}/{m.group(2)}" if m else None
+
+
+def _detect_plugins_dir(mkt: dict) -> str:
+    for e in mkt.get("plugins", []):
+        src = e.get("source", "")
+        rel = src[2:] if src.startswith("./") else src
+        return os.path.dirname(rel) or "."
+    return "."
+
+
+def cmd_init(args):
+    if not have("git"):
+        die("git not found on PATH")
+    path = expand(args.path or ".")
+    if not (path / ".git").exists():
+        if args.repo and "/" in args.repo:
+            url = f"https://github.com/{args.repo}.git"
+            info(f"Cloning {url} -> {path}")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            run(["git", "clone", url, str(path)])
+        else:
+            die(f"{path} is not a git checkout. Pass --path <your local clone>, "
+                f"or --repo <owner/name> to clone one there.")
+
+    slug = args.repo or _detect_slug(path)
+    if not slug or "/" not in slug:
+        die("could not determine the repo slug; pass --repo <owner/name>")
+
+    mkt = read_json(path / ".claude-plugin" / "marketplace.json", {})
+    marketplace = args.marketplace or mkt.get("name") or slug.split("/")[-1]
+    plugins_dir = args.plugins_dir if args.plugins_dir is not None else _detect_plugins_dir(mkt)
+    user_plugins = [p.strip() for p in (args.user_plugins or "").split(",") if p.strip()]
+
+    cfg = {
+        "repoPath": str(path),
+        "pluginsDir": plugins_dir,
+        "marketplace": marketplace,
+        "repoSlug": slug,
+        "userPlugins": user_plugins,
+    }
+    write_json(CONFIG_PATH, cfg)
+    info(f"Wrote config -> {CONFIG_PATH}")
+    info(f"  repo={path}  marketplace={marketplace}  plugins in '{plugins_dir}'")
+
+    if user_plugins:
+        apply_settings(USER_SETTINGS, cfg, enable=user_plugins)
+        info(f"Enabled {user_plugins} at user scope in {USER_SETTINGS}")
+
+    if have("claude"):
+        run(["claude", "plugin", "marketplace", "add", slug], check=False)
+    else:
+        info(f"note: 'claude' CLI not found — register manually: /plugin marketplace add {slug}")
+
+    info("\nInit complete.")
+    info(f"  • Turn ON auto-update for '{marketplace}' if you want new sessions to pick up "
+         f"changes automatically (/plugin -> Marketplaces).")
+    info("  • Then /reload-plugins (or start a new session).")
+
+
+# ---------------------------------------------------------------------------
+# configure / enable / disable
+# ---------------------------------------------------------------------------
+
+def cmd_configure(args):
+    cfg = load_config()
+    available = [e["name"] for e in catalog(cfg)]
+    if not args.plugins:
+        enabled = project_enabled(cfg)
+        info("Catalog (pass --plugins to choose what this project enables):\n")
+        for e in catalog(cfg):
+            mark = "[on] " if e["name"] in enabled else "[  ] "
+            info(f"  {mark}{e['name']}  —  {e.get('description', '')}")
+        info("\nThen: skillctl configure --plugins a,b,c")
+        return
+    selected = [p.strip() for p in args.plugins.split(",") if p.strip()]
+    unknown = [p for p in selected if available and p not in available]
+    if unknown:
+        warn(f"not in the catalog: {', '.join(unknown)} (known: {', '.join(available) or 'none'})")
+    path = apply_settings(project_settings_path(args.shared), cfg, enable=selected)
+    info(f"Enabled {selected} in {path}")
+    info("Run /reload-plugins (or start a new session) to load them.")
+
+
+def cmd_enable(args):
+    cfg = load_config()
+    path = apply_settings(project_settings_path(args.shared), cfg, enable=args.plugins)
+    info(f"Enabled {args.plugins} in {path}. Run /reload-plugins.")
+
+
+def cmd_disable(args):
+    cfg = load_config()
+    path = apply_settings(project_settings_path(args.shared), cfg, disable=args.plugins)
+    info(f"Disabled {args.plugins} in {path}. Run /reload-plugins.")
+
+
+# ---------------------------------------------------------------------------
+# push (promote new OR sync existing, auto-detected) / pull
+# ---------------------------------------------------------------------------
+
+def _skill_src_in_project(name: str) -> Path:
+    p = Path.cwd() / ".claude" / "skills" / name
+    if not p.exists():
+        die(f"no skill at {p}. Is the name right, and are you in the project root?")
+    if not (p / "SKILL.md").exists():
+        die(f"{p} has no SKILL.md")
+    return p
+
+
+def cmd_push(args):
+    cfg = load_config()
+    src = _skill_src_in_project(args.skill)
+    existing = _find_plugin_for_skill(cfg, args.skill)
+
+    if existing:
+        if args.plugin and args.plugin != existing:
+            die(f"'{args.skill}' already lives in plugin '{existing}'. Re-run without "
+                f"--plugin to update it there, or remove it first.")
+        plugin, mode = existing, "update"
+    else:
+        if not args.plugin:
+            die(f"'{args.skill}' isn't central yet. Name the target plugin: "
+                f"skillctl push {args.skill} --plugin <name>")
+        plugin, mode = args.plugin, "new"
+
+    if not _entry(cfg, plugin):
+        if mode != "new":
+            die(f"plugin '{plugin}' not in marketplace.json")
+        info(f"Plugin '{plugin}' doesn't exist yet — creating and registering it.")
+        _create_plugin(cfg, plugin, None)
+
+    dst = plugin_dir(cfg, plugin) / "skills" / args.skill
+
+    if mode == "update":
+        if have("diff"):
+            d = run(["diff", "-ru", str(dst), str(src)], check=False, quiet=True)
+            if not d.stdout.strip():
+                info("No differences — central copy already matches.")
+                if not (args.force or args.dry_run):
+                    return
+            else:
+                info("Changes to push up:\n" + d.stdout)
+        if args.dry_run:
+            info("(dry run — nothing written)")
+            return
+        shutil.rmtree(dst)
+        shutil.copytree(src, dst)
+    else:
+        if args.dry_run:
+            info(f"(dry run) would create {dst}")
+            return
+        if dst.exists():
+            if not args.force:
+                die(f"{dst} already exists. Pass --force to overwrite.")
+            shutil.rmtree(dst)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(src, dst)
+
+    newver = _bump_version(cfg, plugin)
+    verb = "Update" if mode == "update" else "Add"
+    ok = _commit_push(cfg, args.message or f"{verb} skill '{args.skill}' in {plugin} (v{newver})",
+                      [str(plugin_dir(cfg, plugin)), str(marketplace_json_path(cfg))])
+    if not args.no_refresh:
+        _refresh(cfg)
+
+    info(f"\n{'Updated' if mode == 'update' else 'Published'} '{args.skill}' in '{plugin}' "
+         f"(now v{newver}). Invoked as /{plugin}:{args.skill}.")
+    if not ok:
+        info("WARNING: git push did NOT succeed (see error above). The change is committed "
+             "locally but is NOT on the remote yet.")
+    info("Run /reload-plugins to use it in this session.")
+    if plugin not in project_enabled(cfg):
+        info(f"This project doesn't enable '{plugin}' yet: skillctl enable {plugin}")
+
+
+def cmd_pull(args):
+    cfg = load_config()
+    plugin = args.plugin or _find_plugin_for_skill(cfg, args.skill)
+    if not plugin:
+        die(f"'{args.skill}' not found in the central repo.")
+    src = plugin_dir(cfg, plugin) / "skills" / args.skill
+    dst = Path.cwd() / ".claude" / "skills" / args.skill
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if dst.exists():
+        if not args.force:
+            die(f"{dst} already exists. Pass --force to overwrite.")
+        shutil.rmtree(dst)
+    shutil.copytree(src, dst)
+    info(f"Pulled '{args.skill}' from '{plugin}' -> {dst} for local iteration.")
+    info(f"Edit it, then push changes back with: skillctl push {args.skill}")
+
+
+# ---------------------------------------------------------------------------
+# new-plugin / remove
+# ---------------------------------------------------------------------------
+
+def _create_plugin(cfg: dict, name: str, desc: str | None) -> Path:
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", name):
+        die("plugin name must be lowercase letters, digits, and hyphens")
+    pdir = plugins_base(cfg) / name
+    if pdir.exists():
+        die(f"{pdir} already exists")
+    (pdir / ".claude-plugin").mkdir(parents=True)
+    (pdir / "skills").mkdir(parents=True)
+    # version is intentionally NOT written here — it lives in marketplace.json
+    write_json(pdir / ".claude-plugin" / "plugin.json",
+               {"name": name, "description": desc or f"{name} skills"}, backup=False)
+    (pdir / "skills" / ".gitkeep").write_text("")
+
+    mpath = marketplace_json_path(cfg)
+    mkt = read_json(mpath, {"name": cfg["marketplace"], "owner": {"name": ""}, "plugins": []})
+    mkt.setdefault("plugins", [])
+    if any(p.get("name") == name for p in mkt["plugins"]):
+        die(f"'{name}' already in marketplace.json")
+    mkt["plugins"].append({
+        "name": name,
+        "source": rel_source(cfg, name),
+        "description": desc or f"{name} skills",
+        "version": "0.1.0",
+    })
+    write_json(mpath, mkt, backup=False)
+    return pdir
+
+
+def cmd_new_plugin(args):
+    cfg = load_config()
+    pdir = _create_plugin(cfg, args.name, args.description)
+    ok = _commit_push(cfg, args.message or f"Add plugin '{args.name}'",
+                      [str(pdir), str(marketplace_json_path(cfg))])
+    if not args.no_refresh:
+        _refresh(cfg)
+    info(f"Created and registered plugin '{args.name}'.")
+    info(f"Author skills for it with the native skill-creator skill, then: "
+         f"skillctl push <skill> --plugin {args.name}")
+    if not ok:
+        info("WARNING: push failed — committed locally only.")
+
+
+def cmd_remove_skill(args):
+    cfg = load_config()
+    plugin = args.plugin or _find_plugin_for_skill(cfg, args.skill)
+    if not plugin:
+        die(f"'{args.skill}' not found in any central plugin.")
+    dst = plugin_dir(cfg, plugin) / "skills" / args.skill
+    if not dst.exists():
+        die(f"{dst} does not exist")
+    if not args.force:
+        die(f"This deletes {dst} and pushes the removal. Re-run with --force to confirm.")
+    shutil.rmtree(dst)
+    newver = _bump_version(cfg, plugin)
+    ok = _commit_push(cfg, args.message or f"Remove skill '{args.skill}' from {plugin} (v{newver})",
+                      [str(plugin_dir(cfg, plugin)), str(marketplace_json_path(cfg))])
+    if not args.no_refresh:
+        _refresh(cfg)
+    info(f"Removed '{args.skill}' from '{plugin}' (now v{newver}).")
+    if not ok:
+        info("WARNING: push failed — committed locally only.")
+
+
+def cmd_remove_plugin(args):
+    cfg = load_config()
+    name = args.plugin
+    pdir = plugin_dir(cfg, name)
+    if not _entry(cfg, name) and not pdir.exists():
+        die(f"plugin '{name}' not found")
+    if not args.force:
+        die(f"This deletes {pdir}, unregisters it, and pushes. Re-run with --force to confirm.")
+    if pdir.exists():
+        shutil.rmtree(pdir)
+    mpath = marketplace_json_path(cfg)
+    mkt = read_json(mpath, {})
+    mkt["plugins"] = [p for p in mkt.get("plugins", []) if p.get("name") != name]
+    write_json(mpath, mkt, backup=False)
+
+    us = read_json(USER_SETTINGS, {})
+    key = f"{name}@{cfg['marketplace']}"
+    if (us.get("enabledPlugins") or {}).get(key) is not None:
+        us["enabledPlugins"].pop(key, None)
+        write_json(USER_SETTINGS, us)
+        info(f"Removed {key} from user settings.")
+
+    ok = _commit_push(cfg, args.message or f"Remove plugin '{name}'", [str(pdir), str(mpath)])
+    if not args.no_refresh:
+        _refresh(cfg)
+    info(f"Removed plugin '{name}'.")
+    info("Note: project-level enablement in other repos must be cleaned up manually.")
+    if not ok:
+        info("WARNING: push failed — committed locally only.")
+
+
+# ---------------------------------------------------------------------------
+# status (catalog + enablement + health)
+# ---------------------------------------------------------------------------
+
+def cmd_status(args):
+    cfg = load_config(required=False)
+    if not cfg:
+        info("skill-manager is not configured.")
+        info("Run /skill-manager:init  (skillctl init --repo <owner/name> --path <checkout>).")
+        return
+
+    enabled = project_enabled(cfg)
+    info(f"Marketplace: {cfg['marketplace']}  ({cfg['repoSlug']})")
+    info(f"Repo:        {cfg['repoPath']}  (plugins in '{cfg.get('pluginsDir') or '.'}')")
+    info(f"Project:     {Path.cwd()}\n")
+
+    cat = catalog(cfg)
+    for e in cat:
+        name = e["name"]
+        mark = "[on] " if name in enabled else "[  ] "
+        sdir = plugin_dir(cfg, name) / "skills"
+        skills = sorted(s.name for s in sdir.glob("*") if s.is_dir()) if sdir.exists() else []
+        info(f"{mark}{name}  v{e.get('version', '?')}  —  {e.get('description', '')}")
+        for s in skills:
+            info(f"        /{name}:{s}")
+    if not cat:
+        info("(no plugins in the catalog yet — create one with skillctl new-plugin <name>)")
+
+    info("\nHealth:")
+    _health(cfg)
+
+
+def _health(cfg: dict):
+    def check(label, condition, hint=""):
+        status = "ok " if condition else "FAIL"
+        line = f"  [{status}] {label}"
+        if not condition and hint:
+            line += f"\n         -> {hint}"
+        info(line)
+
+    repo = repo_path(cfg)
+    check(f"checkout exists ({repo})", (repo / ".git").exists(),
+          f"clone it or fix repoPath in {CONFIG_PATH}")
+    check("marketplace.json present", marketplace_json_path(cfg).exists())
+    check("'claude' CLI on PATH", have("claude"),
+          "install Claude Code so headless plugin commands work")
+    if have("claude"):
+        ml = run(["claude", "plugin", "marketplace", "list"], check=False, quiet=True)
+        check(f"marketplace '{cfg['marketplace']}' registered",
+              cfg["marketplace"] in (ml.stdout or ""),
+              f"claude plugin marketplace add {cfg['repoSlug']}")
+    us = read_json(USER_SETTINGS, {})
+    for p in cfg.get("userPlugins", []):
+        key = f"{p}@{cfg['marketplace']}"
+        check(f"user-enabled: {key}",
+              (us.get("enabledPlugins") or {}).get(key) is True,
+              f"skillctl enable {p}  (or re-run init)")
+
+
+# ---------------------------------------------------------------------------
+# validate (CI-friendly) / refresh
+# ---------------------------------------------------------------------------
+
+def _frontmatter(text: str) -> dict | None:
+    """Minimal YAML frontmatter parser (key: value, top level only). Stdlib only."""
+    if not text.startswith("---"):
+        return None
+    end = text.find("\n---", 3)
+    if end == -1:
+        return None
+    out = {}
+    for line in text[3:end].strip("\n").splitlines():
+        if not line.strip() or line.lstrip().startswith("#") or ":" not in line:
+            continue
+        k, v = line.split(":", 1)
+        out[k.strip()] = v.strip().strip('"').strip("'")
+    return out
+
+
+def cmd_validate(args):
+    cfg = load_config(required=False)
+    repo = repo_path(cfg) if cfg else Path.cwd()
+    mpath = repo / ".claude-plugin" / "marketplace.json"
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not mpath.exists():
+        die(f"no marketplace.json at {mpath}")
+    declared = read_json(mpath, {}).get("plugins", [])
+    if not declared:
+        warnings.append("marketplace.json declares no plugins")
+
+    for entry in declared:
+        name = entry.get("name")
+        src = entry.get("source", f"./{name}")
+        pdir = repo / (src[2:] if src.startswith("./") else src)
+        if not entry.get("version"):
+            warnings.append(f"plugin '{name}': no version in marketplace.json entry")
+        if not pdir.exists():
+            errors.append(f"plugin '{name}': source dir {pdir} does not exist")
+            continue
+        man = pdir / ".claude-plugin" / "plugin.json"
+        if not man.exists():
+            errors.append(f"plugin '{name}': missing {man}")
+        else:
+            m = read_json(man, {})
+            if m.get("name") != name:
+                warnings.append(f"plugin '{name}': plugin.json name is '{m.get('name')}'")
+            if "version" in m:
+                warnings.append(f"plugin '{name}': version should live in marketplace.json, "
+                                f"not plugin.json")
+        sdir = pdir / "skills"
+        seen: set[str] = set()
+        for skill in (sorted(sdir.glob("*")) if sdir.exists() else []):
+            if not skill.is_dir():
+                continue
+            smd = skill / "SKILL.md"
+            if not smd.exists():
+                errors.append(f"{skill}: missing SKILL.md")
+                continue
+            fm = _frontmatter(smd.read_text())
+            if fm is None:
+                errors.append(f"{smd}: missing or malformed YAML frontmatter")
+                continue
+            if "description" not in fm:
+                errors.append(f"{smd}: no 'description' in frontmatter")
+            if len(fm.get("description", "")) > 1536:
+                warnings.append(f"{smd}: description is {len(fm['description'])} chars "
+                                f"(listing cap is 1536)")
+            sk = fm.get("name", skill.name)
+            if sk in seen:
+                errors.append(f"plugin '{name}': duplicate skill name '{sk}'")
+            seen.add(sk)
+
+    for w in warnings:
+        info(f"  warn: {w}")
+    if errors:
+        for e in errors:
+            print(f"  FAIL: {e}", file=sys.stderr)
+        die(f"{len(errors)} error(s), {len(warnings)} warning(s)")
+    info(f"OK — {len(declared)} plugin(s) valid, {len(warnings)} warning(s)")
+
+
+def cmd_refresh(args):
+    _refresh(load_config())
+
+
+def _refresh(cfg: dict):
+    """Minimal: ask Claude Code to update the marketplace, then tell the user to reload.
+    No git force-fast-forward or cache surgery — we rely on the native updater."""
+    if have("claude"):
+        run(["claude", "plugin", "marketplace", "update", cfg["marketplace"]], check=False)
+    info("Updated the marketplace. Run /reload-plugins (or start a new session) to load "
+         "the latest.")
+
+
+# ---------------------------------------------------------------------------
+# arg parsing
+# ---------------------------------------------------------------------------
+
+def _add_shared(p):
+    p.add_argument("--shared", action="store_true",
+                   help="write to .claude/settings.json (committed) instead of settings.local.json")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="skillctl", description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    i = sub.add_parser("init", help="one-time setup against your local checkout")
+    i.add_argument("--repo", help="owner/name of the marketplace repo (auto-detected from origin if omitted)")
+    i.add_argument("--path", help="path to your local checkout (default: cwd; clones here if --repo given and missing)")
+    i.add_argument("--marketplace", help="marketplace name (default: marketplace.json name, else repo name)")
+    i.add_argument("--plugins-dir", help="dir under the repo where plugins live (default: auto-detect; '.' for root)")
+    i.add_argument("--user-plugins", help="comma list to enable for all projects (default none)")
+    i.set_defaults(func=cmd_init)
+
+    c = sub.add_parser("configure", help="choose which plugins this project uses")
+    c.add_argument("--plugins", help="comma list to enable; omit to print the catalog")
+    _add_shared(c)
+    c.set_defaults(func=cmd_configure)
+
+    e = sub.add_parser("enable", help="enable plugin(s) in this project")
+    e.add_argument("plugins", nargs="+")
+    _add_shared(e)
+    e.set_defaults(func=cmd_enable)
+
+    d = sub.add_parser("disable", help="disable plugin(s) in this project")
+    d.add_argument("plugins", nargs="+")
+    _add_shared(d)
+    d.set_defaults(func=cmd_disable)
+
+    pu = sub.add_parser("push", help="publish a project skill central, or sync edits up")
+    pu.add_argument("skill")
+    pu.add_argument("--plugin", help="target plugin (required only for a brand-new skill)")
+    pu.add_argument("--message", "-m")
+    pu.add_argument("--force", action="store_true")
+    pu.add_argument("--dry-run", action="store_true")
+    pu.add_argument("--no-refresh", action="store_true")
+    pu.set_defaults(func=cmd_push)
+
+    pl = sub.add_parser("pull", help="copy a central skill down into this project")
+    pl.add_argument("skill")
+    pl.add_argument("--plugin")
+    pl.add_argument("--force", action="store_true")
+    pl.set_defaults(func=cmd_pull)
+
+    npl = sub.add_parser("new-plugin", help="scaffold + register a new plugin")
+    npl.add_argument("name")
+    npl.add_argument("--description")
+    npl.add_argument("--message", "-m")
+    npl.add_argument("--no-refresh", action="store_true")
+    npl.set_defaults(func=cmd_new_plugin)
+
+    rs = sub.add_parser("remove-skill", help="delete a skill from a central plugin")
+    rs.add_argument("skill")
+    rs.add_argument("--plugin", help="override auto-detected plugin")
+    rs.add_argument("--message", "-m")
+    rs.add_argument("--force", action="store_true")
+    rs.add_argument("--no-refresh", action="store_true")
+    rs.set_defaults(func=cmd_remove_skill)
+
+    rp = sub.add_parser("remove-plugin", help="delete a plugin and unregister it")
+    rp.add_argument("plugin")
+    rp.add_argument("--message", "-m")
+    rp.add_argument("--force", action="store_true")
+    rp.add_argument("--no-refresh", action="store_true")
+    rp.set_defaults(func=cmd_remove_plugin)
+
+    sub.add_parser("status", help="catalog + project enablement + health").set_defaults(func=cmd_status)
+    sub.add_parser("validate", help="lint the repo (CI-friendly)").set_defaults(func=cmd_validate)
+    sub.add_parser("refresh", help="update the marketplace so changes are picked up").set_defaults(func=cmd_refresh)
+
+    vb = sub.add_parser("version-bump", help="patch-bump a plugin in marketplace.json")
+    vb.add_argument("plugin")
+    vb.set_defaults(func=cmd_version_bump)
+
+    return p
+
+
+def main():
+    args = build_parser().parse_args()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

@@ -21,6 +21,12 @@
       "source": "./claude-code/plugins/ralph",
       "description": "Ralph Loop — autonomous agentic coding workflow with sandbox isolation, scoped memory, and self-managing task iteration",
       "version": "0.1.8"
+    },
+    {
+      "name": "skill-manager",
+      "source": "./claude-code/plugins/skill-manager",
+      "description": "Manage Claude Code skills from inside any project: configure which plugins a project uses, push local skills up to a central marketplace, keep them in sync, and remove them. Adapts to any repo layout; authoring is delegated to the native skill-creator skill.",
+      "version": "0.1.0"
     }
   ]
 }
