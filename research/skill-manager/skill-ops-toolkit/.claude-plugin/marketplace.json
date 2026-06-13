@@ -1,0 +1,8 @@
+{
+  "name": "z-skills",
+  "owner": { "name": "Your Name" },
+  "plugins": [
+    { "name": "core",      "source": "./core",      "description": "Universal skills enabled in every project." },
+    { "name": "skill-ops", "source": "./skill-ops", "description": "Tooling to manage this marketplace from inside any project." }
+  ]
+}

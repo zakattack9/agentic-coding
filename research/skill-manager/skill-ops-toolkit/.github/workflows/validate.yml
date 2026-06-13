@@ -1,0 +1,20 @@
+name: validate-skills
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Lint marketplace, plugins, and SKILL.md files
+        # validate runs in the repo with no config (CI mode): checks every plugin in
+        # marketplace.json exists, each plugin.json is valid, and every SKILL.md has
+        # required frontmatter and a description under the 1536-char listing cap.
+        run: python3 bin/skillctl validate

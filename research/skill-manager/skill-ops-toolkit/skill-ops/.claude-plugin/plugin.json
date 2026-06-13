@@ -1,0 +1,5 @@
+{
+  "name": "skill-ops",
+  "version": "0.1.0",
+  "description": "Self-hosting toolkit for managing this skills marketplace: setup-project, promote-skill, sync-skill, new-skill, new-plugin, list-skills, skills-doctor."
+}
