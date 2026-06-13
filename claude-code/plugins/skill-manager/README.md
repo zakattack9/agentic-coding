@@ -9,14 +9,20 @@ publishing skills that become available across all your projects.
 
 ## Install (anyone, once per machine)
 
-1. **Add the marketplace that hosts this plugin**, then install it:
+1. **Add the marketplace that hosts this plugin** and accept the trust prompt
+   (third-party marketplaces must be trusted before they can be used):
    ```
    /plugin marketplace add zakattack9/agentic-coding
-   /plugin install skill-manager@zaksak
    ```
-   (Installing enables it at user scope, so `/skill-manager:*` works in every project.)
 
-2. **Point it at your own skills repo** — one time:
+2. **Install the plugin, then reload to activate it:**
+   ```
+   /plugin install skill-manager@zaksak
+   /reload-plugins
+   ```
+   Installing enables it for you, so `/skill-manager:*` becomes available in your projects.
+
+3. **Point it at your own skills repo** — one time:
    ```
    /skill-manager:init
    ```
@@ -30,8 +36,8 @@ publishing skills that become available across all your projects.
      init clones it, turns it into a valid marketplace (writes + pushes `marketplace.json`),
      and registers it with Claude Code.
 
-3. Turn ON auto-update for your marketplace (`/plugin` → Marketplaces; third-party
-   marketplaces default off) so new sessions pick up changes automatically.
+4. (Optional) Turn ON auto-update for your marketplace via `/plugin` → Marketplaces so new
+   sessions pick up changes automatically; otherwise refresh on demand with `/reload-plugins`.
 
 That's it — you can now manage skills from any project.
 
