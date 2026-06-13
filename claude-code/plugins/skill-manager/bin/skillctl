@@ -32,6 +32,7 @@ Subcommands:
 from __future__ import annotations
 
 import argparse
+import filecmp
 import json
 import os
 import re
@@ -237,6 +238,26 @@ def _commit_push(cfg: dict, message: str, paths: list[str]) -> bool:
     return True
 
 
+def _unpushed_count(cfg: dict):
+    """How many local commits aren't on origin/<branch> yet (e.g. a previous run committed
+    but the push failed). Returns an int, or None if it can't be determined (no upstream ref
+    yet). Used to surface stuck pushes without auto-pushing — we never silently push commits
+    that may include the user's own unrelated work."""
+    repo = repo_path(cfg)
+    branch = run(["git", "-C", str(repo), "rev-parse", "--abbrev-ref", "HEAD"],
+                 check=False, quiet=True).stdout.strip()
+    if not branch or branch == "HEAD":
+        return None
+    r = run(["git", "-C", str(repo), "rev-list", "--count", f"origin/{branch}..HEAD"],
+            check=False, quiet=True)
+    if r.returncode != 0:
+        return None
+    try:
+        return int(r.stdout.strip())
+    except ValueError:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # versioning (marketplace.json only)
 # ---------------------------------------------------------------------------
@@ -405,6 +426,19 @@ def _skill_src_in_project(name: str) -> Path:
     return p
 
 
+def _dirs_equal(a: Path, b: Path) -> bool:
+    """True if two skill directories have identical files and contents. Decided in-process
+    (filecmp), so push's "no changes -> no-op" idempotency never depends on an external
+    `diff` binary being installed."""
+    if not a.exists() or not b.exists():
+        return False
+    af = {p.relative_to(a) for p in a.rglob("*") if p.is_file()}
+    bf = {p.relative_to(b) for p in b.rglob("*") if p.is_file()}
+    if af != bf:
+        return False
+    return all(filecmp.cmp(a / r, b / r, shallow=False) for r in af)
+
+
 def cmd_push(args):
     cfg = load_config()
     src = _skill_src_in_project(args.skill)
@@ -439,13 +473,19 @@ def cmd_push(args):
     dst = plugin_dir(cfg, plugin) / "skills" / args.skill
 
     if mode == "update":
-        if have("diff"):
+        # Equality is decided in-process (not via the diff binary) so a re-run on an
+        # unchanged skill is always a clean no-op — no version churn, no empty commit.
+        same = _dirs_equal(dst, src)
+        if same and not args.force:
+            info("No differences — central copy already matches.")
+            n = _unpushed_count(cfg)
+            if n:
+                info(f"Note: {n} local commit(s) are not on the remote yet (a previous push "
+                     f"may have failed). Flush them with: git -C {repo_path(cfg)} push")
+            return
+        if have("diff"):  # for the user's benefit only; the decision above is authoritative
             d = run(["diff", "-ru", str(dst), str(src)], check=False, quiet=True)
-            if not d.stdout.strip():
-                info("No differences — central copy already matches.")
-                if not (args.force or args.dry_run):
-                    return
-            else:
+            if d.stdout.strip():
                 info("Changes to push up:\n" + d.stdout)
         if args.dry_run:
             info("(dry run — nothing written)")
@@ -642,6 +682,11 @@ def _health(cfg: dict):
         rem = run(["git", "-C", str(repo), "remote"], check=False, quiet=True).stdout.split()
         check("origin remote configured", "origin" in rem,
               "git remote add origin <url>  (needed to push skills)")
+        if "origin" in rem:
+            n = _unpushed_count(cfg)
+            if n is not None:
+                check("local in sync with origin", n == 0,
+                      f"{n} commit(s) not pushed yet — run: git -C {repo} push")
     check("marketplace.json present", marketplace_json_path(cfg).exists())
     check("'claude' CLI on PATH", have("claude"),
           "install Claude Code so headless plugin commands work")
