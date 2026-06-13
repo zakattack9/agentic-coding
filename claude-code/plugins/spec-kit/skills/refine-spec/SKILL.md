@@ -77,12 +77,12 @@ Run one more agent (or do it yourself) as a **skeptic lens**: read the whole spe
 
 Dedupe the findings and bucket each one:
 
-| Bucket | What it is | Action |
-|---|---|---|
-| **Inaccuracy** | Contradicts the codebase | Fix to the verified value |
-| **Open question** | Cannot be verified; needs a human decision | Queue for **Resolve** |
-| **Over-engineering** | Speculative, gold-plated, or beyond the stated goal | Propose cutting |
-| **Bloat** | Text not needed to *build* it: historical/background prose, rationale or "why / previously / originally", problem statements, changelog, out-of-scope narrative, restated field names, duplication. **Decision, config, and field tables are pertinent — keep them.** | Cut |
+| Bucket               | What it is                                                                                                                                                                                                                                                            | Action                    |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| **Inaccuracy**       | Contradicts the codebase                                                                                                                                                                                                                                              | Fix to the verified value |
+| **Open question**    | Cannot be verified; needs a human decision                                                                                                                                                                                                                            | Queue for **Resolve**     |
+| **Over-engineering** | Speculative, gold-plated, or beyond the stated goal                                                                                                                                                                                                                   | Propose cutting           |
+| **Bloat**            | Text not needed to *build* it: historical/background prose, rationale or "why / previously / originally", problem statements, changelog, out-of-scope narrative, restated field names, duplication. **Decision, config, and field tables are pertinent — keep them.** | Cut                       |
 
 ### 3. Resolve — ask the user
 
@@ -125,4 +125,3 @@ When the gate passes, give a short summary: what you corrected, what you cut, an
 
 - **Never invent facts** to fill a gap. Verify it, or ask.
 - **Refine, don't redesign.** If you believe the design itself is wrong, raise it as a question — don't unilaterally rewrite the approach.
-- Respect `.gitignore` — never read or edit ignored files (secrets, env, build artifacts) while verifying claims.
