@@ -8,19 +8,20 @@ argument-hint: "[--repo owner/name] [--path <checkout>]"
 
 # Initialize skill-manager (one-time)
 
-Wire skill-manager to the marketplace repo you author skills in. It operates on your existing local checkout — no second clone — and adapts to any layout (plugins at the repo root, or nested in a monorepo).
+Wire skill-manager to the GitHub repo where the user keeps their skills. It operates on their existing local checkout — no second clone — adapts to any layout (plugins at the repo root, or nested in a monorepo), and on a brand-new repo it bootstraps the marketplace for them.
 
 ## Steps
 
-1. Determine the marketplace repo and its local checkout:
-   - If the user already has the repo cloned (common), use that path as `--path`. The repo slug is auto-detected from its `origin` remote.
-   - If they don't, ask for the `owner/name` and a path to clone into.
+1. Figure out which repo and checkout to use:
+   - **Already has a skills/marketplace repo** (common, including a monorepo): use that local checkout path as `--path`. The repo slug is auto-detected from its `origin` remote; the layout is inferred from any existing `marketplace.json`.
+   - **Starting from scratch**: they need an empty GitHub repo first. If `gh` is available, offer to create one (`gh repo create <owner>/<name> --private`). Then init with `--repo <owner/name>` (and a `--path` to clone into) — init clones it, writes + pushes a `marketplace.json`, and registers it.
 2. Run:
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" init --path <checkout> [--repo owner/name]
    ```
-   - Add `--plugins-dir <dir>` only if auto-detection is wrong (use `.` for plugins at the repo root). For a monorepo it's inferred from existing entries in `marketplace.json`.
-   - Add `--user-plugins a,b` to enable plugins for every project at user scope.
-3. Tell the user the one remaining manual step: turn ON auto-update for the marketplace (third-party marketplaces default off) via `/plugin` → Marketplaces, then `/reload-plugins`.
+   - Add `--plugins-dir <dir>` only if auto-detection is wrong (use `.` for plugins at the repo root; for a monorepo it's inferred from existing entries).
+   - Add `--user-plugins a,b` to enable specific plugins for every project at user scope.
+3. Report what init did (config written, marketplace created/registered) and surface any push-failure WARNING — the repo must have a reachable `origin` for the marketplace to work from other machines.
+4. Tell the user the one remaining manual step: turn ON auto-update for the marketplace (third-party marketplaces default off) via `/plugin` → Marketplaces, then `/reload-plugins`.
 
-After init, `/skill-manager:status`, `:configure`, `:push`, and `:remove` work in every project.
+After init, `/skill-manager:status`, `:configure`, `:push`, and `:remove` work in every project. To create the first skill, use the native **skill-creator** skill, then `/skill-manager:push` it.

@@ -226,7 +226,11 @@ def _commit_push(cfg: dict, message: str, paths: list[str]) -> bool:
             info("  (nothing to commit)")
             return True
         die(f"git commit failed:\n{(res.stdout + res.stderr).strip()}")
-    push = run(["git", "-C", str(repo), "push"], check=False)
+    # Push the current branch and set upstream — works on a fresh clone with no
+    # tracking branch yet (the cold-start case) as well as on an established one.
+    branch = run(["git", "-C", str(repo), "rev-parse", "--abbrev-ref", "HEAD"],
+                 check=False, quiet=True).stdout.strip() or "HEAD"
+    push = run(["git", "-C", str(repo), "push", "-u", "origin", branch], check=False)
     if push.returncode != 0:
         print(f"skillctl: git push failed:\n{push.stderr.strip()}", file=sys.stderr)
         return False
@@ -276,6 +280,19 @@ def _detect_plugins_dir(mkt: dict) -> str:
     return "."
 
 
+def _ensure_registered(cfg: dict):
+    """Register the marketplace with Claude Code if it isn't already (idempotent)."""
+    if not have("claude"):
+        info(f"note: 'claude' CLI not found — register manually: "
+             f"/plugin marketplace add {cfg['repoSlug']}")
+        return
+    ml = run(["claude", "plugin", "marketplace", "list"], check=False, quiet=True)
+    if cfg["marketplace"] in (ml.stdout or ""):
+        return
+    info(f"Registering marketplace '{cfg['marketplace']}' with Claude Code...")
+    run(["claude", "plugin", "marketplace", "add", cfg["repoSlug"]], check=False)
+
+
 def cmd_init(args):
     if not have("git"):
         die("git not found on PATH")
@@ -285,7 +302,11 @@ def cmd_init(args):
             url = f"https://github.com/{args.repo}.git"
             info(f"Cloning {url} -> {path}")
             path.parent.mkdir(parents=True, exist_ok=True)
-            run(["git", "clone", url, str(path)])
+            r = run(["git", "clone", url, str(path)], check=False)
+            if r.returncode != 0:
+                die(f"clone failed:\n{r.stderr.strip()}\n"
+                    f"If the repo doesn't exist yet, create it first "
+                    f"(e.g. `gh repo create {args.repo} --private`), then re-run init.")
         else:
             die(f"{path} is not a git checkout. Pass --path <your local clone>, "
                 f"or --repo <owner/name> to clone one there.")
@@ -310,18 +331,28 @@ def cmd_init(args):
     info(f"Wrote config -> {CONFIG_PATH}")
     info(f"  repo={path}  marketplace={marketplace}  plugins in '{plugins_dir}'")
 
+    # Cold start: make the repo a valid marketplace if it isn't one yet, so it can be
+    # registered and have plugins pushed to it immediately.
+    mpath = marketplace_json_path(cfg)
+    if not mpath.exists():
+        write_json(mpath, {"name": marketplace, "owner": {"name": slug.split("/")[0]},
+                           "plugins": []}, backup=False)
+        info(f"Created {mpath} — this repo is now a marketplace.")
+        if not _commit_push(cfg, "Initialize skills marketplace", [str(mpath)]):
+            info("WARNING: couldn't push the new marketplace.json (see error above). "
+                 "Push it manually so the marketplace is reachable from other machines.")
+
     if user_plugins:
         apply_settings(USER_SETTINGS, cfg, enable=user_plugins)
         info(f"Enabled {user_plugins} at user scope in {USER_SETTINGS}")
 
-    if have("claude"):
-        run(["claude", "plugin", "marketplace", "add", slug], check=False)
-    else:
-        info(f"note: 'claude' CLI not found — register manually: /plugin marketplace add {slug}")
+    _ensure_registered(cfg)
 
     info("\nInit complete.")
-    info(f"  • Turn ON auto-update for '{marketplace}' if you want new sessions to pick up "
-         f"changes automatically (/plugin -> Marketplaces).")
+    info(f"  • Turn ON auto-update for '{marketplace}' so new sessions pick up changes "
+         f"(/plugin -> Marketplaces; third-party marketplaces default off).")
+    info("  • Author a skill with the skill-creator skill, then publish it with "
+         "/skill-manager:push.")
     info("  • Then /reload-plugins (or start a new session).")
 
 
@@ -598,6 +629,10 @@ def _health(cfg: dict):
     repo = repo_path(cfg)
     check(f"checkout exists ({repo})", (repo / ".git").exists(),
           f"clone it or fix repoPath in {CONFIG_PATH}")
+    if (repo / ".git").exists():
+        rem = run(["git", "-C", str(repo), "remote"], check=False, quiet=True).stdout.split()
+        check("origin remote configured", "origin" in rem,
+              "git remote add origin <url>  (needed to push skills)")
     check("marketplace.json present", marketplace_json_path(cfg).exists())
     check("'claude' CLI on PATH", have("claude"),
           "install Claude Code so headless plugin commands work")

@@ -1,19 +1,73 @@
 # skill-manager
 
-Manage your Claude Code skills from inside any project. One marketplace repo is the single
-source of truth; this plugin removes the manual round-trip of editing the central repo,
+Manage your Claude Code skills from inside any project. One GitHub repo is the single source
+of truth for your skills; this plugin removes the manual round-trip of editing that repo,
 switching back to a project, pulling, and reloading.
 
-It rests on a few Claude Code facts:
+It works for **anyone**: install the plugin, point it at your own GitHub repo, and start
+publishing skills that become available across all your projects.
 
-- Skills are distributed through the **plugin** system; a GitHub repo registered as a plugin
-  marketplace is the native way to share them.
-- Per-project selection is opt-in via `enabledPlugins`; this plugin writes it to each
-  project's `.claude/settings.local.json` (personal, gitignored) so your marketplace never
-  leaks into a shared repo.
-- A bundled stdlib-only Python CLI (`bin/skillctl`) does the git/file/marketplace work; the
-  skills are thin wrappers that gather inputs and run it. Authoring a skill from scratch is
-  delegated to the native **skill-creator** skill.
+## Install (anyone, once per machine)
+
+1. **Add the marketplace that hosts this plugin**, then install it:
+   ```
+   /plugin marketplace add zakattack9/agentic-coding
+   /plugin install skill-manager@zaksak
+   ```
+   (Installing enables it at user scope, so `/skill-manager:*` works in every project.)
+
+2. **Point it at your own skills repo** — one time:
+   ```
+   /skill-manager:init
+   ```
+   The skill will gather what it needs and run the engine. Two cases:
+
+   - **You already have a skills/marketplace repo** (including a monorepo): give it the path
+     to your local checkout. The repo slug and the layout (root-level vs. nested plugins) are
+     auto-detected.
+   - **You're starting from scratch**: create an empty GitHub repo first
+     (`gh repo create <you>/<repo> --private`), then run init with `--repo <you>/<repo>`.
+     init clones it, turns it into a valid marketplace (writes + pushes `marketplace.json`),
+     and registers it with Claude Code.
+
+3. Turn ON auto-update for your marketplace (`/plugin` → Marketplaces; third-party
+   marketplaces default off) so new sessions pick up changes automatically.
+
+That's it — you can now manage skills from any project.
+
+## Publish your first skill (the everyday loop)
+
+1. **Author** a skill in your current project using the native **skill-creator** skill
+   (this plugin intentionally doesn't scaffold skills — skill-creator does it better).
+2. **Publish** it to your marketplace:
+   ```
+   /skill-manager:push
+   ```
+   Name the target plugin (a grouping) for a brand-new skill; it's created automatically if
+   it doesn't exist. Editing a skill that's already central? `push` detects that and syncs
+   your changes up (showing a diff first).
+3. **Enable** the plugin for this project:
+   ```
+   /skill-manager:configure
+   ```
+4. **`/reload-plugins`** — now `/<plugin>:<skill>` works here, and in any project that
+   enables that plugin.
+
+Managing over time: `/skill-manager:status` (what exists + what's on + health),
+`/skill-manager:push` (publish/update), `/skill-manager:remove` (delete a skill or plugin).
+To iterate on a central skill locally, `skillctl pull <skill>`, edit, then push back.
+
+## Skills
+
+| Skill | What it does |
+|---|---|
+| `/skill-manager:init` | One-time setup against your local checkout (cold-start aware) |
+| `/skill-manager:status` | Catalog + what's enabled in this project + a health check |
+| `/skill-manager:configure` | Choose which plugins this project uses (`settings.local.json`) |
+| `/skill-manager:push` | Publish a project skill central, or sync edits up (auto-detected) |
+| `/skill-manager:remove` | Delete a skill or a whole plugin and push the removal |
+
+Authoring a new skill → use the native **skill-creator** skill, then `/skill-manager:push` it.
 
 ## Design choices
 
@@ -23,44 +77,19 @@ It rests on a few Claude Code facts:
   second authoring clone to keep in sync.
 - **Versions in `marketplace.json` only.** The per-plugin `version` is bumped there; nothing
   is written to `plugin.json`.
-- **No PATH install.** Skills invoke the engine via `${CLAUDE_PLUGIN_ROOT}/bin/skillctl`.
-- **Minimal refresh.** After a push it asks Claude Code to update the marketplace and tells
-  you to `/reload-plugins`; no git force-fast-forward or cache surgery.
-
-## Setup (once)
-
-Install the plugin from the marketplace, then:
-
-```
-/skill-manager:init
-```
-
-Point it at your local checkout of the marketplace repo (the slug is auto-detected from
-`origin`). Or from a terminal:
-
-```bash
-skillctl init --path ~/path/to/your/skills-repo [--repo owner/name] [--user-plugins core]
-```
-
-Then turn ON auto-update for the marketplace (`/plugin` → Marketplaces) and `/reload-plugins`.
-
-## Skills
-
-| Skill | What it does |
-|---|---|
-| `/skill-manager:status` | Catalog + what's enabled in this project + a health check |
-| `/skill-manager:configure` | Choose which plugins this project uses (`settings.local.json`) |
-| `/skill-manager:push` | Publish a project skill central, or sync edits up (auto-detected) |
-| `/skill-manager:remove` | Delete a skill or a whole plugin and push the removal |
-| `/skill-manager:init` | One-time setup against your local checkout |
-
-Authoring a new skill → use the native **skill-creator** skill, then `/skill-manager:push` it.
+- **No PATH install.** The skills invoke the bundled engine via
+  `${CLAUDE_PLUGIN_ROOT}/bin/skillctl` (no setup, works cross-checkout).
+- **Personal by default.** Per-project enablement is written to `.claude/settings.local.json`
+  (gitignored) so your marketplace never leaks into a shared repo. Use `--shared` to commit it
+  for a whole team.
+- **Minimal refresh.** After a push it asks Claude Code to update the marketplace and tells you
+  to `/reload-plugins`; no git force-fast-forward or cache surgery.
 
 ## CLI reference
 
 The skills invoke the bundled engine at `${CLAUDE_PLUGIN_ROOT}/bin/skillctl`. For direct
 terminal use, call that path or alias it (`alias skillctl='python3 .../bin/skillctl'`) — it is
-deliberately not installed on your PATH.
+deliberately not installed on your PATH. Requires `python3` (macOS/Linux).
 
 ```
 skillctl init [--repo owner/name] [--path P] [--marketplace N] [--plugins-dir D] [--user-plugins a,b]
