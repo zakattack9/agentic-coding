@@ -61,8 +61,7 @@ That's it — you can now manage skills from any project.
 
 Managing over time: `/skill-manager:status` (what exists + what's on + health; `--fix` to
 auto-repair), `/skill-manager:push` (publish/update), `/skill-manager:remove` (delete a skill
-or plugin), `/skill-manager:optimize-description` (tune a skill's triggering). To iterate on a
-central skill locally, `skillctl pull <skill>`, edit, then push back.
+or plugin). To iterate on a central skill locally, `skillctl pull <skill>`, edit, then push back.
 
 ## Skills
 
@@ -73,7 +72,6 @@ central skill locally, `skillctl pull <skill>`, edit, then push back.
 | `/skill-manager:configure` | Choose which plugins this project uses (`settings.local.json`) |
 | `/skill-manager:push` | Publish a project skill central, or sync edits up (auto-detected) |
 | `/skill-manager:remove` | Delete a skill or a whole plugin and push the removal |
-| `/skill-manager:optimize-description` | Tune a skill's description for reliable triggering (via skill-creator) |
 
 Authoring a new skill → use the native **skill-creator** skill, then `/skill-manager:push` it.
 
@@ -111,9 +109,5 @@ skillctl remove-plugin <plugin> --force
 skillctl status [--fix]   skillctl validate        skillctl refresh
 skillctl version-bump <plugin>
 ```
-
-Optimizing a skill's triggering (`/skill-manager:optimize-description`) is delegated to the
-native **skill-creator** skill's description optimizer; install it with
-`/plugin install skill-creator@claude-plugins-official` if you don't have it.
 
 `validate` runs without config (CI mode) against the repo's `marketplace.json`.
