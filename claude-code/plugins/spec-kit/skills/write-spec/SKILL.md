@@ -1,6 +1,10 @@
 ---
 name: write-spec
 description: Write concise, scannable feature specs that contain everything needed to implement a change — and nothing more. Use this skill when the user asks to write or update a spec, PRD, feature specification, requirements doc, or wants to document what a feature should do. Also use it when the user describes a change they want to build and needs it written up or updated in a spec, even if they don't use the word "spec."
+argument-hint: [what to build] [@path/to/spec.md to create or update]
+model: opus
+effort: xhigh
+allowed-tools: Read, Grep, Glob, Edit, Write
 ---
 
 # Write Spec
