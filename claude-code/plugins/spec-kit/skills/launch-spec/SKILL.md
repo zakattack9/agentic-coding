@@ -32,21 +32,26 @@ Arguments: $ARGUMENTS
 
 ## What it emits
 
-A single self-contained **driver prompt** to paste into a fresh `/goal` session — everything inlined so the new session needs nothing but the `@`-referenced files:
+A single **driver prompt** to paste into a fresh `/goal` session. The pasted text **is the `/goal` condition** (≤4,000 chars), and a **small, fast, tool-less evaluator** (Haiku by default) re-reads it against the transcript after every turn — it runs no commands and opens no files. Two consequences shape what you emit:
+
+- **`@`-reference the spec / `tasks.md`, don't inline them** — keeps the condition short and lets the worker (not the evaluator, which can't open files) read them. Inline only the **Boundaries** and **done-gate** the evaluator must enforce directly.
+- **Make every end state demonstrable from the worker's own output** — a printed test result, a clean `verify-spec` run — never implicit, because that transcript is all the evaluator sees.
+
+The parts:
 
 | Part | Source | Why |
 | --- | --- | --- |
-| **Goal** | the spec's TL;DR | the completion **condition**, phrased so a fresh evaluator can decide it — what must be *true* when done, not a description of the change |
+| **Goal** | the spec's TL;DR | the **measurable end state** in one line — the spec implemented per its Checklist; what must be *true* at the end, not a description of the change |
 | **Spec + checklist** | `@`-reference the spec; derive a `tasks.md` **only if** the Checklist lacks ordering/dependencies (else `@`-reference the Checklist directly) | the contract + tick-and-write-back continuity across `/goal`'s lossy compaction |
 | **Boundaries** | the spec's Boundaries section, **inlined** | what the agent must NOT touch — the top anti-drift lever, restated where compaction can't drop it |
-| **Done-gate** | fixed | *"You are not done until the spec is fully implemented AND `verify-spec` returns zero contradicted claims."* — completion judged by `verify-spec` against the real code (HEAD/git/live state) with cited evidence, not from session context |
+| **Done-gate** | fixed | *"You are not done until the spec is fully implemented AND `verify-spec` returns zero contradicted claims."* — the worker **runs `verify-spec`** (which grounds against HEAD/git/live state) and surfaces its verdict, so the evaluator confirms 'done' from a code-grounded check in the transcript, not the worker's say-so |
 | **Durability note** | fixed | state lives in git + `tasks.md` + `CLAUDE.md`, not the conversation — so a compaction or fresh session loses nothing that matters |
 
-Write `tasks.md` beside the spec only when it adds decomposition the Checklist lacked. Show the driver prompt in chat for the user to run; **do not run it**.
+Write `tasks.md` beside the spec only when it adds decomposition the Checklist lacked. To bound a long run, the user can append a turn/time guard to the condition (e.g. `or stop after N turns`); by default it runs until the done-gate holds. Show the driver prompt in chat for the user to run; **do not run it**.
 
 ## Handoff
 
-Emit the driver, tell the user how to run it (paste into a fresh `/goal` session), and **stop**. Then the native flow continues: `/goal` implements → `verify-spec` grounds every claim against HEAD → zero contradicted claims = done.
+Emit the driver, tell the user how to run it (paste into a fresh `/goal` session — pair with **auto mode** so each goal turn runs unattended), and **stop**. Then the native flow continues: `/goal` implements → `verify-spec` grounds every claim against HEAD → zero contradicted claims = done.
 
 ## Guardrails
 
