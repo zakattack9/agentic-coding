@@ -14,7 +14,7 @@ hooks:
 
 # Verify Spec
 
-Third companion to `write-spec` and `refine-spec`. `write-spec` drafts the spec; `refine-spec` verifies and tightens the **spec document**; `verify-spec` verifies **reality against the claims** — whatever asserts them (a spec, an audit, or your own summary). It confirms that what was actually built (the committed code, the live system) matches what was claimed, grounding every claim in real source. It runs over **as many passes as it takes** until every claim has a definitive, evidence-backed verdict and a fresh judge agrees the verification is complete. **It edits nothing** — not code, not the spec — it grounds claims, reports discrepancies, and stops. Do not stop after one pass, and do not start fixing things unless the user asks.
+Fourth companion to `write-spec`, `refine-spec`, and `launch-spec`. `write-spec` drafts the spec; `refine-spec` verifies and tightens the **spec document**; `launch-spec` compiles the ready spec into a `/goal` driver that implements it; `verify-spec` verifies **reality against the claims** — whatever asserts them (a spec, an audit, or your own summary). It confirms that what was actually built (the committed code, the live system) matches what was claimed, grounding every claim in real source. It runs over **as many passes as it takes** until every claim has a definitive, evidence-backed verdict and a fresh judge agrees the verification is complete. **It edits nothing** — not code, not the spec — it grounds claims, reports discrepancies, and stops. Do not stop after one pass, and do not start fixing things unless the user asks.
 
 Arguments: $ARGUMENTS
 

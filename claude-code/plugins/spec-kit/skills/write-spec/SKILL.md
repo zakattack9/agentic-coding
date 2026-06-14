@@ -45,7 +45,7 @@ Use **bold** on terms the reader needs to remember or cross-reference — behavi
 
 ### Every sentence earns its place
 
-If a sentence restates what a field name already implies (e.g., "The minimum days field specifies the minimum number of days"), it's noise. If a section explains why the old thing was bad ("Problem Statement"), the reader doesn't need that context — they need to know what to build. Cut speculative "Out of Scope" lists of things you considered but won't build — they introduce concepts that weren't on the table. The one exception: when the user gave an explicit carve-out that prevents a likely scope error (e.g. "don't touch prod", "ignore multi-tenancy"), capture it as a single bounded line — not a narrative. If it's not in the spec, it doesn't exist.
+If a sentence restates what a field name already implies (e.g., "The minimum days field specifies the minimum number of days"), it's noise. If a section explains why the old thing was bad ("Problem Statement"), the reader doesn't need that context — they need to know what to build. Cut speculative "Out of Scope" lists of things you considered but won't build — they introduce concepts that weren't on the table. The one exception: when the user gave an explicit carve-out that prevents a likely scope error (e.g. "don't touch prod", "ignore multi-tenancy"), capture it as a single bounded line — not a narrative (if it constrains what the implementer may *touch*, put it in the **Boundaries** section instead). If it's not in the spec, it doesn't exist.
 
 ### Self-contained for a zero-context reader
 
@@ -96,6 +96,13 @@ Use only sections that are relevant. Not every spec needs every section.
 ## Data Migration
 <!-- Only if existing data/logic is affected -->
 <!-- 1-2 lines -->
+
+---
+
+## Boundaries
+<!-- What the implementer must NOT touch — the key to preventing drift in a long implementation (/goal) run -->
+<!-- List files/dirs/systems/patterns to leave alone, and decisions already made that must not be revisited -->
+<!-- Include only real boundaries; omit the section if the change is fully self-contained -->
 
 ---
 

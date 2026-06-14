@@ -13,8 +13,8 @@
     {
       "name": "spec-kit",
       "source": "./claude-code/plugins/spec-kit",
-      "description": "Spec workflow: write-spec drafts concise feature specs; refine-spec hardens a draft into an implementation-ready spec; verify-spec checks the implementation actually matches the spec's claims — all grounded against real code, git, and live state via multi-pass loops.",
-      "version": "0.2.0"
+      "description": "Spec workflow (write → refine → launch → verify): write-spec drafts concise feature specs; refine-spec hardens a draft into an implementation-ready spec; launch-spec compiles the ready spec into a self-contained /goal driver (emit-only); verify-spec checks the implementation matches the spec's claims against real code, git, and live state.",
+      "version": "0.3.0"
     },
     {
       "name": "ralph",

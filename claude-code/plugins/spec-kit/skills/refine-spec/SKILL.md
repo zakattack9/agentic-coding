@@ -98,6 +98,7 @@ Apply, as one coherent edit per pass:
 - **Resolutions** — fold in the user's answers.
 - **Cuts** — remove over-engineering and bloat.
 - **Simplification** — tighten so another dev can grasp the objective and the details fast, following the `write-spec` philosophy: say things once, in the right place; describe behavior, not implementation; show with tables / mermaid / examples instead of prose; bold the key terms; every sentence must earn its place.
+- **Boundaries** — ensure the spec states explicit **Boundaries** (what the implementer must NOT touch) whenever the change has out-of-bounds areas; they are the top anti-drift lever for the implementation run. Add them, or ask, if missing.
 
 **Preserve every detail an implementer needs.** Simplify *wording and structure*, never silently drop substance. If you are unsure whether a detail is load-bearing, ask before cutting it. Keep edits reviewable as a clean git diff.
 
@@ -121,7 +122,7 @@ Finish only when **all** of these hold. Report the gate's status at the end of e
 
 ## Handoff
 
-When the gate passes, give a short summary: what you corrected, what you cut, and which open questions you resolved (with the user's answers). State plainly that the spec is ready to implement. The `Stop` hook clears the ledger automatically once the gate passes. **Stop there — do not begin implementation** unless the user asks.
+When the gate passes, give a short summary: what you corrected, what you cut, and which open questions you resolved (with the user's answers). State plainly that the spec is ready to implement. The `Stop` hook clears the ledger automatically once the gate passes. **Stop there — do not begin implementation.** To build it, hand the ready spec to **`launch-spec`**, which compiles it into a `/goal` driver; run that, then gate with **`verify-spec`**.
 
 ## Guardrails
 
