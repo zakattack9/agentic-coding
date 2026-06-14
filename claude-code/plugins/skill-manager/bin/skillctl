@@ -321,6 +321,12 @@ def cmd_init(args):
     if not (path / ".git").exists():
         if args.repo and "/" in args.repo:
             url = f"https://github.com/{args.repo}.git"
+            if path.exists() and any(path.iterdir()):
+                die(f"{path} already exists and isn't empty — git won't clone into it.\n"
+                    f"Initialize it in place instead (preserves existing files), then re-run "
+                    f"with just --path:\n"
+                    f"  git -C {path} init -b main && git -C {path} remote add origin {url}\n"
+                    f"  skillctl init --path {path}")
             info(f"Cloning {url} -> {path}")
             path.parent.mkdir(parents=True, exist_ok=True)
             r = run(["git", "clone", url, str(path)], check=False)

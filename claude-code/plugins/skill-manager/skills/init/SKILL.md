@@ -37,12 +37,23 @@ Wire skill-manager to the GitHub repo where the user keeps their skills. It oper
    - the **repo name** (e.g. `my-skills`);
    - **where to store it on disk** — offer common spots (their Desktop, home dir, alongside their existing repos / the current project's parent) plus "Other" for a custom path or a described place ("on my desktop" → `~/Desktop`). Resolve the answer to a concrete `<parent>/<name>`.
 
-   Then create and initialize it:
+   **Inspect the target before creating anything — these checks avoid clobbering files and a clone-into-non-empty-dir failure:**
+   - If `<parent>/<name>` **is the current working directory, or an existing real project** (contains files beyond a `.claude/` dir), call it out and confirm — a skills marketplace is normally its own dedicated repo, not your active project.
+   - Determine the user's git protocol (`gh auth status`) and build the matching origin URL: `git@github.com:<owner>/<name>.git` for SSH, otherwise `https://github.com/<owner>/<name>.git`.
+
+   Create the GitHub repo (skip if it already exists): `gh repo create <owner>/<name> --private`. Then prepare the local checkout — **git refuses to clone into a non-empty directory, so branch on what's already there:**
+
+   | Target `<parent>/<name>` | Prepare it with |
+   |---|---|
+   | doesn't exist / empty | `git clone <origin-url> <parent>/<name>` (create `<parent>` first if needed) |
+   | exists & **non-empty** (e.g. the cwd) | init in place, preserving files: `git -C <path> init -b main && git -C <path> remote add origin <origin-url>` |
+   | already a git repo | use it as-is; add `origin` only if it's missing |
+
+   Then bootstrap it — the existing `.git` makes `init` skip cloning, and its commit is path-scoped so your other files aren't swept in:
    ```bash
-   gh repo create <name> --private              # creates <your-login>/<name> on GitHub (empty)
-   python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" init --repo <login>/<name> --path <parent>/<name>
+   python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" init --path <parent>/<name>
    ```
-   `init` clones the empty repo into `<parent>/<name>`, bootstraps + pushes its `marketplace.json`, and registers it. Capture `<login>/<name>` from the `gh repo create` output (or `gh api user --jq .login`). If `gh` is missing or not authenticated, have the user create the empty repo on GitHub themselves, then run the same `skillctl init --repo <owner>/<name> --path <parent>/<name>`. If the repo already exists on GitHub but isn't cloned, skip `gh repo create`.
+   `init` auto-detects the slug from `origin`, writes + pushes `marketplace.json`, and registers the marketplace. If `gh` is missing or not authenticated, have the user create the empty repo and set its `origin` themselves, then run the same `skillctl init --path <parent>/<name>`.
 
 5. **Optional flags (either path):** add `--plugins-dir <dir>` only if auto-detection is wrong (`.` for repo-root plugins; inferred for a monorepo), and `--user-plugins a,b` to enable specific plugins for every project. Then report what init did and surface any push-failure WARNING — the repo needs a reachable `origin` to work from other machines.
 6. Tell the user the optional last step: turn ON auto-update for the marketplace via `/plugin` → Marketplaces so new sessions pick up changes automatically (otherwise they refresh on demand). Then `/reload-plugins`.
