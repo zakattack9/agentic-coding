@@ -36,10 +36,10 @@ A single self-contained **driver prompt** to paste into a fresh `/goal` session 
 
 | Part | Source | Why |
 | --- | --- | --- |
-| **Goal** | the spec's TL;DR | one line stating what "done" means |
+| **Goal** | the spec's TL;DR | the completion **condition**, phrased so a fresh evaluator can decide it — what must be *true* when done, not a description of the change |
 | **Spec + checklist** | `@`-reference the spec; derive a `tasks.md` **only if** the Checklist lacks ordering/dependencies (else `@`-reference the Checklist directly) | the contract + tick-and-write-back continuity across `/goal`'s lossy compaction |
 | **Boundaries** | the spec's Boundaries section, **inlined** | what the agent must NOT touch — the top anti-drift lever, restated where compaction can't drop it |
-| **Done-gate** | fixed | *"You are not done until the spec is fully implemented AND `verify-spec` returns zero contradicted claims."* — reuses the independent checker, not `/goal`'s gameable in-session check |
+| **Done-gate** | fixed | *"You are not done until the spec is fully implemented AND `verify-spec` returns zero contradicted claims."* — completion judged by `verify-spec` against the real code (HEAD/git/live state) with cited evidence, not from session context |
 | **Durability note** | fixed | state lives in git + `tasks.md` + `CLAUDE.md`, not the conversation — so a compaction or fresh session loses nothing that matters |
 
 Write `tasks.md` beside the spec only when it adds decomposition the Checklist lacked. Show the driver prompt in chat for the user to run; **do not run it**.
