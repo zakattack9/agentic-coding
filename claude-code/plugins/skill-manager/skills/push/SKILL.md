@@ -2,8 +2,6 @@
 name: push
 description: Publish a skill that lives in this project's .claude/skills/ up into the central marketplace, or sync local edits of an already-central skill back up. Auto-detects new vs update. Use when the user says "push this skill", "publish this skill", "promote this to my marketplace", "make this skill available everywhere", "sync my skill changes up", or "save these skill edits upstream". Authoring a skill from scratch is the native skill-creator skill's job — use this to centralize one that already exists. Pushes to git; user-invoked only.
 disable-model-invocation: true
-model: sonnet
-effort: high
 allowed-tools: Bash(python3 *) Bash(git *) Bash(ls *) Read Glob AskUserQuestion
 argument-hint: "<skill-name> [--plugin <plugin>]"
 ---
