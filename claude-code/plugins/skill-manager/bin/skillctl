@@ -846,12 +846,16 @@ def cmd_refresh(args):
 
 
 def _refresh(cfg: dict):
-    """Minimal: ask Claude Code to update the marketplace, then tell the user to reload.
-    No git force-fast-forward or cache surgery — we rely on the native updater."""
+    """Best-effort update of the marketplace clone, then tell the user the manual steps to
+    pick the change up. A CLI/subprocess `marketplace update` does NOT refresh a running
+    session, and custom marketplaces don't auto-refresh — so in-session the user must update
+    the marketplace in-app and reload."""
+    mkt = cfg["marketplace"]
     if have("claude"):
-        run(["claude", "plugin", "marketplace", "update", cfg["marketplace"]], check=False)
-    info("Updated the marketplace. Run /reload-plugins (or start a new session) to load "
-         "the latest.")
+        run(["claude", "plugin", "marketplace", "update", mkt], check=False)
+    info(f"To use this in the CURRENT session (custom marketplaces don't auto-refresh): "
+         f"/plugin -> Marketplaces -> {mkt} -> Update marketplace -> exit, then /reload-plugins. "
+         f"New sessions pick it up automatically when auto-update is on.")
 
 
 # ---------------------------------------------------------------------------
