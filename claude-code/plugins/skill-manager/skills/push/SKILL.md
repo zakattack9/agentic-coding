@@ -50,5 +50,6 @@ Fill this skeleton from the engine's output, copying values verbatim. Drop any l
 
 **Result:** {Published / Updated / No change} — `/{plugin}:{skill}` (now v`{version}`)
 **⚠️ Push failed:** {verbatim WARNING} — committed locally, not on the remote yet.
-**Next:** run `/reload-plugins`.
-**Enable here:** this project doesn't enable `{plugin}` yet → run `/skill-manager:configure`.
+**Available:** in every project that enables `{plugin}` — new sessions pick it up; current ones after `/reload-plugins`.
+**Next:** run `/reload-plugins` to use it here now.
+**Enable here:** {only if this project doesn't enable `{plugin}`} → run `/skill-manager:configure`.

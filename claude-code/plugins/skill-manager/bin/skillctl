@@ -600,6 +600,11 @@ def cmd_remove_skill(args):
     if not args.no_refresh:
         _refresh(cfg)
     info(f"Removed '{args.skill}' from '{plugin}' (now v{newver}).")
+    sdir = plugin_dir(cfg, plugin) / "skills"
+    remaining = [s for s in sdir.glob("*") if s.is_dir()] if sdir.exists() else []
+    if not remaining:
+        info(f"note: '{plugin}' has no skills left — consider removing it: "
+             f"skillctl remove-plugin {plugin} --force")
     if not ok:
         info("WARNING: push failed — committed locally only.")
 
@@ -673,13 +678,16 @@ def _health(cfg: dict, fix: bool = False):
     Failures that need a decision (missing checkout, no origin, no claude CLI, unpushed
     commits) are reported with a hint, never silently actioned."""
     fixed: list[str] = []
+    fixable_failing: list[str] = []
 
-    def check(label, condition, hint=""):
+    def check(label, condition, hint="", fixable=False):
         status = "ok " if condition else "FAIL"
         line = f"  [{status}] {label}"
         if not condition and hint:
             line += f"\n         -> {hint}"
         info(line)
+        if not condition and fixable:
+            fixable_failing.append(label)
 
     repo = repo_path(cfg)
     check(f"checkout exists ({repo})", (repo / ".git").exists(),
@@ -709,7 +717,7 @@ def _health(cfg: dict, fix: bool = False):
                 registered = True
                 fixed.append(f"registered marketplace '{cfg['marketplace']}'")
         check(f"marketplace '{cfg['marketplace']}' registered", registered,
-              f"claude plugin marketplace add {cfg['repoSlug']}")
+              f"claude plugin marketplace add {cfg['repoSlug']}", fixable=True)
 
     for p in cfg.get("userPlugins", []):
         key = f"{p}@{cfg['marketplace']}"
@@ -720,7 +728,7 @@ def _health(cfg: dict, fix: bool = False):
                 enabled = True
                 fixed.append(f"enabled {key} at user scope")
         check(f"user-enabled: {key}", enabled,
-              f"skillctl enable {p}  (or re-run init)")
+              f"skillctl enable {p}  (or re-run init)", fixable=True)
 
     if fix:
         if fixed:
@@ -730,6 +738,9 @@ def _health(cfg: dict, fix: bool = False):
             info("Run /reload-plugins to apply.")
         else:
             info("\nNothing to auto-fix — any remaining failures need a manual step (see hints).")
+    elif fixable_failing:
+        info(f"\n-> {len(fixable_failing)} issue(s) above are auto-fixable — re-run with "
+             f"--fix  (e.g. /skill-manager:status --fix).")
 
 
 # ---------------------------------------------------------------------------

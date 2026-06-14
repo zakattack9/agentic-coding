@@ -36,3 +36,4 @@ Fill this skeleton from the engine's output, copying values verbatim. Drop a lin
 **Marketplace:** {created & pushed / already present} · {registered / register manually: `/plugin marketplace add {owner}/{repo}`}
 **⚠️ Push failed:** {verbatim WARNING}
 **Next:** (optional) turn on auto-update via `/plugin` → Marketplaces, then `/reload-plugins`.
+**Then:** author a skill with the **skill-creator** skill → publish with `/skill-manager:push` → enable per project with `/skill-manager:configure`.

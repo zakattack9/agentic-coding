@@ -40,5 +40,6 @@ Fill this skeleton from the engine's output, copying values verbatim. Drop a lin
 
 **Removed:** {skill `{name}` from `{plugin}` (now v`{version}`) / plugin `{name}` and all its skills}
 **⚠️ Push failed:** {verbatim WARNING} — committed locally, not on the remote yet.
+**Cleanup:** {only if the engine noted `{plugin}` has no skills left} → remove the empty plugin too with `/skill-manager:remove`.
 **Next:** run `/reload-plugins`.
-**Heads up:** enablement of `{plugin}` in other projects must be cleaned up manually.
+**Heads up:** {plugin removal only} enablement of `{plugin}` in other projects must be cleaned up manually.

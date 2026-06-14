@@ -33,4 +33,5 @@ To toggle a single plugin without re-listing: `skillctl enable <plugin>` / `skil
 Fill this skeleton from the engine's output, copying values verbatim:
 
 **{Enabled / Disabled}:** `{plugins}` → `{settings file}`
-**Next:** run `/reload-plugins`.
+**Scope:** {this project only (`settings.local.json`) / shared with the team (`settings.json`)}
+**Next:** run `/reload-plugins` — then this project can use the plugin's skills as `/{plugin}:<skill>`.

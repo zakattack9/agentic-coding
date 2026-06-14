@@ -30,7 +30,7 @@ Present what the tool prints — the catalog, the `[on]`/`[  ]` markers, and the
 
 ## Output
 
-Render the engine's result into this exact skeleton. Fill every `{…}` from the engine's output, copied verbatim — never invent a value. Emit one plugins-table row per plugin, and one health-table row per check the engine printed:
+Render the engine's result into this exact skeleton. Fill every `{…}` from the engine's output, copied verbatim — never invent a value. Emit one plugins-table row per plugin and one health-table row per check; include the **Repair**/**Use here** lines only when they apply:
 
 **Marketplace:** `{name}` ({owner}/{repo}) · plugins in `{pluginsDir}`
 
@@ -45,5 +45,7 @@ Render the engine's result into this exact skeleton. Fill every `{…}` from the
 | {check} | {ok / **FAIL**} | {the `->` hint, or —} |
 
 **Takeaway:** {N} plugins, {M} enabled here — health {OK / needs attention: {one line}}
+**Repair:** {only if the engine flagged auto-fixable issues} → run `/skill-manager:status --fix`.
+**Use here:** {only if any plugin shows `—`} enable one for this project with `/skill-manager:configure`, then `/reload-plugins`.
 
 If the engine prints "not configured" instead, skip the tables and point the user at `/skill-manager:init`.
