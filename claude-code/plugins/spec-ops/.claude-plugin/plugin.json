@@ -1,4 +1,4 @@
 {
-  "name": "spec-kit",
+  "name": "spec-ops",
   "description": "Spec workflow by Zak Sakata: write-spec drafts concise, scannable feature specs; refine-spec hardens a draft into an accurate, not-over-engineered, implementation-ready spec via a grounded multi-pass review loop; launch-spec compiles a verified spec into the self-contained /goal driver that implements it (emit-only); verify-spec checks that the implementation actually matches the spec's claims, grounded against the real code, git history, and live state."
 }
