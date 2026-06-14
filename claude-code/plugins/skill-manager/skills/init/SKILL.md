@@ -23,9 +23,11 @@ Wire skill-manager to the GitHub repo where the user keeps their skills. It oper
    - **The current project** (cwd), if it's a git repo — it can be turned into a marketplace even with no `marketplace.json` yet.
    For each candidate, note its path and `origin` slug (`git -C <path> remote get-url origin`).
 
-2. **Ask the user to choose with the `AskUserQuestion` tool — always, even with one or zero candidates.** This is the single repo every skill is published to, so never auto-pick. Present two categories of options:
-   - **Use an existing repo** — one option per repo from step 1, labelled with its `owner/name` **and** local path. List them all (if more than ~3, keep the most likely and let the auto-added "Other" cover the rest).
-   - **Create a new repo** — one option, for when the user wants a fresh dedicated skills repo.
+2. **Ask the user to choose with the `AskUserQuestion` tool — always, even with one or zero candidates.** This is the single repo every skill is published to, so never auto-pick. The choices are the existing repos from step 1 plus a persistent **Create a new repo** option:
+   - **Use an existing repo** — one option per repo, labelled with its `owner/name` **and** local path.
+   - **Create a new repo** — always offered, for a fresh dedicated skills repo.
+
+   **Respect the 4-option cap.** `AskUserQuestion` shows at most 4 options per question. Keep **Create a new repo** as a permanent option; if there are more existing repos than fit, **page through them** instead of dropping any — fill the remaining slots with repos plus a `Show more (N left)…` option, and re-ask with the next batch when the user picks it. (The auto-added "Other" also lets them type an exact path/slug to skip paging.)
 
 3. **If they picked an existing repo**, initialize it:
    ```bash

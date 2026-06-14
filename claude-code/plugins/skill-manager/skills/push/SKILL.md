@@ -12,7 +12,7 @@ Take a skill from this project's `.claude/skills/<name>/` and publish or update 
 
 ## Steps
 
-1. Identify the skill. If the user didn't name it, list `.claude/skills/*/` and ask which one. It must have a `SKILL.md`. (To create a skill first, use the native **skill-creator** skill — this plugin doesn't scaffold skills.)
+1. Identify the skill. If the user didn't name it, list `.claude/skills/*/` and ask which one with `AskUserQuestion`. It must have a `SKILL.md`. **Respect the 4-option cap:** `AskUserQuestion` shows at most 4 options, so if the project has more than 4 skills, **page through them** rather than dropping any — offer 3 plus a `Show more (N left)…` option and re-ask with the next batch when picked (the auto-added "Other" lets them type the exact name to skip paging). (To create a skill first, use the native **skill-creator** skill — this plugin doesn't scaffold skills.)
 2. When the skill may already be central, preview with a dry run, then show the diff and confirm:
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" push <skill> --dry-run

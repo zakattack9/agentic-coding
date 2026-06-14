@@ -12,7 +12,7 @@ Delete a central skill (or a whole plugin), clean up the catalog and bump the ve
 
 ## Steps
 
-1. Confirm exactly what to remove — a single skill, or an entire plugin (which deletes all its skills). Confirm with the user first; this is destructive and pushes to git.
+1. Confirm exactly what to remove — a single skill, or an entire plugin (which deletes all its skills). List the candidates from `/skill-manager:status` and confirm with the user via `AskUserQuestion` first; this is destructive and pushes to git. **Respect the 4-option cap:** `AskUserQuestion` shows at most 4 options, so when there are more than 4 skills/plugins, **page through them** rather than dropping any — offer 3 plus a `Show more (N left)…` option and re-ask with the next batch (the auto-added "Other" lets them type the exact name to skip paging).
 2. Remove a skill (owning plugin auto-detected):
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" remove-skill <skill> --force

@@ -16,7 +16,9 @@ Enable the plugins this project needs. The selection is written to `.claude/sett
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" configure
    ```
-2. If the user named plugins, use those. Otherwise present the catalog and ask which to enable (one question). Use the exact plugin names from the catalog output — don't invent names; the tool will warn on any it doesn't recognize.
+2. If the user named plugins, use those. Otherwise present the catalog and ask which to enable (a single multi-select question). Use the exact plugin names from the catalog output — don't invent names; the tool will warn on any it doesn't recognize.
+
+   **Respect the 4-option cap.** `AskUserQuestion` shows at most 4 options per question. If the catalog has more than 4 plugins, either have the user type the comma-separated list via "Other", or **page through them** as successive multi-select questions (4 per page) and combine every pick into one `--plugins` list — never drop a plugin to fit.
 3. Write the selection:
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" configure --plugins <comma,separated,list>
