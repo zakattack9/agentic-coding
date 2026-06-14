@@ -2,8 +2,8 @@
 name: configure
 description: Choose which centralized skill plugins the current project uses, written to the project's .claude/settings.local.json. Use when the user opens a repo and wants to wire up their skills, says "set up skills for this project", "which skills does this project use", "enable/disable a plugin here", or "configure plugins for this project".
 disable-model-invocation: true
-model: haiku
-effort: low
+model: sonnet
+effort: high
 allowed-tools: Bash(python3 *)
 argument-hint: "[plugin,plugin,...]"
 ---

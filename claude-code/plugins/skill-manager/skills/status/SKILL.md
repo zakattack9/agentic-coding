@@ -1,8 +1,8 @@
 ---
 name: status
 description: Show the central skills catalog grouped by plugin, which plugins are enabled in the current project, and a health check of the skill-manager setup — and optionally auto-repair it. Use when the user asks "what skills do I have", "what's in my marketplace", "which plugins are on for this project", "list my skills", "is my skill setup healthy", "why isn't my skill loading", "fix my skill setup", or wants an overview of available vs enabled skills.
-model: haiku
-effort: low
+model: sonnet
+effort: high
 allowed-tools: Bash(python3 *)
 ---
 

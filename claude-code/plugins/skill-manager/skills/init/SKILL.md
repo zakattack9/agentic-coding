@@ -3,7 +3,7 @@ name: init
 description: One-time setup for skill-manager — point it at your local checkout of a marketplace repo, register the marketplace, and optionally enable plugins for all projects. Use the first time the user sets up skill-manager, or when they say "set up skill manager", "configure my skills marketplace", or status reports it's not configured. Run once per machine.
 disable-model-invocation: true
 model: sonnet
-effort: medium
+effort: high
 allowed-tools: Bash(python3 *) Bash(git *) Bash(gh *)
 argument-hint: "[--repo owner/name] [--path <checkout>]"
 ---
