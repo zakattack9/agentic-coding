@@ -1,13 +1,11 @@
 # skill-manager
 
-Manage your Claude Code skills from inside any project. One GitHub repo is the single source
-of truth for your skills; this plugin removes the manual round-trip of editing that repo,
-switching back to a project, pulling, and reloading.
+Manage your Claude Code skills from inside any project. One GitHub repo is the single source of
+truth for your skills, and this plugin removes the manual round-trip of editing that repo,
+switching back to a project, pulling, and reloading — install it, point it at your own repo, and
+publish skills that become available across all your projects.
 
-It works for **anyone**: install the plugin, point it at your own GitHub repo, and start
-publishing skills that become available across all your projects.
-
-## Install (anyone, once per machine)
+## Install
 
 1. **Add the marketplace that hosts this plugin** and accept the trust prompt
    (third-party marketplaces must be trusted before they can be used):
@@ -22,26 +20,24 @@ publishing skills that become available across all your projects.
    ```
    Installing enables it for you, so `/skill-manager:*` becomes available in your projects.
 
-3. **Point it at your own skills repo** — one time:
+3. **Point it at your skills repo** — once:
    ```
    /skill-manager:init
    ```
-   The skill will gather what it needs and run the engine. Two cases:
+   It finds the skills repos already on your machine and asks which one to use — or, if you
+   don't have one, **creates a fresh repo for you** (you give it a name and where to put it).
+   Either way it bootstraps and registers the marketplace, adapting to any layout (root-level
+   or nested in a monorepo). Creating a new repo uses the GitHub CLI `gh`; without it, create
+   an empty repo on GitHub first and init points at that.
 
-   - **You already have a skills/marketplace repo** (including a monorepo): give it the path
-     to your local checkout. The repo slug and the layout (root-level vs. nested plugins) are
-     auto-detected.
-   - **You're starting from scratch**: create an empty GitHub repo first
-     (`gh repo create <you>/<repo> --private`), then run init with `--repo <you>/<repo>`.
-     init clones it, turns it into a valid marketplace (writes + pushes `marketplace.json`),
-     and registers it with Claude Code.
-
-4. (Optional) Turn ON auto-update for your marketplace via `/plugin` → Marketplaces so new
-   sessions pick up changes automatically; otherwise refresh on demand with `/reload-plugins`.
+4. **Heads up — you'll refresh manually.** Custom marketplaces don't reliably auto-update
+   (not even in new sessions), so after every change you publish you'll update the marketplace
+   and reload (see *Publish your first skill*, step 4). You can flip on auto-update in
+   `/plugin` → Marketplaces, but don't rely on it.
 
 That's it — you can now manage skills from any project.
 
-## Publish your first skill (the everyday loop)
+## Publish your first skill
 
 1. **Author** a skill in your current project using the native **skill-creator** skill
    (this plugin intentionally doesn't scaffold skills — skill-creator does it better).
@@ -56,8 +52,10 @@ That's it — you can now manage skills from any project.
    ```
    /skill-manager:configure
    ```
-4. **`/reload-plugins`** — now `/<plugin>:<skill>` works here, and in any project that
-   enables that plugin.
+4. **Refresh & use it — required after every push.** Custom marketplaces don't reliably
+   auto-update, so each time you publish: `/plugin` → Marketplaces → your marketplace →
+   **Update marketplace** → exit, then `/reload-plugins`. Now `/<plugin>:<skill>` works here
+   (and in any project that enables the plugin).
 
 Managing over time: `/skill-manager:status` (what exists + what's on + health; `--fix` to
 auto-repair), `/skill-manager:push` (publish/update), `/skill-manager:remove` (delete a skill
@@ -67,7 +65,7 @@ or plugin). To iterate on a central skill locally, `skillctl pull <skill>`, edit
 
 | Skill | What it does |
 |---|---|
-| `/skill-manager:init` | One-time setup against your local checkout (cold-start aware) |
+| `/skill-manager:init` | One-time setup: pick an existing skills repo, or have it create a new one |
 | `/skill-manager:status` | Catalog + what's enabled here + a health check; `--fix` auto-repairs |
 | `/skill-manager:configure` | Choose which plugins this project uses (`settings.local.json`) |
 | `/skill-manager:push` | Publish a project skill central, or sync edits up (auto-detected) |
@@ -88,8 +86,9 @@ Authoring a new skill → use the native **skill-creator** skill, then `/skill-m
 - **Personal by default.** Per-project enablement is written to `.claude/settings.local.json`
   (gitignored) so your marketplace never leaks into a shared repo. Use `--shared` to commit it
   for a whole team.
-- **Minimal refresh.** After a push it asks Claude Code to update the marketplace and tells you
-  to `/reload-plugins`; no git force-fast-forward or cache surgery.
+- **Manual refresh.** Custom marketplaces don't reliably auto-update (not even new sessions),
+  so after every change you update the marketplace in `/plugin` and `/reload-plugins`; the
+  engine does no git force-fast-forward or cache surgery.
 
 ## CLI reference
 

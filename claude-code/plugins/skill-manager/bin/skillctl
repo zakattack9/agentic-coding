@@ -859,9 +859,9 @@ def _refresh(cfg: dict):
     mkt = cfg["marketplace"]
     if have("claude"):
         run(["claude", "plugin", "marketplace", "update", mkt], check=False)
-    info(f"To use this in the CURRENT session (custom marketplaces don't auto-refresh): "
-         f"/plugin -> Marketplaces -> {mkt} -> Update marketplace -> exit, then /reload-plugins. "
-         f"New sessions pick it up automatically when auto-update is on.")
+    info(f"Custom marketplaces don't reliably auto-update (even in new sessions), so do this "
+         f"after EVERY change to pick it up: /plugin -> Marketplaces -> {mkt} -> Update "
+         f"marketplace -> exit, then /reload-plugins.")
 
 
 # ---------------------------------------------------------------------------

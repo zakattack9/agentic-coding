@@ -50,4 +50,4 @@ Fill this skeleton from the engine's output, copying values verbatim. Drop any l
 **⚠️ Push failed:** {verbatim WARNING} — committed locally, not on the remote yet.
 **Available:** in every project that enables `{plugin}`, once that project refreshes the marketplace.
 **Enable here:** {only if this project doesn't enable `{plugin}`} → run `/skill-manager:configure` first.
-**Use it now (this session):** custom marketplaces don't auto-refresh, so update + reload — `/plugin` → Marketplaces → `{marketplace}` → **Update marketplace** → exit, then `/reload-plugins`. (New sessions pick it up automatically when auto-update is on.)
+**Use it (required after every push):** custom marketplaces don't reliably auto-update — not even new sessions — so do this each time to pick up the change: `/plugin` → Marketplaces → `{marketplace}` → **Update marketplace** → exit, then `/reload-plugins`.

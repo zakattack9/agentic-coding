@@ -39,5 +39,5 @@ Fill this skeleton from the engine's output, copying values verbatim. Drop a lin
 **Removed:** {skill `{name}` from `{plugin}` (now v`{version}`) / plugin `{name}` and all its skills}
 **⚠️ Push failed:** {verbatim WARNING} — committed locally, not on the remote yet.
 **Cleanup:** {only if the engine noted `{plugin}` has no skills left} → remove the empty plugin too with `/skill-manager:remove`.
-**Apply it (this session):** custom marketplaces don't auto-refresh, so update + reload — `/plugin` → Marketplaces → `{marketplace}` → **Update marketplace** → exit, then `/reload-plugins`.
+**Apply it (required after every removal):** custom marketplaces don't reliably auto-update — not even new sessions — so do this each time: `/plugin` → Marketplaces → `{marketplace}` → **Update marketplace** → exit, then `/reload-plugins`.
 **Heads up:** {plugin removal only} enablement of `{plugin}` in other projects must be cleaned up manually.
