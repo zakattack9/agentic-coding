@@ -27,3 +27,10 @@ Enable the plugins this project needs. The selection is written to `.claude/sett
 4. Tell the user to run `/reload-plugins` (or start a new session) to load them.
 
 To toggle a single plugin without re-listing: `skillctl enable <plugin>` / `skillctl disable <plugin>`.
+
+## Output
+
+Fill this skeleton from the engine's output, copying values verbatim:
+
+**{Enabled / Disabled}:** `{plugins}` → `{settings file}`
+**Next:** run `/reload-plugins`.

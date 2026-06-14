@@ -46,8 +46,9 @@ Notes:
 
 ## Output
 
-Report the engine's result in this order, so every push reads the same:
+Fill this skeleton from the engine's output, copying values verbatim. Drop any line whose condition doesn't apply:
 
-1. The outcome line as the engine printed it — `Published` / `Updated` / `No differences` — with the `/<plugin>:<skill>` invocation and the new version.
-2. Any push-failure `WARNING`, verbatim and prominent (the change is local-only until it lands).
-3. The `/reload-plugins` reminder, and — if this project doesn't enable that plugin — the offer to `/skill-manager:configure`.
+**Result:** {Published / Updated / No change} — `/{plugin}:{skill}` (now v`{version}`)
+**⚠️ Push failed:** {verbatim WARNING} — committed locally, not on the remote yet.
+**Next:** run `/reload-plugins`.
+**Enable here:** this project doesn't enable `{plugin}` yet → run `/skill-manager:configure`.

@@ -27,3 +27,12 @@ Wire skill-manager to the GitHub repo where the user keeps their skills. It oper
 4. Tell the user the optional last step: turn ON auto-update for the marketplace via `/plugin` → Marketplaces so new sessions pick up changes automatically (otherwise they refresh on demand). Then `/reload-plugins`.
 
 After init, `/skill-manager:status`, `:configure`, `:push`, and `:remove` work in every project. To create the first skill, use the native **skill-creator** skill, then `/skill-manager:push` it.
+
+## Output
+
+Fill this skeleton from the engine's output, copying values verbatim. Drop a line if it doesn't apply:
+
+**Configured:** repo `{owner}/{repo}` · marketplace `{name}` · plugins in `{pluginsDir}`
+**Marketplace:** {created & pushed / already present} · {registered / register manually: `/plugin marketplace add {owner}/{repo}`}
+**⚠️ Push failed:** {verbatim WARNING}
+**Next:** (optional) turn on auto-update via `/plugin` → Marketplaces, then `/reload-plugins`.

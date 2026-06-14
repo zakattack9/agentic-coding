@@ -33,3 +33,12 @@ Delete a central skill (or a whole plugin), clean up the catalog and bump the ve
   wrong thing or fail confusingly.
 - **Relay the tool's actual output.** Only report success if it confirmed the removal, and
   surface any push-failure `WARNING` — until the push lands, the removal is local-only.
+
+## Output
+
+Fill this skeleton from the engine's output, copying values verbatim. Drop a line if it doesn't apply:
+
+**Removed:** {skill `{name}` from `{plugin}` (now v`{version}`) / plugin `{name}` and all its skills}
+**⚠️ Push failed:** {verbatim WARNING} — committed locally, not on the remote yet.
+**Next:** run `/reload-plugins`.
+**Heads up:** enablement of `{plugin}` in other projects must be cleaned up manually.

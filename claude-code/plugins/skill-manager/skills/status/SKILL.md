@@ -30,9 +30,20 @@ Present what the tool prints — the catalog, the `[on]`/`[  ]` markers, and the
 
 ## Output
 
-Present it the same way every call, so it reads consistently:
+Render the engine's result into this exact skeleton. Fill every `{…}` from the engine's output, copied verbatim — never invent a value. Emit one plugins-table row per plugin, and one health-table row per check the engine printed:
 
-1. Show the engine's output verbatim in a fenced block — the catalog (`[on]`/`[  ]` markers, versions, `/<plugin>:<skill>` lines) and the Health block are already structured, so don't paraphrase or reformat them away.
-2. Then one takeaway line: plugin count, how many are enabled in this project, and overall health — e.g. `3 plugins, 1 enabled here — health OK`, or `health: 1 fixable issue (run status --fix)`.
+**Marketplace:** `{name}` ({owner}/{repo}) · plugins in `{pluginsDir}`
 
-Add nothing else unless the user asks a follow-up.
+| Plugin | Version | Enabled here | Skills |
+|--------|---------|--------------|--------|
+| `{plugin}` | `{version}` | {✅ / —} | `/{plugin}:{skill}`, … |
+
+**Health:** {✅ all checks pass / ⚠️ {n} issue(s)}
+
+| Check | Result | Fix |
+|-------|--------|-----|
+| {check} | {ok / **FAIL**} | {the `->` hint, or —} |
+
+**Takeaway:** {N} plugins, {M} enabled here — health {OK / needs attention: {one line}}
+
+If the engine prints "not configured" instead, skip the tables and point the user at `/skill-manager:init`.
