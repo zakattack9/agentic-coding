@@ -4,7 +4,7 @@ description: Publish a skill that lives in this project's .claude/skills/ up int
 disable-model-invocation: true
 model: sonnet
 effort: high
-allowed-tools: Bash(python3 *) Bash(git *)
+allowed-tools: Bash(python3 *) Bash(git *) Bash(ls *) Read Glob AskUserQuestion
 argument-hint: "<skill-name> [--plugin <plugin>]"
 ---
 
@@ -43,3 +43,11 @@ Notes:
 - Keep the original skill name; don't rename on push.
 - `--plugin` is only needed for a brand-new skill; for updates the owning plugin is auto-detected.
 - To iterate on a central skill locally first, `skillctl pull <skill>` copies it down; edit, then push back.
+
+## Output
+
+Report the engine's result in this order, so every push reads the same:
+
+1. The outcome line as the engine printed it — `Published` / `Updated` / `No differences` — with the `/<plugin>:<skill>` invocation and the new version.
+2. Any push-failure `WARNING`, verbatim and prominent (the change is local-only until it lands).
+3. The `/reload-plugins` reminder, and — if this project doesn't enable that plugin — the offer to `/skill-manager:configure`.

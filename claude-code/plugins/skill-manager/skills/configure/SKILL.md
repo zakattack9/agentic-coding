@@ -4,7 +4,7 @@ description: Choose which centralized skill plugins the current project uses, wr
 disable-model-invocation: true
 model: sonnet
 effort: high
-allowed-tools: Bash(python3 *)
+allowed-tools: Bash(python3 *) AskUserQuestion
 argument-hint: "[plugin,plugin,...]"
 ---
 

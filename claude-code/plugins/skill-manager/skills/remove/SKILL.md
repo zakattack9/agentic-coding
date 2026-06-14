@@ -4,7 +4,7 @@ description: Remove a skill from a central plugin, or delete an entire plugin fr
 disable-model-invocation: true
 model: sonnet
 effort: high
-allowed-tools: Bash(python3 *) Bash(git *)
+allowed-tools: Bash(python3 *) Bash(git *) AskUserQuestion
 argument-hint: "<skill-name> | --plugin <plugin>"
 ---
 

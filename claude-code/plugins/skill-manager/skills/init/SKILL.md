@@ -4,7 +4,7 @@ description: One-time setup for skill-manager — point it at your local checkou
 disable-model-invocation: true
 model: sonnet
 effort: high
-allowed-tools: Bash(python3 *) Bash(git *) Bash(gh *)
+allowed-tools: Bash(python3 *) Bash(git *) Bash(gh *) AskUserQuestion
 argument-hint: "[--repo owner/name] [--path <checkout>]"
 ---
 
