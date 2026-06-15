@@ -32,7 +32,7 @@
       "name": "worktree-ops",
       "source": "./claude-code/plugins/worktree-ops",
       "description": "Git worktree workflow for parallel Claude Code sessions, built on native worktree support, with deterministic enforcement (a skill-scoped PreToolUse guard, active only while the pull/merge skills run, blocks squash merges and committing unresolved conflicts; helper scripts make pre-flight, conflict listing, and merge-confirm repeatable): create-worktree spins up an isolated worktree and flips the session into it (fresh from origin, .worktreeinclude env files copied, optional issue/PR seed, opt-in setup script); list-worktrees shows a dashboard of every worktree (ahead/behind, dirty, PR, current marked); pull-worktree rebases/merges a worktree onto a chosen base branch with an ask-first conflict policy; merge-worktree commits, pushes, opens/merges the PR into a chosen target (never squashed) only after confirming MERGED, runs an opt-in teardown script, then removes the worktree and returns to main.",
-      "version": "0.3.2"
+      "version": "0.3.3"
     }
   ]
 }

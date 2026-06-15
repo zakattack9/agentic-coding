@@ -17,6 +17,16 @@ hooks:
 
 Take a worktree from "work is done" to "merged, cleaned up, and back on main" — with as few manual steps as possible. Run it from inside the worktree.
 
+## Inputs & confirmation
+
+At any step, if a required input is missing or the safe path is ambiguous, **stop and use `AskUserQuestion`** before acting — don't assume a default that pushes, merges, or deletes. Confirm when unclear:
+
+- **which** worktree/branch to finish;
+- **merge now vs. `--no-merge`**;
+- the **target** branch (`--into`), when not obvious;
+- whether to **wait** on pending checks or stop;
+- **keep vs. delete** the branch, and abandon vs. merged teardown (§6).
+
 ## 1. Confirm scope
 
 ```bash

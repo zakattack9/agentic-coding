@@ -8,6 +8,8 @@ allowed-tools: Bash(git *), Bash(gh *), Bash(bash *)
 
 # list-worktrees
 
+This skill takes no required arguments (only optional `--fetch`), so there's nothing to confirm before it runs.
+
 Run the helper and present a dashboard of all worktrees. By default it's **offline** (no fetch), so ahead/behind is measured against the last-known base — note that. Add `--fetch` when the user wants live numbers:
 
 ```bash

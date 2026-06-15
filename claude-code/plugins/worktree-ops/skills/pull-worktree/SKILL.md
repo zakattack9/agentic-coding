@@ -17,6 +17,15 @@ hooks:
 
 Bring the current worktree's branch up to date with a base branch. "Pull" here means **integrate the base branch INTO this worktree** (not `git pull` of the branch's own upstream). Run it from inside the worktree.
 
+## Inputs & confirmation
+
+At any step, if a required input is missing or the safe path is ambiguous, **stop and use `AskUserQuestion`** before acting — don't assume a default that rewrites history. Confirm when unclear:
+
+- the **source branch** to pull from — if `--from` is absent and the default base can't be resolved, ask;
+- **rebase vs. merge** (§2);
+- how to handle a **dirty tree** — stash / commit / abort (§1);
+- any non-obvious **conflict** resolution (§3).
+
 ## 1. Pre-flight (deterministic)
 
 Run the helper — it reports state and never changes history:

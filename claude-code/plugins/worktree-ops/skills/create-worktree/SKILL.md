@@ -11,6 +11,15 @@ allowed-tools: Bash(git *), Bash(gh *), Bash(bash *), Read, AskUserQuestion, Ent
 
 Create a worktree and **flip this session into it in one step**, using Claude Code's native worktree support so you also get `.worktreeinclude` copying, `worktree.baseRef`, and native cleanup for free.
 
+## Inputs & confirmation
+
+At any step, if a required input is missing or the safe path is ambiguous, **stop and use `AskUserQuestion`** before acting — don't assume a default that changes what gets created. Confirm when unclear:
+
+- the worktree **name / task** — if none was given, ask what to build and what to name it; never invent a slug from nothing;
+- the **source** — new branch vs. existing branch / issue / PR;
+- the **base** ref, when it isn't the default and wasn't given;
+- whether to **enter** the new worktree now.
+
 ## 1. Decide the name and source
 
 Derive a short, meaningful **kebab-case slug** from what the user is building (e.g. `fix-login-redirect`, `add-csv-export`). Never use generic names like `worktree-1`. Resolve the source:
