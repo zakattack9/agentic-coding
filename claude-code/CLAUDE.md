@@ -16,3 +16,7 @@ To add a new plugin:
 Use `${CLAUDE_PLUGIN_ROOT}` inside `plugin.json` to reference scripts and files relative to the plugin's installed location at runtime.
 
 Refer to `PLUGIN-SETUP.md` at the repo root for context on the marketplace architecture and non-obvious gotchas. Use Context7 against the Claude Code docs for the full `plugin.json` and `marketplace.json` schemas when building out a plugin.
+
+## Skills
+
+Skills live at `plugins/<name>/skills/<skill>/SKILL.md`. Use the `skill-creator` skill to scaffold or revise any skill — don't hand-roll structure. Authoring patterns (frontmatter, determinism via scripts/hooks, defensive input handling, output skeletons, naming, hygiene) are in `rules/writing-skills.md`, which auto-loads when editing skill files.
