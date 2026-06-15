@@ -1,0 +1,4 @@
+{
+  "name": "worktree-ops",
+  "description": "Git worktree workflow for parallel Claude Code sessions, built on native worktree support: create-worktree spins up an isolated worktree and flips the session into it (fresh from origin, .worktreeinclude env files copied, optional issue/PR seed, opt-in setup script); list-worktrees shows a dashboard of every worktree (ahead/behind, dirty, PR, current marked); pull-worktree rebases/merges a worktree onto a chosen base branch; merge-worktree commits, pushes, opens/merges the PR into a chosen target, runs an opt-in teardown script, then removes the worktree and returns to main."
+}
