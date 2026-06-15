@@ -3,6 +3,12 @@ name: pull-worktree
 description: Pull the latest changes from a base branch into the current worktree — fetch, then rebase (or merge) this worktree's branch onto the newest origin/main (or any branch you name), guiding conflict resolution. Use when the user says a worktree/branch is "behind", wants to "pull in the latest", "catch up", "update", "sync", or "rebase onto main/develop" a worktree before continuing or opening a PR. The base to pull from is configurable, unlike anything native.
 argument-hint: [--from <branch>] [--merge]
 allowed-tools: Bash(git *), Bash(bash *), AskUserQuestion
+hooks:
+  PreToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: "${CLAUDE_PLUGIN_ROOT}/hooks/guard.sh"
 ---
 
 # pull-worktree
@@ -53,7 +59,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/wt-conflicts.sh"
 
 For anything else — overlapping edits to the same logic, deletion vs. edit, or any unclear intent — **stop and ask with `AskUserQuestion`**, showing the file and the "ours" vs. "theirs" hunks and the choices (keep ours / keep theirs / combine / I'll describe). **Never assume which side is correct;** when in doubt, treat it as ambiguous and ask.
 
-> **Enforced, not just requested:** the plugin's `PreToolUse` guard **blocks any `git commit` / `--continue` while unresolved conflicts or leftover conflict markers remain**, so a partial or guessed resolution cannot be committed. `git rebase --abort` / `git merge --abort` is always the clean escape hatch.
+> **Enforced, not just requested:** while this skill is active, its `PreToolUse` guard **blocks any `git commit` / `--continue` while unresolved conflicts or leftover conflict markers remain**, so a partial or guessed resolution cannot be committed. `git rebase --abort` / `git merge --abort` is always the clean escape hatch.
 
 ## 4. Report and finish the loop
 

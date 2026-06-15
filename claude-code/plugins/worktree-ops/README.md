@@ -19,7 +19,7 @@ Claude Code already does the hard parts natively, in-session: the `EnterWorktree
 
 The repeatable, high-stakes steps don't rely on the model remembering the rules:
 
-- **`hooks/guard.sh`** (a `PreToolUse` hook) hard-blocks, regardless of what the model does:
+- **`hooks/guard.sh`** is registered as a `PreToolUse` hook **in the `pull-worktree` and `merge-worktree` skills' frontmatter** — so it is active **only while those skills run** (scoped to the skill lifecycle, never global). While active it hard-blocks, regardless of what the model does:
   1. **squash merges** — any `gh pr merge --squash` is rejected (preserve commits with `--merge`/`--rebase`),
   2. **committing unresolved conflicts** — `git commit` / `git rebase|merge|cherry-pick|revert --continue` is blocked while unmerged paths or leftover conflict markers remain.
 - **`scripts/wt-merge.sh`** merges without squashing and **confirms `state == MERGED`** before returning success, so teardown can be gated on a real merge (`wt-merge.sh && teardown`).

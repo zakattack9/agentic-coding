@@ -3,6 +3,12 @@ name: merge-worktree
 description: Finish a worktree — commit any remaining work, push, open or update its pull request, optionally merge into a target branch once checks are green, run an optional teardown script, then remove the worktree and switch this session back to the main checkout. Use when the user says a task is "done", wants to "finish", "wrap up", "ship", "merge", "merge and clean up", or "tear down" a worktree, or to close out parallel work and reclaim the checkout. The merge target is configurable; pairs with create-worktree.
 argument-hint: [--into <branch>] [--no-merge] [--keep-branch]
 allowed-tools: Bash(git *), Bash(gh *), Bash(bash *), AskUserQuestion, ExitWorktree
+hooks:
+  PreToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: "${CLAUDE_PLUGIN_ROOT}/hooks/guard.sh"
 ---
 
 # merge-worktree
@@ -42,7 +48,7 @@ Act on the exit code:
 - **3** = PR conflicts with its base → run `/worktree-ops:pull-worktree --from <into>` to integrate + resolve (it asks you about anything ambiguous), push, then retry.
 - **any other non-zero** (checks red, branch protection, not approved, not merged) → **stop and report; do not tear down.**
 
-(`--squash` is also blocked by the plugin's `PreToolUse` guard, so it can't slip in by hand either.)
+(`--squash` is also blocked by this skill's `PreToolUse` guard, so it can't slip in by hand either.)
 
 ## 5. Teardown script (opt-in, deterministic)
 
