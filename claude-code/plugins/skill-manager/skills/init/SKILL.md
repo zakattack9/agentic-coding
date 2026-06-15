@@ -1,6 +1,8 @@
 ---
 name: init
 description: One-time setup for skill-manager — point it at your local checkout of a marketplace repo, register the marketplace, and optionally enable plugins for all projects. Use the first time the user sets up skill-manager, or when they say "set up skill manager", "configure my skills marketplace", or status reports it's not configured. Run once per machine.
+model: claude-sonnet-4-6
+effort: medium
 disable-model-invocation: true
 allowed-tools: Bash(python3 *) Bash(git *) Bash(gh *) AskUserQuestion
 argument-hint: "[--repo owner/name] [--path <checkout>]"
@@ -45,11 +47,11 @@ Wire skill-manager to the GitHub repo where the user keeps their skills. It oper
 
    Create the GitHub repo (skip if it already exists): `gh repo create <owner>/<name> --private`. Then prepare the local checkout — **git refuses to clone into a non-empty directory, so branch on what's already there:**
 
-   | Target `<parent>/<name>` | Prepare it with |
-   |---|---|
-   | doesn't exist / empty | `git clone <origin-url> <parent>/<name>` (create `<parent>` first if needed) |
+   | Target `<parent>/<name>`              | Prepare it with                                                                                               |
+   | ------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+   | doesn't exist / empty                 | `git clone <origin-url> <parent>/<name>` (create `<parent>` first if needed)                                  |
    | exists & **non-empty** (e.g. the cwd) | init in place, preserving files: `git -C <path> init -b main && git -C <path> remote add origin <origin-url>` |
-   | already a git repo | use it as-is; add `origin` only if it's missing |
+   | already a git repo                    | use it as-is; add `origin` only if it's missing                                                               |
 
    Then bootstrap it — the existing `.git` makes `init` skip cloning, and its commit is path-scoped so your other files aren't swept in:
    ```bash

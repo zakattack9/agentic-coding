@@ -1,6 +1,8 @@
 ---
 name: merge-worktree
 description: Finish a worktree — commit any remaining work, push, open or update its pull request, optionally merge into a target branch once checks are green, run an optional teardown script, then remove the worktree and switch this session back to the main checkout. Use when the user says a task is "done", wants to "finish", "wrap up", "ship", "merge", "merge and clean up", or "tear down" a worktree, or to close out parallel work and reclaim the checkout. The merge target is configurable; pairs with create-worktree.
+model: claude-sonnet-4-6
+effort: medium
 argument-hint: [--into <branch>] [--no-merge] [--keep-branch]
 allowed-tools: Bash(git *), Bash(gh *), Bash(bash *), AskUserQuestion, ExitWorktree
 hooks:
