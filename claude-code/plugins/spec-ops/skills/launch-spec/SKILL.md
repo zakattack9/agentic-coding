@@ -22,17 +22,18 @@ Arguments: $ARGUMENTS
 
 **Precondition (heuristic, not a gate).** This skill assumes the spec already passed `refine-spec`. Before compiling, scan it for readiness: does it have a concrete **Checklist** of work items, and — unless the change is genuinely self-contained — an explicit **Boundaries** section (what NOT to touch)? If the Checklist is missing (or Boundaries are absent for a change that clearly has out-of-bounds areas), say so and recommend running `refine-spec` first — don't silently emit a driver for an under-baked spec. (The real enforcement is `verify-spec` at the end, which catches a weak spec by contradiction.)
 
-## Choosing the driver — `/goal` by default
+## Choosing the driver
 
-`/goal` is the answer for the overwhelming common case: one coherent change ground to completion, including most multi-item checklists. A merely **long** checklist is not, by itself, a reason to step up. Only offer an alternative when the spec's shape genuinely calls for it — surface the choice with `AskUserQuestion`, `/goal` pre-selected. Never present these as co-equal modes:
+Default to **`/goal`**. Step up only when a **structural** trigger below fires — evaluate them **top-down, first match wins**. The triggers are about *how the work is shaped*, never *how big it is*: a broad-but-shallow change (a mechanical tweak across many files, each edit self-contained) stays in `/goal` no matter how many files it spans, because nothing must be held across edits. Surface the result with `AskUserQuestion` (matched driver pre-selected) so the user can override.
 
-- **`/goal`** (default) — a single coherent task that fits in one session. Depth; guards drift.
-- **Dynamic workflow (`ultracode`)** — step up when **either**: the spec fans into **≥2 independent workstreams** that can run in parallel, **or** the checklist is large enough (a very large PRD) that one `/goal` session would accumulate too much context to stay reliable — each item then gets its own fresh context. Match the emitted brief to the reason:
-  - *Independent workstreams* → a **parallel fan-out** with **per-leaf boundaries** ("touch ONLY these files") so concurrent agents can't collide.
-  - *Large sequential PRD* → a **pipeline of fresh-context stages** (`pipeline()`), where **dependency ordering** — not file-disjointness — prevents collisions.
+**1. `/batch`** — the spec is the **same mechanical edit repeated across ≥5 files** with no per-file decision (rename a symbol, bump a version string everywhere). Emit a `/batch` brief: the one edit + the file list (isolated agent + worktree per file).
 
-  Cost-warned — token-expensive; reserve for real width or real context pressure.
-- **`/batch`** — *only* for an identical, repetitive change across many files (isolated agent + worktree per item).
+**2. `ultracode` (dynamic workflow)** — step up on any of these structural signals; each implies its shape:
+  - **Independent workstreams** — the Checklist splits into **≥2 streams** with **disjoint file sets** and **no ordering** between them → a **parallel fan-out** with per-leaf boundaries ("touch ONLY these files") so concurrent agents can't collide.
+  - **Carried interdependence** — implementing the change means threading a **shared, evolving contract** (a data model, protocol, or invariant) through **dependent steps that must stay mutually consistent**, so a fresh-but-uninformed session would break later work → a **`pipeline()`** of fresh-context stages that carry that contract forward in dependency order.
+  - **Unbounded scope** — the affected set can't be enumerated up front ("every / all callers of `X` / across the codebase"), forcing search-then-edit over an open-ended surface → `ultracode` (parallel if the discovered sites turn out independent, else a pipeline).
+
+**3. `/goal`** (default) — none of the above: one coherent change that decomposes into bounded, mostly-independent or shallowly-coupled edits, **regardless of file count**. The rest of this skill compiles it.
 
 ## What it emits
 
