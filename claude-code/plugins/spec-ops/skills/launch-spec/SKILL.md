@@ -24,17 +24,21 @@ Arguments: $ARGUMENTS
 
 ## Choosing the driver — `/goal` by default
 
-`/goal` is the answer for the overwhelming common case: one coherent change ground to completion. Only offer an alternative when the spec's shape genuinely calls for it — and surface the choice with `AskUserQuestion`, `/goal` pre-selected. Never present these as co-equal modes:
+`/goal` is the answer for the overwhelming common case: one coherent change ground to completion. On the 1M-token window it now carries **most multi-item PRD checklists in a single clean pass** — it holds the checklist in-window, works items one-by-one with its own maker/checker, and **compacts only if cumulative context nears the rot threshold** (~300–400K — a *soft* number worth re-testing on your model, since long-context recall shifted across 4.6→4.7→4.8). So a merely *long* checklist is not, by itself, a reason to step up. Only offer an alternative when the spec's shape genuinely calls for it — and surface the choice with `AskUserQuestion`, `/goal` pre-selected. Never present these as co-equal modes:
 
-- **`/goal`** (default) — a single coherent task. Depth; guards drift; accumulating/compacting session with its own maker/checker.
-- **Dynamic workflow (`ultracode`)** — *only* if the spec genuinely fans into **≥2 independent workstreams** that can run in parallel. Emit a fan-out brief with **per-leaf boundaries** ("touch ONLY these files") so parallel agents can't collide. Cost-warned — token-expensive; reserve for real width.
-- **`/batch`** — *only* for an identical, repetitive change across many files.
+- **`/goal`** (default) — a single coherent task whose cumulative context stays under the rot threshold. Depth; guards drift; accumulating session with its own maker/checker, mostly compaction-free on the 1M window.
+- **Dynamic workflow (`ultracode`)** — step up when **either** trigger fires: the spec fans into **≥2 independent workstreams** that can run in parallel, **or** grinding the whole checklist in one `/goal` session would push **cumulative context past the ~300–400K rot zone** (a large PRD where each item wants its own *fresh* context). Match the emitted brief to the reason that fired:
+  - *Independent workstreams* → a **parallel fan-out** with **per-leaf boundaries** ("touch ONLY these files") so concurrent agents can't collide.
+  - *Large sequential PRD (context-triggered)* → a **pipeline of fresh-context stages** (`pipeline()`), where **dependency ordering** — not file-disjointness — prevents collisions: each item runs in clean context but in order.
+
+  Cost-warned — token-expensive; reserve for real width or real context pressure, not a long-but-fitting checklist.
+- **`/batch`** — *only* for an identical, repetitive change across many files (isolated agent + worktree per item).
 
 ## What it emits
 
 A single **driver prompt** to paste into a fresh `/goal` session. The pasted text **is the `/goal` condition** (≤4,000 chars), and a **small, fast, tool-less evaluator** (Haiku by default) re-reads it against the transcript after every turn — it runs no commands and opens no files. Two consequences shape what you emit:
 
-- **`@`-reference the spec / `tasks.md`, don't inline them** — keeps the condition short and lets the worker (not the evaluator, which can't open files) read them. Inline only the **Boundaries** and **done-gate** the evaluator must enforce directly.
+- **Point the worker at the spec / `tasks.md` with an explicit read directive** (e.g. *"read `@spec.md` and `@tasks.md`, then implement them"*) rather than inlining their bodies — so it works whether or not the mention pre-expands, and the worker (not the evaluator, which can't open files) does the reading. Inline only the **Boundaries** and **done-gate** the evaluator must enforce directly.
 - **Make every end state demonstrable from the worker's own output** — a printed test result, a clean `verify-spec` run — never implicit, because that transcript is all the evaluator sees.
 
 The parts:
@@ -42,8 +46,8 @@ The parts:
 | Part | Source | Why |
 | --- | --- | --- |
 | **Goal** | the spec's TL;DR | the **measurable end state** in one line — the spec implemented per its Checklist; what must be *true* at the end, not a description of the change |
-| **Spec + checklist** | `@`-reference the spec; derive a `tasks.md` **only if** the Checklist lacks ordering/dependencies (else `@`-reference the Checklist directly) | the contract + tick-and-write-back continuity across `/goal`'s lossy compaction |
-| **Boundaries** | the spec's Boundaries section, **inlined** | what the agent must NOT touch — the top anti-drift lever, restated where compaction can't drop it |
+| **Spec + checklist** | `@`-reference the spec; derive a `tasks.md` **only if** the Checklist lacks ordering/dependencies (else `@`-reference the Checklist directly) | the contract + tick-and-write-back continuity — insurance for the longer runs that *do* cross the rot threshold and compact (most runs won't) |
+| **Boundaries** | **change-specific** boundaries from the spec, **inlined**; promote **durable/cross-cutting** ones (conventions, architecture, "don't touch prod") to **CLAUDE.md** instead | the top anti-drift lever. Inline the change-specific boundaries where compaction can't drop them; durable ones live in CLAUDE.md, re-injected every turn no matter which driver runs |
 | **Done-gate** | fixed | *"You are not done until the spec is fully implemented AND `verify-spec` returns zero contradicted claims."* — the worker **runs `verify-spec`** (which grounds against HEAD/git/live state) and surfaces its verdict, so the evaluator confirms 'done' from a code-grounded check in the transcript, not the worker's say-so |
 | **Durability note** | fixed | state lives in git + `tasks.md` + `CLAUDE.md`, not the conversation — so a compaction or fresh session loses nothing that matters |
 

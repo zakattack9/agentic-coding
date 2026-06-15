@@ -102,6 +102,7 @@ Use only sections that are relevant. Not every spec needs every section.
 ## Boundaries
 <!-- What the implementer must NOT touch — the key to preventing drift in a long implementation (/goal) run -->
 <!-- List files/dirs/systems/patterns to leave alone, and decisions already made that must not be revisited -->
+<!-- Keep these change-specific. A boundary that is really a standing project convention (architecture, "don't touch prod") belongs in CLAUDE.md, not here — it's re-injected every turn regardless of which driver implements the spec -->
 <!-- Include only real boundaries; omit the section if the change is fully self-contained -->
 
 ---

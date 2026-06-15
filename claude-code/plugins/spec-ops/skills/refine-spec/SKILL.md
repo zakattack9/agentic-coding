@@ -98,7 +98,7 @@ Apply, as one coherent edit per pass:
 - **Resolutions** — fold in the user's answers.
 - **Cuts** — remove over-engineering and bloat.
 - **Simplification** — tighten so another dev can grasp the objective and the details fast, following the `write-spec` philosophy: say things once, in the right place; describe behavior, not implementation; show with tables / mermaid / examples instead of prose; bold the key terms; every sentence must earn its place.
-- **Boundaries** — ensure the spec states explicit **Boundaries** (what the implementer must NOT touch) whenever the change has out-of-bounds areas; they are the top anti-drift lever for the implementation run. Add them, or ask, if missing.
+- **Boundaries** — ensure the spec states explicit **Boundaries** (what the implementer must NOT touch) whenever the change has out-of-bounds areas; they are the top anti-drift lever for the implementation run. Add them, or ask, if missing. Keep them change-specific: if a boundary is really a standing project convention (architecture, "don't touch prod") rather than specific to this change, recommend it live in **CLAUDE.md** instead — re-injected every turn, durable across any driver.
 
 **Preserve every detail an implementer needs.** Simplify *wording and structure*, never silently drop substance. If you are unsure whether a detail is load-bearing, ask before cutting it. Keep edits reviewable as a clean git diff.
 
