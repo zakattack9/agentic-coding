@@ -30,8 +30,14 @@ Confirm this is the worktree/branch to finish, and whether to **merge now** or o
 
 ## 4. Merge (unless `--no-merge`)
 
-- Verify mergeable — approved, checks green, no conflicts. If checks are still running, report and ask whether to wait or stop here.
-- Merge into the target: `gh pr merge --squash --delete-branch` (it merges into the PR's base; set `--base`/the PR base to `<into>` earlier). `--delete-branch` removes the remote branch.
+- **Verify mergeable** — approved, checks green, no conflicts. If checks are still running, report and ask whether to wait or stop here.
+- **If it conflicts with the target**, don't try to merge: run `/worktree-ops:pull-worktree --from <into>` to integrate the target and resolve conflicts (it asks you about anything ambiguous — see that skill's policy), push, then retry.
+- **Merge, preserving commits — never squash.** Default to a merge commit:
+  ```bash
+  gh pr merge --merge --delete-branch    # or --rebase if the user wants linear history; never --squash
+  ```
+  It merges into the PR's base (set the PR's base to `<into>` in step 3). `--delete-branch` removes the remote branch.
+- **Confirm it actually merged before going further.** Check that `gh pr view --json state,mergedAt` reports `state == "MERGED"`. If the merge did not succeed (conflicts, branch protection, failing required checks), **stop here and report — do not run teardown.**
 
 ## 5. Teardown script (opt-in)
 
@@ -45,7 +51,7 @@ bash .claude/worktree-archive.sh
 
 If **this session created/entered the worktree via `EnterWorktree`**, finish with the **`ExitWorktree` tool**: it removes the worktree + branch *and switches the session back to the main checkout* in one step.
 
-- After a confirmed merge, pass `action: "remove"` with `discard_changes: true` (a squash-merge leaves the local branch looking "unmerged," so the guard would otherwise refuse — but the work is safely on the remote).
+- After a confirmed merge (state `MERGED` from §4), pass `action: "remove"` with `discard_changes: true`. The merge happened on the remote, so the local branch can still look "unmerged" until you fetch — the guard would otherwise refuse, but the work is safely on the remote.
 - Abandoning instead → `action: "remove"` without `discard_changes`; if it lists uncommitted/unmerged work, relay that and confirm before retrying with `discard_changes: true`. Never discard silently.
 - `--keep-branch` or "I might come back" → `action: "keep"` (returns to main, leaves the worktree on disk).
 
