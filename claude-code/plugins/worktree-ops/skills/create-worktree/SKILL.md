@@ -45,15 +45,15 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/wt-create.sh" "<slug>" [base-ref]
 
 It prints the worktree path on its last stdout line. The session can't auto-flip here — tell the user to `cd <path>` or run `claude --worktree <slug>`.
 
-## 3. Per-project setup (opt-in, automatic)
+## 3. Per-project setup (opt-in, deterministic)
 
-Once inside the worktree, if a **`.claude/worktree-setup.sh`** exists at the repo root, run it (the user created it deliberately, so run it without re-asking — it installs deps, inits a local DB, etc.):
+Once inside the worktree, run the setup helper. It deterministically runs `.claude/worktree-setup.sh` if the project has one (install deps, init a local DB, etc.) and is a safe no-op otherwise — so this step always behaves the same:
 
 ```bash
-bash .claude/worktree-setup.sh
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/wt-run-optin.sh" setup
 ```
 
-If there's no setup script, don't guess at an install. (This is scoped to user-initiated creation on purpose — it deliberately does *not* run for every subagent-isolation worktree.)
+Don't hand-run an install instead. (Setup is scoped to user-initiated creation on purpose — it deliberately does *not* run for every subagent-isolation worktree.)
 
 ## 4. Report
 

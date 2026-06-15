@@ -30,24 +30,31 @@ Confirm this is the worktree/branch to finish, and whether to **merge now** or o
 
 ## 4. Merge (unless `--no-merge`)
 
-- **Verify mergeable** — approved, checks green, no conflicts. If checks are still running, report and ask whether to wait or stop here.
-- **If it conflicts with the target**, don't try to merge: run `/worktree-ops:pull-worktree --from <into>` to integrate the target and resolve conflicts (it asks you about anything ambiguous — see that skill's policy), push, then retry.
-- **Merge, preserving commits — never squash.** Default to a merge commit:
-  ```bash
-  gh pr merge --merge --delete-branch    # or --rebase if the user wants linear history; never --squash
-  ```
-  It merges into the PR's base (set the PR's base to `<into>` in step 3). `--delete-branch` removes the remote branch.
-- **Confirm it actually merged before going further.** Check that `gh pr view --json state,mergedAt` reports `state == "MERGED"`. If the merge did not succeed (conflicts, branch protection, failing required checks), **stop here and report — do not run teardown.**
-
-## 5. Teardown script (opt-in)
-
-Before removing the worktree, if a **`.claude/worktree-archive.sh`** exists at the repo root, run it to clean up resources that live *outside* the worktree (local DBs, Docker, caches):
+Check readiness first if needed (`gh pr view --json number,url,state,statusCheckRollup`; if checks are still running, ask whether to wait). Then use the deterministic merge helper — it **refuses to squash**, sets the target base, merges (merge commit by default; `--rebase` for linear history), and **confirms the PR actually reached `MERGED`**, exiting non-zero otherwise:
 
 ```bash
-bash .claude/worktree-archive.sh
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/wt-merge.sh" [--into <branch>] [--rebase] [--keep-branch]
+```
+
+Act on the exit code:
+
+- **0** = merged and confirmed → proceed to teardown.
+- **3** = PR conflicts with its base → run `/worktree-ops:pull-worktree --from <into>` to integrate + resolve (it asks you about anything ambiguous), push, then retry.
+- **any other non-zero** (checks red, branch protection, not approved, not merged) → **stop and report; do not tear down.**
+
+(`--squash` is also blocked by the plugin's `PreToolUse` guard, so it can't slip in by hand either.)
+
+## 5. Teardown script (opt-in, deterministic)
+
+Before removing the worktree, run the archive helper. It deterministically runs `.claude/worktree-archive.sh` if the project has one (tear down external resources: local DBs, Docker, caches) and is a no-op otherwise:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/wt-run-optin.sh" archive
 ```
 
 ## 6. Remove and return to main — preferred (native, auto-flips back)
+
+**Only run teardown if §4 confirmed the merge (`wt-merge.sh` exited 0), or the user is deliberately abandoning the worktree.** Never tear down after a failed/blocked merge.
 
 If **this session created/entered the worktree via `EnterWorktree`**, finish with the **`ExitWorktree` tool**: it removes the worktree + branch *and switches the session back to the main checkout* in one step.
 
