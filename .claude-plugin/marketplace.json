@@ -14,7 +14,7 @@
       "name": "spec-ops",
       "source": "./claude-code/plugins/spec-ops",
       "description": "Spec workflow (write \u2192 refine \u2192 launch \u2192 verify): write-spec drafts concise feature specs; refine-spec hardens a draft into an implementation-ready spec; launch-spec compiles the ready spec into a self-contained /goal driver (emit-only); verify-spec checks the implementation matches the spec's claims against real code, git, and live state.",
-      "version": "0.3.1"
+      "version": "0.3.2"
     },
     {
       "name": "ralph",

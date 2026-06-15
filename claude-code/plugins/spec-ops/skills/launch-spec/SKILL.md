@@ -4,7 +4,7 @@ description: Compile a finished, verified spec into the self-contained /goal dri
 argument-hint: [@path/to/spec.md] [focus areas]
 model: opus
 effort: xhigh
-allowed-tools: Read, Grep, Glob, Write
+allowed-tools: Read, Grep, Glob, Write, Bash
 ---
 
 # Launch Spec
@@ -53,9 +53,24 @@ Write `tasks.md` beside the spec only when it adds decomposition the Checklist l
 
 Emit the driver, tell the user how to run it (paste into a fresh `/goal` session — pair with **auto mode** so each goal turn runs unattended), and **stop**. Then the native flow continues: `/goal` implements → `verify-spec` grounds every claim against HEAD → zero contradicted claims = done.
 
+**Copy the driver to the clipboard** so the handoff is a single ⌘V. After showing the prompt in chat, pipe the *exact same text* to the system clipboard via a portable wrapper, then confirm. Copying is not running — it stays emit-only. Use a quoted heredoc so the driver is never written to disk and no escaping is needed (`$`, backticks, and quotes pass through literally). Pick the first clipboard tool that exists and fall back to chat-only if none do:
+
+```bash
+{ if command -v pbcopy   >/dev/null 2>&1; then pbcopy                       # macOS
+  elif command -v wl-copy >/dev/null 2>&1; then wl-copy                     # Wayland
+  elif command -v xclip   >/dev/null 2>&1; then xclip -selection clipboard  # X11
+  elif command -v clip.exe >/dev/null 2>&1; then clip.exe                   # WSL
+  else cat >/dev/null; exit 3; fi; } <<'LAUNCH_SPEC_EOF'
+…the driver prompt, verbatim…
+LAUNCH_SPEC_EOF
+```
+
+If the copy succeeds, print `📋 Copied to clipboard — open a fresh session and ⌘V into /goal`. If it exits non-zero (no clipboard tool, or a headless/remote shell where there's no local pasteboard), say so plainly and fall back to "copy the prompt above manually" — never let a missing clipboard block the handoff.
+
 ## Guardrails
 
 - **Emit-only, forever.** Never run, poll, or re-launch the driver. The instant this skill would "run it and watch," it has become Ralph. If you're tempted to loop, stop and hand the prompt to the user.
+- **`Bash` is for the clipboard copy only.** The single thing this skill may shell out for is piping the driver to a clipboard tool (see Handoff). Never use `Bash` to run the driver, invoke `/goal`, execute the spec, or touch git/the project — that would break emit-only.
 - **Write only `tasks.md`.** The single file this skill may write is a `tasks.md` beside the spec (and only when the Checklist lacks ordering). Show the driver prompt in chat — never write it to disk; never edit the spec or code.
 - **Don't re-implement `/goal`.** This skill compiles the spec into `/goal`'s input; `/goal` does the work. For a refined spec, prefer `/goal` over the `ralph-*` suite — it is superseded for this.
 - **The done-condition is `verify-spec`, by composition.** Wire it into the emitted prompt; never restate or rebuild its logic here.
