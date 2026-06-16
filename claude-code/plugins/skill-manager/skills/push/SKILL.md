@@ -24,7 +24,7 @@ Take a skill from this project's `.claude/skills/<name>/` and publish or update 
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" push <skill> [--plugin <plugin>]
    ```
-5. Report the result using the **Output** skeleton: the skill is invoked as `/<plugin>:<skill>`. **If the tool prints a push-failure WARNING, surface it prominently** — the change is committed locally but not on the remote until the push succeeds. Be sure the user sees the marketplace-update + reload steps: custom marketplaces don't auto-refresh, so `/reload-plugins` alone won't pick up the new version.
+5. Report the result using the **Output** skeleton: the skill is invoked as `/<plugin>:<skill>`. **If the tool prints a push-failure WARNING, surface it prominently** — the change is committed locally but not on the remote until the push succeeds. Be sure the user sees the two-command marketplace-update + reload steps the engine prints (`/plugin marketplace update <marketplace>` then `/reload-plugins`): custom marketplaces don't auto-refresh, so `/reload-plugins` alone won't pick up the new version.
 6. If this project doesn't enable that plugin yet, offer `/skill-manager:configure` (or `skillctl enable <plugin>`).
 
 ## Stay grounded — this writes to git
@@ -52,4 +52,4 @@ Fill this skeleton from the engine's output, copying values verbatim. Drop any l
 **⚠️ Push failed:** {verbatim WARNING} — committed locally, not on the remote yet.
 **Available:** in every project that enables `{plugin}`, once that project refreshes the marketplace.
 **Enable here:** {only if this project doesn't enable `{plugin}`} → run `/skill-manager:configure` first.
-**Use it (required after every push):** custom marketplaces don't reliably auto-update — not even new sessions — so do this each time to pick up the change: `/plugin` → Marketplaces → `{marketplace}` → **Update marketplace** → exit, then `/reload-plugins`.
+**Use it (required after every push):** custom marketplaces don't reliably auto-update — not even new sessions — so run these two commands each time to pick up the change (substitute the real marketplace name for `{marketplace}`): `/plugin marketplace update {marketplace}` then `/reload-plugins`.

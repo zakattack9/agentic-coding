@@ -53,9 +53,9 @@ That's it — you can now manage skills from any project.
    /skill-manager:configure
    ```
 4. **Refresh & use it — required after every push.** Custom marketplaces don't reliably
-   auto-update, so each time you publish: `/plugin` → Marketplaces → your marketplace →
-   **Update marketplace** → exit, then `/reload-plugins`. Now `/<plugin>:<skill>` works here
-   (and in any project that enables the plugin).
+   auto-update, so each time you publish run these two commands (using your real marketplace
+   name): `/plugin marketplace update <marketplace>` then `/reload-plugins`. Now
+   `/<plugin>:<skill>` works here (and in any project that enables the plugin).
 
 Managing over time: `/skill-manager:status` (what exists + what's on + health; `--fix` to
 auto-repair), `/skill-manager:push` (publish/update), `/skill-manager:remove` (delete a skill

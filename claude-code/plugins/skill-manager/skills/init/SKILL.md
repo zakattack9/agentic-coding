@@ -60,7 +60,7 @@ Wire skill-manager to the GitHub repo where the user keeps their skills. It oper
    `init` auto-detects the slug from `origin`, writes + pushes `marketplace.json`, and registers the marketplace. If `gh` is missing or not authenticated, have the user create the empty repo and set its `origin` themselves, then run the same `skillctl init --path <parent>/<name>`.
 
 5. **Optional flags (either path):** add `--plugins-dir <dir>` only if auto-detection is wrong (`.` for repo-root plugins; inferred for a monorepo), and `--user-plugins a,b` to enable specific plugins for every project. Then report what init did and surface any push-failure WARNING — the repo needs a reachable `origin` to work from other machines.
-6. Tell the user the optional last step: turn ON auto-update for the marketplace via `/plugin` → Marketplaces so new sessions pick up changes automatically (otherwise they refresh on demand). Then `/reload-plugins`.
+6. Tell the user the optional last step: turn ON auto-update for the marketplace via `/plugin` → Marketplaces so new sessions pick up changes automatically. Otherwise it refreshes on demand — run `/plugin marketplace update <marketplace>` (use the real marketplace name) then `/reload-plugins`.
 
 After init, `/skill-manager:status`, `:configure`, `:push`, and `:remove` work in every project. To create the first skill, use the native **skill-creator** skill, then `/skill-manager:push` it.
 
@@ -71,5 +71,5 @@ Fill this skeleton from the engine's output, copying values verbatim. Drop a lin
 **Configured:** repo `{owner}/{repo}` · marketplace `{name}` · plugins in `{pluginsDir}`
 **Marketplace:** {created & pushed / already present} · {registered / register manually: `/plugin marketplace add {owner}/{repo}`}
 **⚠️ Push failed:** {verbatim WARNING}
-**Next:** (optional) turn on auto-update via `/plugin` → Marketplaces, then `/reload-plugins`.
+**Next:** (optional) turn on auto-update via `/plugin` → Marketplaces; otherwise refresh on demand with `/plugin marketplace update {name}` then `/reload-plugins`.
 **Then:** author a skill with the **skill-creator** skill → publish with `/skill-manager:push` → enable per project with `/skill-manager:configure`.

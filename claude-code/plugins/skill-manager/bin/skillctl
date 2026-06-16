@@ -377,7 +377,8 @@ def cmd_init(args):
 
     info("\nInit complete.")
     info(f"  • Turn ON auto-update for '{marketplace}' via /plugin -> Marketplaces so new "
-         f"sessions pick up changes (otherwise refresh on demand with /reload-plugins).")
+         f"sessions pick up changes (otherwise refresh on demand: /plugin marketplace update "
+         f"{marketplace}, then /reload-plugins).")
     info("  • Author a skill with the skill-creator skill, then publish it with "
          "/skill-manager:push.")
     info("  • Then /reload-plugins (or start a new session).")
@@ -852,16 +853,17 @@ def cmd_refresh(args):
 
 
 def _refresh(cfg: dict):
-    """Best-effort update of the marketplace clone, then tell the user the manual steps to
-    pick the change up. A CLI/subprocess `marketplace update` does NOT refresh a running
-    session, and custom marketplaces don't auto-refresh — so in-session the user must update
-    the marketplace in-app and reload."""
+    """Best-effort update of the marketplace clone, then tell the user the two in-session
+    commands to pick the change up. A CLI/subprocess `marketplace update` does NOT refresh a
+    running session, and custom marketplaces don't auto-refresh — so in-session the user must
+    run the marketplace-update slash command and then reload."""
     mkt = cfg["marketplace"]
     if have("claude"):
         run(["claude", "plugin", "marketplace", "update", mkt], check=False)
-    info(f"Custom marketplaces don't reliably auto-update (even in new sessions), so do this "
-         f"after EVERY change to pick it up: /plugin -> Marketplaces -> {mkt} -> Update "
-         f"marketplace -> exit, then /reload-plugins.")
+    info(f"Custom marketplaces don't reliably auto-update (even in new sessions), so after "
+         f"EVERY change run these two commands in-session to pick it up:")
+    info(f"  /plugin marketplace update {mkt}")
+    info(f"  /reload-plugins")
 
 
 # ---------------------------------------------------------------------------

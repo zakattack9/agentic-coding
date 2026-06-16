@@ -24,7 +24,7 @@ Delete a central skill (or a whole plugin), clean up the catalog and bump the ve
    python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" remove-plugin <plugin> --force
    ```
    `--force` is the confirmation. Run the command without it first if you want the tool to print exactly what it will delete before doing it.
-3. Report using the **Output** skeleton, including the marketplace-update + reload steps (custom marketplaces don't auto-refresh, so `/reload-plugins` alone won't pick up the change). **Surface any push-failure WARNING.** Removing a plugin can't clean up its enablement in *other* projects — mention that if relevant.
+3. Report using the **Output** skeleton, including the two-command marketplace-update + reload steps the engine prints (`/plugin marketplace update <marketplace>` then `/reload-plugins`; custom marketplaces don't auto-refresh, so `/reload-plugins` alone won't pick up the change). **Surface any push-failure WARNING.** Removing a plugin can't clean up its enablement in *other* projects — mention that if relevant.
 
 ## Stay grounded — this is destructive and writes to git
 
@@ -41,5 +41,5 @@ Fill this skeleton from the engine's output, copying values verbatim. Drop a lin
 **Removed:** {skill `{name}` from `{plugin}` (now v`{version}`) / plugin `{name}` and all its skills}
 **⚠️ Push failed:** {verbatim WARNING} — committed locally, not on the remote yet.
 **Cleanup:** {only if the engine noted `{plugin}` has no skills left} → remove the empty plugin too with `/skill-manager:remove`.
-**Apply it (required after every removal):** custom marketplaces don't reliably auto-update — not even new sessions — so do this each time: `/plugin` → Marketplaces → `{marketplace}` → **Update marketplace** → exit, then `/reload-plugins`.
+**Apply it (required after every removal):** custom marketplaces don't reliably auto-update — not even new sessions — so run these two commands each time (substitute the real marketplace name for `{marketplace}`): `/plugin marketplace update {marketplace}` then `/reload-plugins`.
 **Heads up:** {plugin removal only} enablement of `{plugin}` in other projects must be cleaned up manually.
