@@ -5,36 +5,46 @@ model: claude-sonnet-4-6
 effort: medium
 disable-model-invocation: true
 allowed-tools: Bash(python3 *) Bash(git *) AskUserQuestion
-argument-hint: "<skill-name> | --plugin <plugin>"
+argument-hint: "[skill or plugin]"
 ---
 
 # Remove a skill or plugin from the marketplace
 
-Delete a central skill (or a whole plugin), clean up the catalog and bump the version, commit, and push.
+Delete a central skill (or a whole plugin), clean up the catalog and bump the version, commit, and push. The engine renders a numbered menu and resolves the pick itself — you never enumerate or map names, and because a skill index encodes its plugin there's no ambiguity to resolve.
 
 ## Steps
 
-1. Confirm exactly what to remove — a single skill, or an entire plugin (which deletes all its skills). List the candidates from `/skill-manager:status` and confirm with the user via `AskUserQuestion` first; this is destructive and pushes to git. **Respect the 4-option cap:** `AskUserQuestion` shows at most 4 options, so when there are more than 4 skills/plugins, **page through them** rather than dropping any — offer 3 plus a `Show more (N left)…` option and re-ask with the next batch (the auto-added "Other" lets them type the exact name to skip paging).
-2. Remove a skill (owning plugin auto-detected):
+1. **Show the numbered menu:**
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" remove-skill <skill> --force
+   python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" remove
    ```
-   Remove a whole plugin (also unregisters it and clears user-scope enablement):
-   ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" remove-plugin <plugin> --force
-   ```
-   `--force` is the confirmation. Run the command without it first if you want the tool to print exactly what it will delete before doing it.
+   Print the engine's tree verbatim — plugins get a bare number (`2`), each skill a compound index (`2.3`). Those numbers are ground truth; don't renumber or invent entries.
 
-   **If removing a skill prints `AMBIGUOUS: '<skill>' exists in multiple plugins: X, Y`,** the name isn't unique and the engine won't guess. Use `AskUserQuestion` to ask which plugin to remove it from (one option per listed plugin), then re-run with `--plugin <their choice> --force`.
-3. Report using the **Output** skeleton, including the two-command marketplace-update + reload steps the engine prints (`/plugin marketplace update <marketplace>` then `/reload-plugins`; custom marketplaces don't auto-refresh, so `/reload-plugins` alone won't pick up the change). **Surface any push-failure WARNING.** Removing a plugin can't clean up its enablement in *other* projects — mention that if relevant.
+2. **Get the pick.** If the user already named a target (as args or in chat), use it. Otherwise ask in plain text to reply with a number — a skill index like `1.2`, or a plugin number like `2` to delete the whole plugin (this open-ended reply doesn't fit `AskUserQuestion`'s fixed options). Pass their reply through unchanged.
+
+3. **Preview the deletion** (writes nothing):
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" remove --select "<their reply>"
+   ```
+   The engine prints exactly what it would delete (the skill, or the plugin and all its skills). Relay that verbatim. If it errors on a bad index/name, show the message and re-ask (back to step 2).
+
+4. **Confirm before deleting** with `AskUserQuestion` — this is destructive and pushes to git:
+   - **Delete** — proceed with what the preview showed.
+   - **Cancel** — make no changes.
+
+5. **Apply** the confirmed deletion, reusing the same `--select` value the preview echoed:
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" remove --select "<ref>" --force
+   ```
+
+6. Report using the **Output** skeleton, including the two-command marketplace-update + reload steps the engine prints (`/plugin marketplace update <marketplace>` then `/reload-plugins`; custom marketplaces don't auto-refresh, so `/reload-plugins` alone won't pick up the change). **Surface any push-failure WARNING.** Removing a plugin can't clean up its enablement in *other* projects — mention that if relevant.
+
+For direct, name-based removal (e.g. scripting), `skillctl remove-skill <skill> [--plugin P] --force` and `skillctl remove-plugin <plugin> --force` still work and resolve the same way.
 
 ## Stay grounded — this is destructive and writes to git
 
-- **Confirm the exact name against `/skill-manager:status` before removing**, and get the
-  user's explicit OK. Never guess a skill or plugin name — a wrong name could delete the
-  wrong thing or fail confusingly.
-- **Relay the tool's actual output.** Only report success if it confirmed the removal, and
-  surface any push-failure `WARNING` — until the push lands, the removal is local-only.
+- **The menu and `--select` are the source of truth.** The engine resolves the index to a real skill/plugin and prints what it will delete; never delete by a name you inferred yourself. Always run the preview (step 3) and get the user's explicit OK (step 4) before `--force`.
+- **Relay the tool's actual output.** Only report success if it confirmed the removal, and surface any push-failure `WARNING` — until the push lands, the removal is local-only.
 
 ## Output
 
@@ -42,6 +52,8 @@ Fill this skeleton from the engine's output, copying values verbatim. Drop a lin
 
 **Removed:** {skill `{name}` from `{plugin}` (now v`{version}`) / plugin `{name}` and all its skills}
 **⚠️ Push failed:** {verbatim WARNING} — committed locally, not on the remote yet.
-**Cleanup:** {only if the engine noted `{plugin}` has no skills left} → remove the empty plugin too with `/skill-manager:remove`.
+**Cleanup:** {only if the engine noted `{plugin}` has no skills left} → run the menu again and pick its plugin number to remove it too.
 **Apply it (required after every removal):** custom marketplaces don't reliably auto-update — not even new sessions — so run these two commands each time (substitute the real marketplace name for `{marketplace}`): `/plugin marketplace update {marketplace}` then `/reload-plugins`.
 **Heads up:** {plugin removal only} enablement of `{plugin}` in other projects must be cleaned up manually.
+
+If the user cancelled, say so and confirm nothing was deleted.

@@ -22,8 +22,9 @@ Subcommands:
   push           Publish a project-local skill central, or sync edits up (auto-detected).
   pull           Copy a central skill down into this project to iterate on it.
   new-plugin     Scaffold a new plugin and register it in the catalog.
-  remove-skill   Delete a skill from a central plugin and push the removal.
-  remove-plugin  Delete a plugin, unregister it, and push the removal.
+  remove         Numbered menu to remove a skill (N.M) or whole plugin (N); preview then --force.
+  remove-skill   Delete a skill from a central plugin and push the removal (direct, name-based).
+  remove-plugin  Delete a plugin, unregister it, and push the removal (direct, name-based).
   status         Catalog + what's enabled here + a health check (--fix to auto-repair).
   validate       Lint marketplace.json, every plugin.json, and every SKILL.md (CI-friendly).
   refresh        Update the marketplace so a new/changed plugin is picked up.
@@ -389,23 +390,115 @@ def cmd_init(args):
 # configure / enable / disable
 # ---------------------------------------------------------------------------
 
+def _plugin_skills(cfg: dict, name: str) -> list[str]:
+    sdir = plugin_dir(cfg, name) / "skills"
+    return sorted(s.name for s in sdir.glob("*") if s.is_dir()) if sdir.exists() else []
+
+
+def _print_menu(cfg: dict):
+    """The deterministic, numbered selection menu. Numbering is the catalog (marketplace.json)
+    order — stable within a session — so a reply of indices resolves the same way every time.
+    The skill prints this verbatim; selection is resolved by `--select`, never by the model."""
+    enabled = project_enabled(cfg)
+    cat = catalog(cfg)
+    info(f"Plugins in marketplace '{cfg['marketplace']}' ({len(cat)} available) "
+         f"— enabled here marked [on]:\n")
+    if not cat:
+        info("  (none yet — create one with: skillctl new-plugin <name>)")
+        return
+    for i, e in enumerate(cat, 1):
+        name = e["name"]
+        mark = "[on]" if name in enabled else "[  ]"
+        info(f"  {i:>2}. {mark} {name}  v{e.get('version', '?')}")
+        if e.get("description"):
+            info(f"          {e['description']}")
+        info(f"          skills: {', '.join(_plugin_skills(cfg, name)) or '(none)'}")
+    info("\nReply with the numbers to enable (e.g. 1 3 5), a range (1-3), 'all', or 'none'.")
+    info("That set becomes this project's enabled plugins; you'll see the changes before they apply.")
+
+
+def _parse_select(spec: str, names: list[str]) -> list[str]:
+    """Resolve a selection spec against the ordered catalog `names`. Accepts 1-based indices,
+    ranges (1-3), exact plugin names, and the keywords 'all'/'*' and 'none'/'-'. Returns the
+    chosen names in catalog order (deduped). Raises ValueError with a corrective message on any
+    unknown or out-of-range token — so a bad selection fails loudly instead of misconfiguring."""
+    s = (spec or "").strip()
+    if s.lower() in ("all", "*"):
+        return list(names)
+    if s.lower() in ("none", "-", ""):
+        return []
+    chosen: set[str] = set()
+    for tok in re.split(r"[\s,]+", s):
+        if not tok:
+            continue
+        rng = re.fullmatch(r"(\d+)-(\d+)", tok)
+        if rng:
+            lo, hi = int(rng.group(1)), int(rng.group(2))
+            if lo < 1 or hi > len(names) or lo > hi:
+                raise ValueError(f"range '{tok}' is out of bounds (valid indices: 1-{len(names)})")
+            chosen.update(names[lo - 1:hi])
+        elif tok.isdigit():
+            i = int(tok)
+            if i < 1 or i > len(names):
+                raise ValueError(f"index {i} is out of range (valid: 1-{len(names)})")
+            chosen.add(names[i - 1])
+        elif tok in names:
+            chosen.add(tok)
+        else:
+            raise ValueError(f"'{tok}' is not a plugin name or index "
+                             f"(names: {', '.join(names) or 'none'}; indices 1-{len(names)})")
+    return [n for n in names if n in chosen]
+
+
 def cmd_configure(args):
     cfg = load_config()
-    available = [e["name"] for e in catalog(cfg)]
-    if not args.plugins:
-        enabled = project_enabled(cfg)
-        info("Catalog (pass --plugins to choose what this project enables):\n")
-        for e in catalog(cfg):
-            mark = "[on] " if e["name"] in enabled else "[  ] "
-            info(f"  {mark}{e['name']}  —  {e.get('description', '')}")
-        info("\nThen: skillctl configure --plugins a,b,c")
+    names = [e["name"] for e in catalog(cfg)]
+
+    # No selection given -> print the numbered menu and stop.
+    spec = args.select if args.select is not None else args.plugins
+    if spec is None:
+        _print_menu(cfg)
         return
-    selected = [p.strip() for p in args.plugins.split(",") if p.strip()]
-    unknown = [p for p in selected if available and p not in available]
-    if unknown:
-        warn(f"not in the catalog: {', '.join(unknown)} (known: {', '.join(available) or 'none'})")
-    path = apply_settings(project_settings_path(args.shared), cfg, enable=selected)
-    info(f"Enabled {selected} in {path}")
+
+    try:
+        selected = _parse_select(spec, names)
+    except ValueError as e:
+        die(str(e))
+
+    # Diff the requested selection against what's enabled now (only plugins from THIS
+    # marketplace's catalog — we never touch other marketplaces' enablement).
+    cur = project_enabled(cfg) & set(names)
+    target = set(selected) | (cur if args.keep_enabled else set())
+    to_enable = [n for n in names if n in target and n not in cur]
+    to_disable = [] if args.keep_enabled else [n for n in names if n in cur and n not in target]
+    final = [n for n in names if n in target]
+    scope = "shared (settings.json)" if args.shared else "project-local (settings.local.json)"
+    sel_str = ",".join(selected)
+    shared_flag = " --shared" if args.shared else ""
+
+    # Dry by default: show the plan and the exact apply commands, write nothing. The skill
+    # turns this into a confirmation before mutating settings.
+    if not args.apply:
+        info(f"Selection plan — {scope}:")
+        info(f"  enable:    {', '.join(to_enable) or '(none)'}")
+        info(f"  disable:   {', '.join(to_disable) or '(none)'}")
+        info(f"  keep on:   {', '.join(n for n in final if n in cur) or '(none)'}")
+        info(f"  result:    {len(final)} enabled — {', '.join(final) or '(none)'}")
+        if not to_enable and not to_disable:
+            info("\nNo changes — this project's selection already matches.")
+            return
+        info("\nNothing applied yet. To apply:")
+        info(f"  skillctl configure --select \"{sel_str}\"{shared_flag} --apply")
+        if to_disable:
+            info(f"  skillctl configure --select \"{sel_str}\"{shared_flag} --apply --keep-enabled"
+                 f"   (keeps on: {', '.join(to_disable)})")
+        return
+
+    path = apply_settings(project_settings_path(args.shared), cfg, enable=final, disable=to_disable)
+    info(f"Applied — {scope}:")
+    info(f"  enabled:  {', '.join(to_enable) or '(no new)'}")
+    info(f"  disabled: {', '.join(to_disable) or '(none)'}")
+    info(f"  now on:   {', '.join(final) or '(none)'}  -> {path}")
     info("Run /reload-plugins (or start a new session) to load them.")
 
 
@@ -492,6 +585,76 @@ def _resolve_skill_src(name: str, from_dir: str | None = None) -> Path:
         f"Pass --from <dir> to point at it explicitly.")
 
 
+_SKILL_SCAN_EXCLUDE = {".git", "node_modules", "dist", "build", "__pycache__", ".next",
+                       ".venv", "venv", "target", ".idea", ".vscode", ".claude"}
+
+
+def _discover_local_skills(from_dir: str | None = None) -> list[tuple]:
+    """Enumerate publishable skill folders for the `push --list` menu — the same locations
+    `_resolve_skill_src` resolves a *named* skill from, but listed up front so the model never
+    has to glob-and-guess. Returns [(name, dir, md_name|None), ...], deduped by real path.
+
+    Conventional skill homes (.claude/skills/, ~/.claude/skills/, skills/, and an explicit
+    --from) list any folder with a root-level .md. Plain folders directly in the cwd require a
+    real SKILL.md, so a repo full of README-bearing dirs doesn't flood the menu with non-skills."""
+    cwd = Path.cwd()
+    home_skills = Path(os.path.expanduser("~/.claude/skills"))
+    seen: set = set()
+    found: list[tuple] = []
+
+    def add(d: Path, require_skill_md: bool = False):
+        if not d.is_dir() or d.name in _SKILL_SCAN_EXCLUDE:
+            return
+        try:
+            rp = d.resolve()
+        except OSError:
+            return
+        if rp in seen:
+            return
+        if require_skill_md:
+            if not (d / "SKILL.md").is_file():
+                return
+            md_name = "SKILL.md"
+        else:
+            if not _is_skill_dir(d):
+                return
+            md = _resolve_skill_md(d)
+            md_name = md.name if md else None
+        seen.add(rp)
+        found.append((d.name, d, md_name))
+
+    if from_dir:                                    # trust an explicit pointer: itself or its children
+        fd = expand(from_dir)
+        add(fd)
+        if fd.is_dir():
+            for c in sorted(fd.iterdir()):
+                add(c)
+    for base in (cwd / ".claude" / "skills", home_skills, cwd / "skills"):
+        if base.is_dir():
+            for c in sorted(base.iterdir()):
+                add(c)
+    for c in sorted(cwd.iterdir()):                 # plain cwd folders: SKILL.md required
+        add(c, require_skill_md=True)
+    return found
+
+
+def _print_push_menu(found: list[tuple]):
+    cwd = Path.cwd()
+    info(f"Local skills you can push ({len(found)} found):\n")
+    if not found:
+        info("  (none found — author one with the skill-creator skill, or pass --from <dir>)")
+        return
+    for i, (name, d, md_name) in enumerate(found, 1):
+        try:
+            loc = d.resolve().relative_to(cwd.resolve())
+        except ValueError:
+            loc = d
+        note = "" if md_name == "SKILL.md" else (f"   ({md_name} -> SKILL.md)" if md_name
+                                                 else "   (no root .md?)")
+        info(f"  {i:>2}. {name}    {loc}{note}")
+    info("\nReply with the number of the skill to push.")
+
+
 def _dirs_equal(a: Path, b: Path) -> bool:
     """True if two skill directories have identical files and contents. Decided in-process
     (filecmp), so push's "no changes -> no-op" idempotency never depends on an external
@@ -516,6 +679,24 @@ def _materialize_skill(src: Path, dst: Path, md_name: str):
 
 def cmd_push(args):
     cfg = load_config()
+
+    # Numbered menu of local skills, and index-based selection — so the skill layer never has
+    # to enumerate or map names itself (mirrors `configure --select`).
+    if args.list:
+        _print_push_menu(_discover_local_skills(args.from_dir))
+        return
+    if args.select is not None:
+        found = _discover_local_skills(args.from_dir)
+        if not str(args.select).isdigit():
+            die(f"--select must be a number (1-{len(found)})")
+        idx = int(args.select)
+        if not 1 <= idx <= len(found):
+            die(f"--select {idx} is out of range (1-{len(found)}). Run `push --list` for the menu.")
+        name, d, _ = found[idx - 1]
+        args.skill, args.from_dir = name, str(d)    # _resolve_skill_src checks `from_dir` itself first
+    if not args.skill:
+        die("name a skill to push, or run `push --list` to pick one by number.")
+
     src = _resolve_skill_src(args.skill, args.from_dir)
 
     # Which file in src is the skill definition? Explicit --md wins, else SKILL.md, else the
@@ -694,6 +875,152 @@ def cmd_new_plugin(args):
         info("WARNING: push failed — committed locally only.")
 
 
+def _do_remove_skill(cfg: dict, plugin: str, skill: str, message=None, no_refresh=False):
+    """Delete one central skill, bump the plugin version, commit + push. Shared by the
+    `remove` menu and the `remove-skill` subcommand so both behave identically."""
+    shutil.rmtree(plugin_dir(cfg, plugin) / "skills" / skill)
+    newver = _bump_version(cfg, plugin)
+    ok = _commit_push(cfg, message or f"Remove skill '{skill}' from {plugin} (v{newver})",
+                      [str(plugin_dir(cfg, plugin)), str(marketplace_json_path(cfg))])
+    if not no_refresh:
+        _refresh(cfg)
+    info(f"Removed '{skill}' from '{plugin}' (now v{newver}).")
+    sdir = plugin_dir(cfg, plugin) / "skills"
+    remaining = [s for s in sdir.glob("*") if s.is_dir()] if sdir.exists() else []
+    if not remaining:
+        info(f"note: '{plugin}' has no skills left — consider removing the plugin too "
+             f"(re-run the menu and pick its number).")
+    if not ok:
+        info("WARNING: push failed — committed locally only.")
+
+
+def _do_remove_plugin(cfg: dict, name: str, message=None, no_refresh=False):
+    """Delete a whole plugin, unregister it, clear its user-scope enablement, commit + push.
+    Shared by the `remove` menu and the `remove-plugin` subcommand."""
+    pdir = plugin_dir(cfg, name)
+    if pdir.exists():
+        shutil.rmtree(pdir)
+    mpath = marketplace_json_path(cfg)
+    mkt = read_json(mpath, {})
+    mkt["plugins"] = [p for p in mkt.get("plugins", []) if p.get("name") != name]
+    write_json(mpath, mkt, backup=False)
+
+    us = read_json(USER_SETTINGS, {})
+    key = f"{name}@{cfg['marketplace']}"
+    if (us.get("enabledPlugins") or {}).get(key) is not None:
+        us["enabledPlugins"].pop(key, None)
+        write_json(USER_SETTINGS, us)
+        info(f"Removed {key} from user settings.")
+
+    ok = _commit_push(cfg, message or f"Remove plugin '{name}'", [str(pdir), str(mpath)])
+    if not no_refresh:
+        _refresh(cfg)
+    info(f"Removed plugin '{name}'.")
+    info("Note: project-level enablement in other repos must be cleaned up manually.")
+    if not ok:
+        info("WARNING: push failed — committed locally only.")
+
+
+def _catalog_with_skills(cfg: dict) -> list[tuple]:
+    """[(plugin_name, version, [skill names]), ...] in catalog order — the basis for the
+    numbered remove menu and for resolving its compound indices."""
+    return [(e["name"], e.get("version", "?"), _plugin_skills(cfg, e["name"])) for e in catalog(cfg)]
+
+
+def _print_remove_menu(cfg: dict):
+    """Numbered tree of central content. Plugins take a bare index (N); each skill takes a
+    compound index (N.M). Printed verbatim by the skill; the index is resolved by --select,
+    never by the model — and because a skill index encodes its plugin, there's no ambiguity."""
+    rows = _catalog_with_skills(cfg)
+    info(f"Central content in marketplace '{cfg['marketplace']}' (type a number to remove):\n")
+    if not rows:
+        info("  (nothing to remove — the catalog is empty)")
+        return
+    for i, (name, ver, skills) in enumerate(rows, 1):
+        info(f"  {i:>2}. {name}  v{ver}")
+        if skills:
+            info("        " + "   ".join(f"{i}.{j} {s}" for j, s in enumerate(skills, 1)))
+        else:
+            info("        (no skills)")
+    info("\nType a skill index (e.g. 1.2) to delete one skill,")
+    info("or a plugin number (e.g. 2) to delete the whole plugin and all its skills.")
+
+
+def _resolve_remove_ref(cfg: dict, ref: str):
+    """Resolve a remove selection to ('skill', plugin, skill) or ('plugin', name). Accepts a
+    compound skill index (N.M), a bare plugin index (N), or names (plugin / plugin:skill /
+    /plugin:skill). Raises ValueError with a corrective message on anything out of range."""
+    rows = _catalog_with_skills(cfg)
+    names = [r[0] for r in rows]
+    skills_of = {r[0]: r[2] for r in rows}
+    s = (ref or "").strip()
+    m = re.fullmatch(r"(\d+)\.(\d+)", s)
+    if m:
+        pi, si = int(m.group(1)), int(m.group(2))
+        if not 1 <= pi <= len(rows):
+            raise ValueError(f"plugin index {pi} is out of range (1-{len(rows)})")
+        pname, _, skills = rows[pi - 1]
+        if not 1 <= si <= len(skills):
+            raise ValueError(f"skill index {pi}.{si} is out of range "
+                             f"('{pname}' has {len(skills)} skill(s))")
+        return ("skill", pname, skills[si - 1])
+    if s.isdigit():
+        pi = int(s)
+        if not 1 <= pi <= len(rows):
+            raise ValueError(f"plugin index {pi} is out of range (1-{len(rows)})")
+        return ("plugin", rows[pi - 1][0])
+    s2 = s[1:] if s.startswith("/") else s
+    if ":" in s2:
+        p, sk = s2.split(":", 1)
+        if p not in names:
+            raise ValueError(f"'{p}' is not a plugin (have: {', '.join(names) or 'none'})")
+        if sk not in skills_of[p]:
+            raise ValueError(f"'{sk}' is not a skill in '{p}' "
+                             f"(has: {', '.join(skills_of[p]) or 'none'})")
+        return ("skill", p, sk)
+    if s2 in names:
+        return ("plugin", s2)
+    raise ValueError(f"'{ref}' is not a plugin number (N), a skill index (N.M), or a known name")
+
+
+def cmd_remove(args):
+    cfg = load_config()
+    if not args.select:
+        _print_remove_menu(cfg)
+        return
+    try:
+        ref = _resolve_remove_ref(cfg, args.select)
+    except ValueError as e:
+        die(str(e))
+
+    if ref[0] == "skill":
+        _, plugin, skill = ref
+        dst = plugin_dir(cfg, plugin) / "skills" / skill
+        if not dst.exists():
+            die(f"{dst} does not exist")
+        if not args.force:
+            info(f"Would remove skill '{skill}' from plugin '{plugin}', bump the version, and push.")
+            info(f"  deletes: {dst}")
+            info(f"\nNot removed yet. To confirm:")
+            info(f"  skillctl remove --select \"{args.select}\" --force")
+            return
+        _do_remove_skill(cfg, plugin, skill, args.message, args.no_refresh)
+    else:
+        _, plugin = ref
+        pdir = plugin_dir(cfg, plugin)
+        skills = _plugin_skills(cfg, plugin)
+        if not args.force:
+            info(f"Would remove the ENTIRE plugin '{plugin}' (and all {len(skills)} of its skills), "
+                 f"unregister it, and push.")
+            info(f"  deletes: {pdir}")
+            if skills:
+                info(f"  skills:  {', '.join(skills)}")
+            info(f"\nNot removed yet. To confirm:")
+            info(f"  skillctl remove --select \"{args.select}\" --force")
+            return
+        _do_remove_plugin(cfg, plugin, args.message, args.no_refresh)
+
+
 def cmd_remove_skill(args):
     cfg = load_config()
     plugin = args.plugin
@@ -710,20 +1037,7 @@ def cmd_remove_skill(args):
         die(f"{dst} does not exist")
     if not args.force:
         die(f"This deletes {dst} and pushes the removal. Re-run with --force to confirm.")
-    shutil.rmtree(dst)
-    newver = _bump_version(cfg, plugin)
-    ok = _commit_push(cfg, args.message or f"Remove skill '{args.skill}' from {plugin} (v{newver})",
-                      [str(plugin_dir(cfg, plugin)), str(marketplace_json_path(cfg))])
-    if not args.no_refresh:
-        _refresh(cfg)
-    info(f"Removed '{args.skill}' from '{plugin}' (now v{newver}).")
-    sdir = plugin_dir(cfg, plugin) / "skills"
-    remaining = [s for s in sdir.glob("*") if s.is_dir()] if sdir.exists() else []
-    if not remaining:
-        info(f"note: '{plugin}' has no skills left — consider removing it: "
-             f"skillctl remove-plugin {plugin} --force")
-    if not ok:
-        info("WARNING: push failed — committed locally only.")
+    _do_remove_skill(cfg, plugin, args.skill, args.message, args.no_refresh)
 
 
 def cmd_remove_plugin(args):
@@ -734,27 +1048,7 @@ def cmd_remove_plugin(args):
         die(f"plugin '{name}' not found")
     if not args.force:
         die(f"This deletes {pdir}, unregisters it, and pushes. Re-run with --force to confirm.")
-    if pdir.exists():
-        shutil.rmtree(pdir)
-    mpath = marketplace_json_path(cfg)
-    mkt = read_json(mpath, {})
-    mkt["plugins"] = [p for p in mkt.get("plugins", []) if p.get("name") != name]
-    write_json(mpath, mkt, backup=False)
-
-    us = read_json(USER_SETTINGS, {})
-    key = f"{name}@{cfg['marketplace']}"
-    if (us.get("enabledPlugins") or {}).get(key) is not None:
-        us["enabledPlugins"].pop(key, None)
-        write_json(USER_SETTINGS, us)
-        info(f"Removed {key} from user settings.")
-
-    ok = _commit_push(cfg, args.message or f"Remove plugin '{name}'", [str(pdir), str(mpath)])
-    if not args.no_refresh:
-        _refresh(cfg)
-    info(f"Removed plugin '{name}'.")
-    info("Note: project-level enablement in other repos must be cleaned up manually.")
-    if not ok:
-        info("WARNING: push failed — committed locally only.")
+    _do_remove_plugin(cfg, name, args.message, args.no_refresh)
 
 
 # ---------------------------------------------------------------------------
@@ -1005,7 +1299,11 @@ def build_parser() -> argparse.ArgumentParser:
     i.set_defaults(func=cmd_init)
 
     c = sub.add_parser("configure", help="choose which plugins this project uses")
-    c.add_argument("--plugins", help="comma list to enable; omit to print the catalog")
+    c.add_argument("--select", help="indices/ranges/names/all/none to enable; omit to print the numbered menu")
+    c.add_argument("--plugins", help="alias for --select using plugin names (comma list)")
+    c.add_argument("--apply", action="store_true", help="write the selection (omit to preview the plan only)")
+    c.add_argument("--keep-enabled", dest="keep_enabled", action="store_true",
+                   help="with --apply, keep currently-enabled plugins on too (disable nothing)")
     _add_shared(c)
     c.set_defaults(func=cmd_configure)
 
@@ -1020,7 +1318,9 @@ def build_parser() -> argparse.ArgumentParser:
     d.set_defaults(func=cmd_disable)
 
     pu = sub.add_parser("push", help="publish a project skill central, or sync edits up")
-    pu.add_argument("skill")
+    pu.add_argument("skill", nargs="?", help="skill name; omit with --list/--select to pick from a menu")
+    pu.add_argument("--list", action="store_true", help="print a numbered menu of local skills to push")
+    pu.add_argument("--select", help="pick a skill from the menu by number")
     pu.add_argument("--from", dest="from_dir",
                     help="dir to read the skill from (default: search .claude/skills/, a folder "
                          "in cwd, ~/.claude/skills/, skills/)")
@@ -1045,6 +1345,13 @@ def build_parser() -> argparse.ArgumentParser:
     npl.add_argument("--message", "-m")
     npl.add_argument("--no-refresh", action="store_true")
     npl.set_defaults(func=cmd_new_plugin)
+
+    rm = sub.add_parser("remove", help="numbered menu to remove a skill (N.M) or a whole plugin (N)")
+    rm.add_argument("--select", help="plugin number (e.g. 2) or skill index (e.g. 2.3); omit for the menu")
+    rm.add_argument("--message", "-m")
+    rm.add_argument("--force", action="store_true", help="confirm the deletion (omit to preview)")
+    rm.add_argument("--no-refresh", action="store_true")
+    rm.set_defaults(func=cmd_remove)
 
     rs = sub.add_parser("remove-skill", help="delete a skill from a central plugin")
     rs.add_argument("skill")

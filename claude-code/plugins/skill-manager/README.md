@@ -106,12 +106,17 @@ deliberately not installed on your PATH. Requires `python3` (macOS/Linux).
 
 ```
 skillctl init [--repo owner/name] [--path P] [--marketplace N] [--plugins-dir D] [--user-plugins a,b]
-skillctl configure [--plugins a,b,c] [--shared]
+skillctl configure                                          # print the numbered menu
+skillctl configure --select "1 3 5"|"a,b"|all|none          # preview the plan (no writes)
+skillctl configure --select ... --apply [--keep-enabled] [--shared]
 skillctl enable <plugin>...        skillctl disable <plugin>...    [--shared]
-skillctl push <skill> [--from DIR] [--md FILE] [--plugin P] [-m msg] [--dry-run] [--force] [--no-refresh]
+skillctl push --list                                        # numbered menu of local skills
+skillctl push [<skill> | --select N] [--from DIR] [--md FILE] [--plugin P] [-m msg] [--dry-run] [--force] [--no-refresh]
 skillctl pull <skill> [--plugin P] [--force]
 skillctl new-plugin <name> [--description D]
-skillctl remove-skill <skill> [--plugin P] --force
+skillctl remove                                             # numbered tree; type N (plugin) or N.M (skill)
+skillctl remove --select N|N.M [--force]                    # preview, then confirm with --force
+skillctl remove-skill <skill> [--plugin P] --force          # direct, name-based
 skillctl remove-plugin <plugin> --force
 skillctl status [--fix]   skillctl validate        skillctl refresh
 skillctl version-bump <plugin>

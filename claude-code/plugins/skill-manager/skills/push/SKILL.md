@@ -4,8 +4,8 @@ description: Publish a skill from this project (its .claude/skills/, a plain fol
 model: claude-sonnet-4-6
 effort: medium
 disable-model-invocation: true
-allowed-tools: Bash(python3 *) Bash(git *) Bash(ls *) Read Glob AskUserQuestion
-argument-hint: "<skill-name> [--from <dir>] [--md <file>] [--plugin <plugin>]"
+allowed-tools: Bash(python3 *) Bash(git *) AskUserQuestion
+argument-hint: "[skill-name] [--from <dir>] [--md <file>] [--plugin <plugin>]"
 ---
 
 # Push a skill to the central marketplace
@@ -14,7 +14,17 @@ Take a skill from this project's `.claude/skills/<name>/` and publish or update 
 
 ## Steps
 
-1. Identify the skill. A skill is a folder with **at least one root-level `.md` file** — its definition, usually `SKILL.md` but sometimes a differently-named `.md`. A folder with no root `.md` is just code, so skip it (this scoping is what keeps auto-detect from matching random source folders). Discover candidates the way the engine resolves them, **preferring `SKILL.md`**: the canonical `.claude/skills/*/`, any folder with a `SKILL.md` (Glob `*/SKILL.md`), then plain folders in the current directory that hold a root `.md` (Glob `*/*.md`) — excluding obvious non-skill dirs like `node_modules`, `.git`, `dist`, `build` — plus `~/.claude/skills/*/` and `skills/*/`. If the user didn't name one, list the candidates and ask which with `AskUserQuestion`. If it lives somewhere non-standard, add `--from <dir>`. A non-`SKILL.md` definition file is published **as `SKILL.md`** automatically (your local copy is left unchanged), since Claude Code only loads skills from `SKILL.md`. **Respect the 4-option cap:** `AskUserQuestion` shows at most 4 options, so if there are more than 4 candidate skills, **page through them** rather than dropping any — offer 3 plus a `Show more (N left)…` option and re-ask with the next batch when picked (the auto-added "Other" lets them type the exact name/path to skip paging). (To create a skill first, use the native **skill-creator** skill — this plugin doesn't scaffold skills.)
+1. Identify the skill. If the user already named one (as an arg or in chat), use it and skip to step 2. Otherwise **show the engine's numbered menu of local skills** and let them pick by number — the engine does the discovery and resolves the index itself, so you never glob or map names:
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" push --list
+   ```
+   Print the list verbatim, then ask in plain text for the number to push (this open-ended reply doesn't fit `AskUserQuestion`'s fixed options). Pass it through with `--select`:
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" push --select <number> [--plugin <plugin>] [--md <file>]
+   ```
+   The menu covers `.claude/skills/*`, `~/.claude/skills/*`, `skills/*`, and plain folders in the cwd that have a `SKILL.md`. A skill is a folder with at least one root-level `.md` (its definition — usually `SKILL.md`, sometimes a differently-named `.md`, which is published **as `SKILL.md`** automatically; your local copy is unchanged). If the skill lives somewhere else, point at it with `--from <dir>` (works with both `--list` and a named skill). To create a skill first, use the native **skill-creator** skill — this plugin doesn't scaffold skills.
+   In the commands below, **`<skill>` is whichever identifier you settled on** — the skill name, or `--select <number>` from the menu. Keep using the same one (plus `--from <dir>` if you used it) through every re-run.
+
 2. When the skill may already be central, preview with a dry run, then show the diff and confirm:
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" push <skill> [--from <dir>] --dry-run
