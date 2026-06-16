@@ -24,6 +24,8 @@ Delete a central skill (or a whole plugin), clean up the catalog and bump the ve
    python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" remove-plugin <plugin> --force
    ```
    `--force` is the confirmation. Run the command without it first if you want the tool to print exactly what it will delete before doing it.
+
+   **If removing a skill prints `AMBIGUOUS: '<skill>' exists in multiple plugins: X, Y`,** the name isn't unique and the engine won't guess. Use `AskUserQuestion` to ask which plugin to remove it from (one option per listed plugin), then re-run with `--plugin <their choice> --force`.
 3. Report using the **Output** skeleton, including the two-command marketplace-update + reload steps the engine prints (`/plugin marketplace update <marketplace>` then `/reload-plugins`; custom marketplaces don't auto-refresh, so `/reload-plugins` alone won't pick up the change). **Surface any push-failure WARNING.** Removing a plugin can't clean up its enablement in *other* projects — mention that if relevant.
 
 ## Stay grounded — this is destructive and writes to git

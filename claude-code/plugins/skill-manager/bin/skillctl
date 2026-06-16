@@ -39,6 +39,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 CONFIG_PATH = Path(os.path.expanduser("~/.claude/skill-manager.json"))
@@ -166,11 +167,11 @@ def plugin_manifest_path(cfg: dict, name: str) -> Path:
     return plugin_dir(cfg, name) / ".claude-plugin" / "plugin.json"
 
 
-def _find_plugin_for_skill(cfg: dict, skill: str) -> str | None:
-    for e in catalog(cfg):
-        if (plugin_dir(cfg, e["name"]) / "skills" / skill).exists():
-            return e["name"]
-    return None
+def _find_plugins_for_skill(cfg: dict, skill: str) -> list[str]:
+    """Every central plugin that contains a skill of this name. Usually 0 or 1; more than one
+    means an ambiguous name the caller must disambiguate with --plugin (we never guess)."""
+    return [e["name"] for e in catalog(cfg)
+            if (plugin_dir(cfg, e["name"]) / "skills" / skill).exists()]
 
 
 # ---------------------------------------------------------------------------
@@ -424,13 +425,71 @@ def cmd_disable(args):
 # push (promote new OR sync existing, auto-detected) / pull
 # ---------------------------------------------------------------------------
 
-def _skill_src_in_project(name: str) -> Path:
-    p = Path.cwd() / ".claude" / "skills" / name
-    if not p.exists():
-        die(f"no skill at {p}. Is the name right, and are you in the project root?")
-    if not (p / "SKILL.md").exists():
-        die(f"{p} has no SKILL.md")
-    return p
+def _root_md_files(folder: Path) -> list[Path]:
+    """Markdown files at the root of a folder (non-recursive, sorted). A skill always has at
+    least one root .md (its definition — usually SKILL.md); a folder with none is just code.
+    This is the signal that keeps auto-detection from matching arbitrary code directories."""
+    if not folder.is_dir():
+        return []
+    return sorted(p for p in folder.glob("*.md") if p.is_file())
+
+
+def _is_skill_dir(folder: Path) -> bool:
+    """A folder qualifies as a skill source iff it has at least one root-level .md file."""
+    return bool(_root_md_files(folder))
+
+
+def _resolve_skill_md(folder: Path, md_name: str | None = None) -> Path | None:
+    """Pick the file that is the skill's definition markdown inside a folder. An explicit
+    md_name wins; otherwise SKILL.md; otherwise the sole root-level .md. Returns None when
+    there is no root .md, or several and none is SKILL.md (ambiguous — the caller must pick)."""
+    if md_name:
+        p = folder / md_name
+        return p if p.is_file() else None
+    smd = folder / "SKILL.md"
+    if smd.is_file():
+        return smd
+    mds = _root_md_files(folder)
+    return mds[0] if len(mds) == 1 else None
+
+
+def _resolve_skill_src(name: str, from_dir: str | None = None) -> Path:
+    """Locate the project-side skill directory to publish. A skill is a directory named <name>
+    holding at least one root-level .md file (its definition — usually SKILL.md, sometimes a
+    differently-named .md), so authoring isn't locked to one layout: we search an explicit
+    --from, the canonical project dir, a plain folder in the cwd, the user's personal skills
+    dir, a flat skills/ repo, and the cwd itself. A folder with no root .md is treated as code,
+    not a skill, to avoid false positives. Folders with a real SKILL.md win across all
+    locations; we only fall back to a differently-named root .md if none has SKILL.md. Dies
+    listing everywhere it looked if nothing qualifies."""
+    cwd = Path.cwd()
+    home_skills = Path(os.path.expanduser("~/.claude/skills"))
+    cands: list[Path] = []
+    if from_dir:
+        fd = expand(from_dir)
+        cands += [fd, fd / name]            # --from may be the skill dir itself or its parent
+    cands += [
+        cwd / ".claude" / "skills" / name,  # canonical project skill
+        cwd / name,                         # a plain folder in the current directory
+        home_skills / name,                 # personal (~/.claude/skills) skill
+        cwd / "skills" / name,              # flat skills repo
+    ]
+    if cwd.name == name:
+        cands.append(cwd)                   # standing inside the skill's own folder
+    ordered: list[Path] = []
+    for c in cands:
+        if c not in ordered:
+            ordered.append(c)
+    for c in ordered:                       # prefer a real SKILL.md anywhere over a misnamed .md
+        if (c / "SKILL.md").is_file():
+            return c
+    for c in ordered:                       # fall back to any folder with a root-level .md
+        if _is_skill_dir(c):
+            return c
+    looked = "\n  - ".join(str(c) for c in ordered)
+    die(f"no skill named '{name}' found (a skill is a folder with at least one root-level .md "
+        f"file, usually SKILL.md). Looked in:\n  - {looked}\n"
+        f"Pass --from <dir> to point at it explicitly.")
 
 
 def _dirs_equal(a: Path, b: Path) -> bool:
@@ -446,21 +505,55 @@ def _dirs_equal(a: Path, b: Path) -> bool:
     return all(filecmp.cmp(a / r, b / r, shallow=False) for r in af)
 
 
+def _materialize_skill(src: Path, dst: Path, md_name: str):
+    """Copy a skill dir src -> dst, ensuring its definition markdown lands as SKILL.md (Claude
+    Code only loads SKILL.md). Scripts and supporting files are copied unchanged; the user's
+    source is never modified (only this copy is renamed)."""
+    shutil.copytree(src, dst)
+    if md_name != "SKILL.md":
+        (dst / md_name).replace(dst / "SKILL.md")
+
+
 def cmd_push(args):
     cfg = load_config()
-    src = _skill_src_in_project(args.skill)
+    src = _resolve_skill_src(args.skill, args.from_dir)
+
+    # Which file in src is the skill definition? Explicit --md wins, else SKILL.md, else the
+    # sole root-level .md. Refuse to guess when several root .md exist and none is SKILL.md.
+    md = _resolve_skill_md(src, args.md)
+    if md is None:
+        if args.md:
+            die(f"--md '{args.md}' is not a file in {src}.")
+        roots = _root_md_files(src)
+        if not roots:
+            die(f"{src} has no skill markdown (expected SKILL.md or a root-level .md file).")
+        die(f"AMBIGUOUS-MD: {src} has multiple root .md files and no SKILL.md: "
+            f"{', '.join(p.name for p in roots)}. Re-run with --md <file> to name the skill's.")
+    md_name = md.name
 
     # Deterministic guard: never publish a malformed skill, even if asked to.
-    errs, warns, _ = _check_skill_md(src)
+    errs, warns, _ = _check_skill_md(src, md_name)
     for w in warns:
         warn(w)
     if errs:
         die("this skill would be broken once published:\n  - " + "\n  - ".join(errs)
             + "\nFix it (the skill-creator skill can help), then retry.")
+    if md_name != "SKILL.md":
+        info(f"Note: '{md_name}' will be published as SKILL.md (Claude Code only loads skills "
+             f"from SKILL.md). Your local file is left unchanged.")
 
-    existing = _find_plugin_for_skill(cfg, args.skill)
+    matches = _find_plugins_for_skill(cfg, args.skill)
 
-    if existing:
+    if len(matches) > 1:
+        # Ambiguous: this skill name is central in several plugins. Don't guess — the skill
+        # layer turns this into an AskUserQuestion and re-runs with the chosen --plugin.
+        if args.plugin in matches:
+            plugin, mode = args.plugin, "update"
+        else:
+            die(f"AMBIGUOUS: '{args.skill}' exists in multiple plugins: "
+                f"{', '.join(matches)}. Re-run with --plugin <one of those> to pick.")
+    elif matches:
+        existing = matches[0]
         if args.plugin and args.plugin != existing:
             die(f"'{args.skill}' already lives in plugin '{existing}'. Re-run without "
                 f"--plugin to update it there, or remove it first.")
@@ -479,36 +572,41 @@ def cmd_push(args):
 
     dst = plugin_dir(cfg, plugin) / "skills" / args.skill
 
-    if mode == "update":
-        # Equality is decided in-process (not via the diff binary) so a re-run on an
-        # unchanged skill is always a clean no-op — no version churn, no empty commit.
-        same = _dirs_equal(dst, src)
-        if same and not args.force:
-            info("No differences — central copy already matches.")
-            n = _unpushed_count(cfg)
-            if n:
-                info(f"Note: {n} local commit(s) are not on the remote yet (a previous push "
-                     f"may have failed). Flush them with: git -C {repo_path(cfg)} push")
-            return
-        if have("diff"):  # for the user's benefit only; the decision above is authoritative
-            d = run(["diff", "-ru", str(dst), str(src)], check=False, quiet=True)
-            if d.stdout.strip():
-                info("Changes to push up:\n" + d.stdout)
-        if args.dry_run:
-            info("(dry run — nothing written)")
-            return
-        shutil.rmtree(dst)
-        shutil.copytree(src, dst)
-    else:
-        if args.dry_run:
-            info(f"(dry run) would create {dst}")
-            return
-        if dst.exists():
-            if not args.force:
-                die(f"{dst} already exists. Pass --force to overwrite.")
+    # Stage the exact bytes we'd publish (the skill's .md renamed to SKILL.md) once, then use
+    # the same staged copy for the equality check, the diff, and the write — so all three
+    # agree on the rename and a re-push of an unchanged skill stays a clean no-op.
+    with tempfile.TemporaryDirectory() as td:
+        staged = Path(td) / args.skill
+        _materialize_skill(src, staged, md_name)
+
+        if mode == "update":
+            # Equality is decided in-process (not via the diff binary) so a re-run on an
+            # unchanged skill is always a clean no-op — no version churn, no empty commit.
+            if _dirs_equal(staged, dst) and not args.force:
+                info("No differences — central copy already matches.")
+                n = _unpushed_count(cfg)
+                if n:
+                    info(f"Note: {n} local commit(s) are not on the remote yet (a previous push "
+                         f"may have failed). Flush them with: git -C {repo_path(cfg)} push")
+                return
+            if have("diff"):  # for the user's benefit only; the decision above is authoritative
+                d = run(["diff", "-ru", str(dst), str(staged)], check=False, quiet=True)
+                if d.stdout.strip():
+                    info("Changes to push up:\n" + d.stdout)
+            if args.dry_run:
+                info("(dry run — nothing written)")
+                return
             shutil.rmtree(dst)
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(src, dst)
+        else:
+            if args.dry_run:
+                info(f"(dry run) would create {dst}")
+                return
+            if dst.exists():
+                if not args.force:
+                    die(f"{dst} already exists. Pass --force to overwrite.")
+                shutil.rmtree(dst)
+            dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(staged, dst)
 
     newver = _bump_version(cfg, plugin)
     verb = "Update" if mode == "update" else "Add"
@@ -529,7 +627,13 @@ def cmd_push(args):
 
 def cmd_pull(args):
     cfg = load_config()
-    plugin = args.plugin or _find_plugin_for_skill(cfg, args.skill)
+    plugin = args.plugin
+    if not plugin:
+        matches = _find_plugins_for_skill(cfg, args.skill)
+        if len(matches) > 1:
+            die(f"AMBIGUOUS: '{args.skill}' exists in multiple plugins: "
+                f"{', '.join(matches)}. Re-run with --plugin <one of those>.")
+        plugin = matches[0] if matches else None
     if not plugin:
         die(f"'{args.skill}' not found in the central repo.")
     src = plugin_dir(cfg, plugin) / "skills" / args.skill
@@ -592,7 +696,13 @@ def cmd_new_plugin(args):
 
 def cmd_remove_skill(args):
     cfg = load_config()
-    plugin = args.plugin or _find_plugin_for_skill(cfg, args.skill)
+    plugin = args.plugin
+    if not plugin:
+        matches = _find_plugins_for_skill(cfg, args.skill)
+        if len(matches) > 1:
+            die(f"AMBIGUOUS: '{args.skill}' exists in multiple plugins: "
+                f"{', '.join(matches)}. Re-run with --plugin <one of those>.")
+        plugin = matches[0] if matches else None
     if not plugin:
         die(f"'{args.skill}' not found in any central plugin.")
     dst = plugin_dir(cfg, plugin) / "skills" / args.skill
@@ -770,13 +880,19 @@ def _frontmatter(text: str) -> dict | None:
     return out
 
 
-def _check_skill_md(skill_dir: Path):
+def _check_skill_md(skill_dir: Path, md_name: str | None = None):
     """Deterministic lint of one skill directory. Returns (errors, warnings, frontmatter).
     Used both by `validate` and as a pre-publish guard in `push`, so a malformed skill can
-    never be committed to the marketplace by mistake."""
-    smd = skill_dir / "SKILL.md"
-    if not smd.exists():
-        return ([f"{skill_dir}: missing SKILL.md"], [], None)
+    never be committed to the marketplace by mistake. md_name names the definition markdown
+    when it isn't SKILL.md (push publishes it renamed to SKILL.md)."""
+    smd = _resolve_skill_md(skill_dir, md_name)
+    if smd is None:
+        roots = _root_md_files(skill_dir)
+        if not roots:
+            return ([f"{skill_dir}: no skill markdown (expected SKILL.md or a root-level "
+                     f".md file)"], [], None)
+        return ([f"{skill_dir}: {len(roots)} root .md files and none named SKILL.md — name the "
+                 f"skill's file with --md <file> (or rename it to SKILL.md)"], [], None)
     fm = _frontmatter(smd.read_text())
     if fm is None:
         return ([f"{smd}: missing or malformed YAML frontmatter"], [], None)
@@ -905,6 +1021,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     pu = sub.add_parser("push", help="publish a project skill central, or sync edits up")
     pu.add_argument("skill")
+    pu.add_argument("--from", dest="from_dir",
+                    help="dir to read the skill from (default: search .claude/skills/, a folder "
+                         "in cwd, ~/.claude/skills/, skills/)")
+    pu.add_argument("--md", help="which root .md is the skill definition (default: SKILL.md, "
+                                 "else the sole root .md; published as SKILL.md)")
     pu.add_argument("--plugin", help="target plugin (required only for a brand-new skill)")
     pu.add_argument("--message", "-m")
     pu.add_argument("--force", action="store_true")

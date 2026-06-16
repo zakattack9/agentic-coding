@@ -77,6 +77,14 @@ Authoring a new skill → use the native **skill-creator** skill, then `/skill-m
 
 - **Any layout.** Works whether plugins live at the repo root (`source: ./<name>`) or nested
   in a monorepo (`source: ./path/to/plugins/<name>`); the plugins dir is auto-detected at init.
+- **Flexible skill source.** A skill is a folder with at least one root-level `.md` file (its
+  definition — usually `SKILL.md`, sometimes a differently-named `.md`); folders with no root
+  `.md` are treated as code and skipped, so auto-detect doesn't grab random source dirs. `push`
+  finds it in the canonical `.claude/skills/`, a plain folder in the current directory, your
+  personal `~/.claude/skills/`, or a `skills/` dir — or point it anywhere with `--from <dir>`.
+  Since Claude Code only loads skills from `SKILL.md`, a differently-named definition file is
+  published **as `SKILL.md`** (your source is left unchanged); use `--md <file>` to pick which
+  root `.md` is the skill when a folder has several.
 - **Your existing checkout.** Operates directly on the repo you already have cloned — no
   second authoring clone to keep in sync.
 - **Versions in `marketplace.json` only.** The per-plugin `version` is bumped there; nothing
@@ -100,7 +108,7 @@ deliberately not installed on your PATH. Requires `python3` (macOS/Linux).
 skillctl init [--repo owner/name] [--path P] [--marketplace N] [--plugins-dir D] [--user-plugins a,b]
 skillctl configure [--plugins a,b,c] [--shared]
 skillctl enable <plugin>...        skillctl disable <plugin>...    [--shared]
-skillctl push <skill> [--plugin P] [-m msg] [--dry-run] [--force] [--no-refresh]
+skillctl push <skill> [--from DIR] [--md FILE] [--plugin P] [-m msg] [--dry-run] [--force] [--no-refresh]
 skillctl pull <skill> [--plugin P] [--force]
 skillctl new-plugin <name> [--description D]
 skillctl remove-skill <skill> [--plugin P] --force
