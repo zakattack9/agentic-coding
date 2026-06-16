@@ -62,12 +62,9 @@ git worktree add -b "$slug" "$wt_dir" "$base_ref" >&2
 # push, so unset it — this keeps push -u and "is it pushed?" checks correct.
 git -C "$wt_dir" branch --unset-upstream >/dev/null 2>&1 || true
 
-# Ensure .claude/worktrees/ is gitignored in the main checkout.
-gitignore="$main_root/.gitignore"
-if ! { [[ -f "$gitignore" ]] && grep -qE '^\.claude/worktrees/?$' "$gitignore"; }; then
-  printf '\n# Claude Code git worktrees\n.claude/worktrees/\n' >> "$gitignore"
-  echo "info: added .claude/worktrees/ to .gitignore" >&2
-fi
+# Ensure .claude/worktrees/ is gitignored in the main checkout (idempotent).
+# A .gitignore hiccup must never abort an otherwise-successful creation.
+bash "$(dirname "${BASH_SOURCE[0]}")/wt-ensure-gitignore.sh" "$main_root" || true
 
 # Copy gitignored files matching .worktreeinclude (default .env*) into the worktree.
 patterns=()

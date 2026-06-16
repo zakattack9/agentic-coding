@@ -56,7 +56,17 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/wt-create.sh" "<slug>" [base-ref]
 
 It prints the worktree path on its last stdout line. The session can't auto-flip here — tell the user to `cd <path>` or run `claude --worktree <slug>`.
 
-## 3. Per-project setup (opt-in, deterministic)
+## 3. Ensure the worktree tree is gitignored (deterministic)
+
+Native creation does **not** touch `.gitignore`, so the new `.claude/worktrees/` tree would otherwise surface as untracked files in the main checkout. Once the worktree exists (2a/2b), run the idempotent helper:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/wt-ensure-gitignore.sh"
+```
+
+It targets the **main checkout's** `.gitignore` even when run from inside the worktree, creates it if the repo has none, and is a no-op if the rule is already present. (The 2c fallback already does this internally — re-running is harmless.)
+
+## 4. Per-project setup (opt-in, deterministic)
 
 Once inside the worktree, run the setup helper. It deterministically runs `.claude/worktree-setup.sh` if the project has one (install deps, init a local DB, etc.) and is a safe no-op otherwise — so this step always behaves the same:
 
@@ -66,6 +76,6 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/wt-run-optin.sh" setup
 
 Don't hand-run an install instead. (Setup is scoped to user-initiated creation on purpose — it deliberately does *not* run for every subagent-isolation worktree.)
 
-## 4. Report
+## 5. Report
 
 Confirm: you're now working in the worktree, the branch, the base it was cut from, env files copied, and whether setup ran. When done, `/worktree-ops:merge-worktree` ships it and cleans up.
