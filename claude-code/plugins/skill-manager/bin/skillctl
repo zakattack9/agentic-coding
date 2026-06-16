@@ -194,24 +194,68 @@ def settings_block(cfg: dict, plugins: list[str]) -> dict:
     }
 
 
-def apply_settings(path: Path, cfg: dict, enable: list[str] = (), disable: list[str] = ()):
+def apply_settings(path: Path, cfg: dict, enable: list[str] = (), disable: list[str] = (),
+                   disable_override: list[str] = ()):
+    """Merge the enabled set into `path` without clobbering siblings. `enable` -> true here;
+    `disable` -> remove the key here (it's enabled only in this file); `disable_override` ->
+    write an explicit false here to turn off a plugin enabled in a *lower*-precedence file
+    (project precedence: settings.local.json overrides settings.json)."""
     current = read_json(path, {})
     merged = deep_merge(current, settings_block(cfg, list(enable)))
     mkt = cfg["marketplace"]
+    ep = merged.setdefault("enabledPlugins", {})
     for p in disable:
-        merged.setdefault("enabledPlugins", {}).pop(f"{p}@{mkt}", None)
+        ep.pop(f"{p}@{mkt}", None)
+    for p in disable_override:
+        ep[f"{p}@{mkt}"] = False
     write_json(path, merged)
     return path
 
 
+def _enabled_in(path: Path, cfg: dict) -> set[str]:
+    """Plugins from THIS marketplace explicitly enabled (true) in one settings file."""
+    s = read_json(path, {})
+    return {k.split("@", 1)[0] for k, on in (s.get("enabledPlugins") or {}).items()
+            if on and k.endswith("@" + cfg["marketplace"])}
+
+
 def project_enabled(cfg: dict) -> set[str]:
+    """Effective project enablement, honoring precedence: settings.local.json (local) overrides
+    settings.json (shared). A plugin is enabled iff the highest-precedence project file that
+    mentions it sets it true — so a local `false` correctly masks a shared `true`. (User-scope
+    settings aren't considered here; configure manages project scope.)"""
+    mkt = cfg["marketplace"]
+    local = (read_json(project_settings_path(False), {}).get("enabledPlugins") or {})
+    shared = (read_json(project_settings_path(True), {}).get("enabledPlugins") or {})
     out: set[str] = set()
-    for p in (project_settings_path(False), project_settings_path(True)):
-        s = read_json(p, {})
-        for k, on in (s.get("enabledPlugins") or {}).items():
-            if on and k.endswith("@" + cfg["marketplace"]):
-                out.add(k.split("@")[0])
+    for k in set(local) | set(shared):
+        if not k.endswith("@" + mkt):
+            continue
+        val = local[k] if k in local else shared.get(k)   # local wins when it mentions the key
+        if val:
+            out.add(k.split("@", 1)[0])
     return out
+
+
+def _disable_plan(cfg: dict, shared: bool, plugins: list[str]):
+    """Split plugins-to-disable by how the *target* scope can turn each off. Project precedence:
+    settings.local.json (local) > settings.json (shared). Returns (pop, override, blocked):
+      pop      remove the key from the target file (enabled only there -> removal disables it);
+      override write an explicit false in the target file to beat a lower-precedence true
+               (only local can do this, over shared);
+      blocked  enabled in a HIGHER-precedence file than the target — this scope can't turn it
+               off, so we report it instead of pretending to."""
+    local = _enabled_in(project_settings_path(False), cfg)
+    shared_on = _enabled_in(project_settings_path(True), cfg)
+    pop: list[str] = []
+    override: list[str] = []
+    blocked: list[str] = []
+    for p in plugins:
+        if shared:                      # target = shared; local has higher precedence
+            (blocked if p in local else pop).append(p)
+        else:                           # target = local; top project precedence
+            (override if p in shared_on else pop).append(p)
+    return pop, override, blocked
 
 
 # ---------------------------------------------------------------------------
@@ -470,11 +514,21 @@ def cmd_configure(args):
     cur = project_enabled(cfg) & set(names)
     target = set(selected) | (cur if args.keep_enabled else set())
     to_enable = [n for n in names if n in target and n not in cur]
-    to_disable = [] if args.keep_enabled else [n for n in names if n in cur and n not in target]
-    final = [n for n in names if n in target]
+    raw_disable = [] if args.keep_enabled else [n for n in names if n in cur and n not in target]
+    # Resolve each disable against scope precedence: some are turned off by removing the key,
+    # some need an explicit false to beat a lower-precedence file, and some can't be turned off
+    # from this scope at all (enabled in a higher-precedence file) — those we surface honestly.
+    pop, override, blk = _disable_plan(cfg, args.shared, raw_disable)
+    to_disable = [n for n in names if n in pop or n in override]   # what this scope actually turns off
+    blocked = [n for n in names if n in blk]
+    target_list = [n for n in names if n in target]               # what we write true in the target file
+    final = [n for n in names if n in target or n in blocked]     # effective result (blocked stay on)
     scope = "shared (settings.json)" if args.shared else "project-local (settings.local.json)"
+    other = "local settings.local.json" if args.shared else "shared settings.json"
+    fix_hint = "without --shared" if args.shared else "with --shared"
     sel_str = ",".join(selected)
     shared_flag = " --shared" if args.shared else ""
+    keep_flag = " --keep-enabled" if args.keep_enabled else ""
 
     # Dry by default: show the plan and the exact apply commands, write nothing. The skill
     # turns this into a confirmation before mutating settings.
@@ -482,23 +536,31 @@ def cmd_configure(args):
         info(f"Selection plan — {scope}:")
         info(f"  enable:    {', '.join(to_enable) or '(none)'}")
         info(f"  disable:   {', '.join(to_disable) or '(none)'}")
-        info(f"  keep on:   {', '.join(n for n in final if n in cur) or '(none)'}")
+        if blocked:
+            info(f"  stays on:  {', '.join(blocked)}  (enabled in {other}; re-run {fix_hint} "
+                 f"to turn off there)")
+        info(f"  keep on:   {', '.join(n for n in target_list if n in cur) or '(none)'}")
         info(f"  result:    {len(final)} enabled — {', '.join(final) or '(none)'}")
         if not to_enable and not to_disable:
-            info("\nNo changes — this project's selection already matches.")
+            info("\nNo changes" + (" this scope can make — see 'stays on' above." if blocked
+                                   else " — this project's selection already matches."))
             return
         info("\nNothing applied yet. To apply:")
-        info(f"  skillctl configure --select \"{sel_str}\"{shared_flag} --apply")
+        info(f"  skillctl configure --select \"{sel_str}\"{shared_flag}{keep_flag} --apply")
         if to_disable:
             info(f"  skillctl configure --select \"{sel_str}\"{shared_flag} --apply --keep-enabled"
                  f"   (keeps on: {', '.join(to_disable)})")
         return
 
-    path = apply_settings(project_settings_path(args.shared), cfg, enable=final, disable=to_disable)
+    path = apply_settings(project_settings_path(args.shared), cfg,
+                          enable=target_list, disable=pop, disable_override=override)
+    now = [n for n in names if n in project_enabled(cfg)]          # ground truth after the write
     info(f"Applied — {scope}:")
     info(f"  enabled:  {', '.join(to_enable) or '(no new)'}")
     info(f"  disabled: {', '.join(to_disable) or '(none)'}")
-    info(f"  now on:   {', '.join(final) or '(none)'}  -> {path}")
+    if blocked:
+        info(f"  stays on: {', '.join(blocked)}  (enabled in {other}; re-run {fix_hint} to turn off)")
+    info(f"  now on:   {', '.join(now) or '(none)'}  -> {path}")
     info("Run /reload-plugins (or start a new session) to load them.")
 
 
@@ -510,8 +572,14 @@ def cmd_enable(args):
 
 def cmd_disable(args):
     cfg = load_config()
-    path = apply_settings(project_settings_path(args.shared), cfg, disable=args.plugins)
-    info(f"Disabled {args.plugins} in {path}. Run /reload-plugins.")
+    pop, override, blk = _disable_plan(cfg, args.shared, args.plugins)
+    path = apply_settings(project_settings_path(args.shared), cfg, disable=pop, disable_override=override)
+    done = [p for p in args.plugins if p in pop or p in override]
+    info(f"Disabled {done or '(none)'} in {path}. Run /reload-plugins.")
+    if blk:
+        other = "local settings.local.json" if args.shared else "shared settings.json"
+        info(f"Note: {blk} stay enabled via {other} (higher precedence) — "
+             f"re-run {'without' if args.shared else 'with'} --shared to turn off there.")
 
 
 # ---------------------------------------------------------------------------
@@ -650,7 +718,7 @@ def _print_push_menu(found: list[tuple]):
         except ValueError:
             loc = d
         note = "" if md_name == "SKILL.md" else (f"   ({md_name} -> SKILL.md)" if md_name
-                                                 else "   (no root .md?)")
+                                                 else "   (multiple .md — needs --md)")
         info(f"  {i:>2}. {name}    {loc}{note}")
     info("\nReply with the number of the skill to push.")
 
@@ -999,10 +1067,12 @@ def cmd_remove(args):
         if not dst.exists():
             die(f"{dst} does not exist")
         if not args.force:
+            # Echo a name-based ref (not the raw index) so the confirm command is self-evident
+            # and stays correct even if the catalog's numbering shifts.
             info(f"Would remove skill '{skill}' from plugin '{plugin}', bump the version, and push.")
             info(f"  deletes: {dst}")
             info(f"\nNot removed yet. To confirm:")
-            info(f"  skillctl remove --select \"{args.select}\" --force")
+            info(f"  skillctl remove --select \"{plugin}:{skill}\" --force")
             return
         _do_remove_skill(cfg, plugin, skill, args.message, args.no_refresh)
     else:
@@ -1016,7 +1086,7 @@ def cmd_remove(args):
             if skills:
                 info(f"  skills:  {', '.join(skills)}")
             info(f"\nNot removed yet. To confirm:")
-            info(f"  skillctl remove --select \"{args.select}\" --force")
+            info(f"  skillctl remove --select \"{plugin}\" --force")
             return
         _do_remove_plugin(cfg, plugin, args.message, args.no_refresh)
 

@@ -28,7 +28,7 @@ The engine is the source of truth at every step: it numbers the menu, resolves t
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" configure --select "<user reply>"
    ```
-   Add `--shared` only if the user wants the choice committed for the whole team (writes `.claude/settings.json`). The engine prints `enable` / `disable` / `keep on` / `result`, or "No changes" — relay those lines verbatim. If it errors on a bad index/name, show the message and re-ask (back to step 2).
+   Add `--shared` only if the user wants the choice committed for the whole team (writes `.claude/settings.json`). The engine prints `enable` / `disable` / `keep on` / `result`, or "No changes" — relay those lines verbatim. It may also print a `stays on` line: a plugin enabled in the *other* scope that this scope can't turn off (re-run as the engine suggests, e.g. with/without `--shared`); surface it so the user isn't surprised it's still on. If it errors on a bad index/name, show the message and re-ask (back to step 2).
 
 4. **Confirm before applying** with `AskUserQuestion`. Read the plan's `disable` line to choose the options:
    - **Apply** — set this exact selection (enable the picks, disable the rest).
@@ -54,6 +54,7 @@ After applying, fill this skeleton from the engine's output, copying values verb
 
 **Enabled:** `{newly enabled, or "—"}`
 **Disabled:** `{newly disabled, or "—"}`
+**Stays on (other scope):** `{plugins from a "stays on" line, if any}` — still enabled via the other scope; re-run as the engine suggested to turn them off there.
 **Now on:** `{full enabled set}` → `{settings file}`
 **Scope:** {this project only (`settings.local.json`) / shared with the team (`settings.json`)}
 **Next:** run `/reload-plugins` — then this project can use those plugins' skills as `/{plugin}:<skill>`.
