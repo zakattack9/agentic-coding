@@ -36,10 +36,10 @@ feature_audit: ./research/gh-projects-feature-audit.md
 - **AC-9** [scaffold] A second run is a no-op for fields and **skips existing iterations** (no `iterationConfiguration` re-PUT). `verify:` re-run change-manifest empty; iteration-mutation count = 0.
 - **AC-10** [scaffold] `scaffold-repo` ensures org Issue Types + Issue Fields exist, sets the repo `allow_squash_merge=false`, grants the App project access, and installs the issue forms, PR template, `board-sync.yml`, `signals-sync.yml`, `board-status` action, `release.yml`, CODEOWNERS, and project README. `verify:` post-scaffold file + setting assertions.
 - **AC-11** [scaffold] `scaffold-repo` is dry-by-default — prints the full change manifest and mutates nothing without confirm/`--force`. `verify:` dry-run leaves project + repo unchanged.
-- **AC-12** [intake] `intake-issues` turns a raw dump into individual tiered issues, each with `Type/Size/Tier/Rigor/PM-ID` set and a `## Acceptance Criteria` list. `verify:` sample dump → issues with required fields populated.
+- **AC-12** [intake] `intake-issues` turns a raw dump into individual tiered issues, each with `Type/Size/Tier/PM-ID` set and a grouped `## Acceptance Criteria` table. `verify:` sample dump → issues with required fields populated.
 - **AC-13** [intake] `intake-issues` **refuses `Ready`** for any item whose AC are prose-only / not atomic observable end-states, stating the reason. `verify:` prose-AC fixture stays out of `Ready`.
-- **AC-14** [intake] `intake-issues` delegates each body+AC to `spec-ops:write-spec` (+`refine-spec` when `rigor: full`) and authors no body inline. `verify:` call trace shows the delegation.
-- **AC-15** [intake] Phase count drives the size suggestion (1→S/2–3→M/4+→L) and >~3–4 phases yields an Epic-split (sub-issue per phase via `addSubIssue`). `verify:` 1/3/5-phase fixtures → S/M/L + split.
+- **AC-14** [intake] `intake-issues` delegates each body+AC to `spec-ops:write-spec` **at the tier's rigor** (T1→`light` · T2→`standard` · T3→`full`+`refine-spec`) and authors no body inline. `verify:` call trace shows the rigor arg + delegation.
+- **AC-15** [intake] **AC-group count** drives the size suggestion (1→S/2–3→M/4+→L) and >~3–4 groups yields an Epic-split (one sub-issue per group via `addSubIssue`; `needs §X`→blocked-by). `verify:` 1/3/5-group fixtures → S/M/L + split + dep edges.
 - **AC-16** [intake] `intake-issues` is dry-by-default — previews drafts, calls `gh issue create` only on confirm. `verify:` dry-run creates no issue.
 - **AC-17** [board] A push to an issue-linked branch moves the item to `In Progress` via an App-token GraphQL write. `verify:` event→status fixture.
 - **AC-18** [board] A ready PR → `In Review`; a draft PR holds `In Progress` until `ready_for_review`. `verify:` draft vs ready fixtures.
@@ -82,10 +82,10 @@ feature_audit: ./research/gh-projects-feature-audit.md
 |---|---|
 | Plugin name | **`gh-projects`** (new; pm-ops deprecated, mechanics salvaged) |
 | Source of truth | **Hybrid** — issue/Project item canonical; markdown deep-spec linked for **T3 only** |
-| spec-ops | **Delegate for the WHAT** — owns `write`/`refine`/`verify` + the spec/AC format; gh-projects depends on its authoring half, **not** `launch-spec` |
+| spec-ops (v0.10.0) | **Delegate for the WHAT** — `write-spec` (rigor dial `light/standard/full`, mapped from Tier) + `refine-spec` (T3) + `verify-spec`; AC contract = **grouped tables**; **not** `launch-spec` |
 | Status options | `Backlog → Ready → In Progress → In Review → On Staging → Done` (+ `Blocked` flag-state) |
 | Cadence | **2-week** iterations; Milestone = release; plan *direction* a quarter out, *detail* one cycle out |
-| Sizing | `S/M/L` appetite, **no betting**; phases **suggest** size + drive an **Epic-split signal** |
+| Sizing | `S/M/L` appetite, **no betting**; **AC-group count** suggests size + drives an **Epic-split** (one sub-issue per group; `needs §X`→blocked-by) |
 | **Field homes** | **3 homes** — Issue **Type** (taxonomy) · org **Issue Fields** (Priority/Start/Target — org-wide, searchable) · **Project** single-selects (Size/Tier/Rigor/Blocked/signals — board-local) |
 | **Board↔deploy** | Native built-ins + `board-sync.yml` (events) + an **opt-in composable `board-status` action** (one step in a deploy job for deploy-accurate On Staging/Done); no forced CI/CD edits |
 | **Merge & close** | no-squash via **free repo setting**; review/checks = convention + `guard.sh` (rulesets need a paid plan we don't have); items are **never auto-closed by `Closes #N`** — closed at prod by `board-status` |
@@ -99,7 +99,7 @@ feature_audit: ./research/gh-projects-feature-audit.md
 
 ```mermaid
 flowchart LR
-  dump["unstructured dump"] -->|intake-issues| issue["GitHub Issue<br/>(canonical: AC, phases, boundaries, fields)"]
+  dump["unstructured dump"] -->|intake-issues| issue["GitHub Issue<br/>(canonical: grouped AC, boundaries, fields)"]
   issue -->|route-issue| board["Projects v2 board (org, cross-repo)"]
   issue -. T3 only .-> spec["linked deep spec"]
   dev["any dev / any impl"] -->|branch-from-issue → PR| pr["PR (linked, no auto-close)"]
@@ -120,7 +120,7 @@ The Project is **org-owned and spans all repos** (one board; the 50k-item cap bi
 
 - **Issue Type** (org, ≤25): the work taxonomy — `Feature/Bug/Chore/Infra/Epic`.
 - **Org Issue Fields** (≤25/org, searchable, cross-repo, immune to project-copy/option-ID churn): org-wide typed attributes — **Priority, Start date, Target date**. Surfaced as Project columns (private projects — ours are private).
-- **Project single-selects** (live in the golden template, replicate via `copyProjectV2`): board-local plugin state — **Size, Tier, Rigor, Blocked, the Gantt-signal fields**.
+- **Project single-selects** (live in the golden template, replicate via `copyProjectV2`): board-local plugin state — **Size, Tier, Blocked, the Gantt-signal fields**.
 
 Rule: org-wide typed attr → Issue Field; board-local/plugin state → Project field; taxonomy → Issue Type. Every signal single-select carries an **option `description`** documenting its derivation (self-documenting).
 
@@ -139,8 +139,7 @@ Rule: org-wide typed attr → Issue Field; board-local/plugin state → Project 
 | **Status** | Single-select (built-in) | automation + humans | Lifecycle column & automation key |
 | **Type** | Issue Type (org) | intake | `Feature/Bug/Chore/Infra/Epic` |
 | **Size** | Single-select | intake (suggest) + human | `S/M/L` appetite (not points) |
-| **Tier** | Single-select | intake | `T1/T2/T3`; T3 requires a linked deep spec |
-| **Rigor** | Single-select | intake | `light/full` (salvaged pm-ops rubric) |
+| **Tier** | Single-select | intake | `T1/T2/T3` → drives `write-spec` rigor (**T1→light · T2→standard · T3→full+refine**); T3 requires a linked deep spec. (Subsumes the old `Rigor` field.) |
 | **Sprint** | Iteration | plan-sprint | 2-week cadence; filter `@current/@next/@previous` |
 | **Parent issue** | Built-in (Parent) | intake (Epic-split) | Epic grouping; feeds the sub-issue % rollup |
 | **PM-ID** | Text | intake | Stable `PM-####` threading spec→issue→PR |
@@ -237,17 +236,17 @@ All Project writes use the **GitHub App token** (constraint #2). **`projects_v2_
 
 ## Requirement artifact — tiers, phases, sizing, AC
 
-| Tier | Artifact | Deep spec? |
-|---|---|---|
-| **T1 trivial** | Issue body, **AC only**, 3–8 lines | No |
-| **T2 standard** | Issue body **with phases + boundaries**, ~30–50 lines | No |
-| **T3 complex** | Scannable issue body **+ linked `specs/<slug>.md`** | Yes |
+| Tier | `write-spec` rigor | Artifact | Deep spec? |
+|---|---|---|---|
+| **T1 trivial** | `light` | AC table only (≈ the issue body) | No |
+| **T2 standard** | `standard` | TL;DR + AC + Boundaries + lean body | No |
+| **T3 complex** | `full` + `refine-spec` | Self-contained deep spec (**infra/config-as-contract** class when `Type=Infra`) → linked `specs/<slug>.md` | Yes |
 
-**Issue body skeleton** (`templates/issue-body.md`): `Goal (1 line) → TL;DR → ## Acceptance Criteria → ⚠️ breaks-if-missed → Phases (each with an exit gate + its AC-ids) → Boundaries → Spec link (T3)` — AC directly after TL;DR (matches the spec-ops layout).
+**Issue body skeleton** (`templates/issue-body.md`, = spec-ops's `write-spec` output): `Goal (1 line) → TL;DR (breaks-if-missed points at AC-ids) → ## Acceptance Criteria (grouped markdown tables) → Boundaries → Spec link (T3)`. The **named AC groups carry the structure** — there is *no separate "phases" section*; each group's gate = *its `AC-N`s verify clean*.
 
-**Phases & sizing:** `intake-issues` enumerates phases (each a shippable gated increment), counts them, **suggests** `1→S / 2–3→M / 4+→L` (human-confirmed), and at >~3–4 phases **recommends an Epic split** (one sub-issue per phase, via `addSubIssue`). Deterministic `lib` helper; no spec-ops involvement.
+**AC groups, sizing & Epic-split:** spec-ops organizes the ACs into **ordered named groups** (capability clusters); `refine-spec` (T3) commits the grounded build order as a `needs §X` **DAG**, not a linear sequence — so independent groups parallelize. `intake-issues` reads the **group count** → size `1→S / 2–3→M / 4+→L` (human-confirmed), and at >~3–4 groups **recommends an Epic split**: one **sub-issue per group**, each group's `needs §X` edges projected onto the board's native **blocked-by** relationships — the spec's dependency DAG *becomes* the board's (feeding Blast radius / Critical Path). Independent groups → no blocked-by → parallel work.
 
-**Acceptance Criteria (mandatory to enter `Ready`):** a flat list of **atomic, observable end-states** ("X is true", never a task), each with a **stable item-scoped id** (`AC-1…`; globally `PM-####/AC-N`). **Enumerated exhaustively, never condensed** — the "digestible" rule applies to *prose only* (mirrors spec-ops `AC-7`). Each AC may carry an **optional `verify:` handle** (a concrete observable) that augments — never replaces — the end-state. The `AC-id` set is the **co-owned contract** for the deep spec, `verify-spec` claims, and the future AI PR review. `intake-issues` **refuses `Ready`** for prose-only/unverifiable AC (the board-side `ac_complete`).
+**Acceptance Criteria (mandatory to enter `Ready`):** a **markdown table** (`| AC | Criterion |`; the column holds the bare number, `AC-N` is the id used everywhere else), each row one **atomic, observable end-state** ("X is true", never a task), optionally split into **ordered named groups** (one table per group). **Enumerated exhaustively, never condensed** — the "digestible" rule applies to *prose only*. The `AC-N` set is the **co-owned contract** consumed by the deep spec, `verify-spec` (which **scales evidence to the assertion** + records a verification **method** per AC, and runs a **backward sweep** for scope creep), and the future AI PR review. `intake-issues` **refuses `Ready`** for prose-only/unverifiable AC (the board-side `ac_complete`).
 
 **Sync contract (one author, parity-enforced):** shared `AC-id` namespace across issue ↔ deep spec ↔ `verify-spec`. **T1/T2** — AC in the issue only. **T3** — AC authored once in the spec-ops spec (its `## Acceptance Criteria`) and **mirrored to the issue**; spec carries `issue: org/repo#NNN`, issue carries the `spec:` link; CI fails on **`AC-id` set divergence** or a 404 `spec:`. Anchor specs by **symbol name, not line number**.
 
@@ -260,7 +259,7 @@ All Project writes use the **GitHub App token** (constraint #2). **`projects_v2_
 | Skill | Purpose | Invocation |
 |---|---|---|
 | `scaffold-repo` | **`copyProjectV2` from the golden template**, then API-only setup: ensure org Issue **Types** + Issue **Fields** (Priority/Start/Target), link repos, **recreate per-repo Auto-add** (not copied), re-anchor iteration, **re-resolve IDs against the copy**, set base role=Read / Write-to-team, **grant App access**, **set repo no-squash merge setting**, write issue forms / PR template / `board-sync.yml` / `signals-sync.yml` / the `board-status` action / `release.yml` / CODEOWNERS, and the project **README** + Insights/view playbooks. Idempotent, dry-run manifest, `--force` | **Explicit** |
-| `intake-issues` | Dump → tiered, field-complete issues; **delegates body + AC to `spec-ops:write-spec`** (+`refine-spec` if `rigor: full`); size suggestion + Epic-split (`addSubIssue`); dry-runs before any `gh issue create` | **Model-invocable** |
+| `intake-issues` | Dump → tiered, field-complete issues; **delegates body + AC to `spec-ops:write-spec` at the tier's rigor** (T1→`light` · T2→`standard` · T3→`full`+`refine-spec`); size + Epic-split from the **AC-group count** (`addSubIssue`; `needs §X`→blocked-by); dry-runs before any `gh issue create` | **Model-invocable** |
 | `plan-sprint` | Assign issues to current Iteration + Milestone, working-day capacity, order `Ready`; dry-by-default | **Explicit** |
 | `route-issue` | Project an issue + populate fields via the engine (GraphQL); create the linked branch; skill-scoped guard | **Explicit** |
 | `promote-pr` | Track branch→PR on the board; open/update PR (linked, non-closing); guard blocks `--squash` & prod actions without green checks | **Explicit** |
@@ -295,9 +294,9 @@ The **`AC-id` contract + spec/AC format are the pinned, stable interface** — s
 
 | Need | Delegate to | Consumes |
 |---|---|---|
-| Author spec body + AC list | `spec-ops:write-spec` | Short spec → issue body (T1/T2); full → linked spec (T3) |
-| Harden to zero-missed-detail | `spec-ops:refine-spec` (if `rigor: full`) | "ready"/`ac_complete` → flip `Ready` |
-| Verify impl vs AC (future) | `spec-ops:verify-spec` | One claim per `AC-id`; zero `contradicted` = AC-clean |
+| Author spec body + AC list | `spec-ops:write-spec` **at tier rigor** (T1→`light` · T2→`standard` · T3→`full`) | light/standard → issue body; full → linked deep spec (T3) |
+| Harden + commit the group DAG | `spec-ops:refine-spec` (T3 only) | "ready"/`ac_complete` + grounded `needs §X` groups → flip `Ready`, set sub-issue blocked-by |
+| Verify impl vs AC (future) | `spec-ops:verify-spec` | claim per `AC-N` (evidence scaled, `method` recorded) + **backward sweep** (code mapping to no AC); zero `contradicted` = AC-clean |
 
 **Not delegated:** `launch-spec` (HOW). gh-projects owns all GitHub writes; spec-ops never touches a branch/issue/board.
 
@@ -305,7 +304,7 @@ The **`AC-id` contract + spec/AC format are the pinned, stable interface** — s
 
 | Capability | Approach | Guardrails |
 |---|---|---|
-| **AI PR review vs AC** | `pr-ac-review.yml`: extract closing issue's `AC-id` list → **composes `verify-spec`'s claim-per-`AC-id` grounding** (else grounds itself) → `pass/fail/uncertain` → label + sticky comment | Read-only tools; UNVERIFIED blocks as hard as FAIL; skip on `NO_AC`; capped Console key; block-merge fallback on credit exhaustion |
+| **AI PR review vs AC** | `pr-ac-review.yml`: extract the issue's `AC-N` list → **composes `verify-spec`** (claim per AC, **evidence scaled to the assertion**, **`method` recorded**, **backward sweep** for scope creep) → `pass/fail/uncertain` → label + sticky comment | Read-only tools; UNVERIFIED blocks as hard as FAIL; skip on `NO_AC`; capped Console key; block-merge fallback on credit exhaustion |
 | **AI auto-implementation** | `auto-implement.yml` behind an `auto-implement` label → draft PR; compose with worktree-ops | Opt-in label; cap turns/model/timeout; small batches; human validates each slice |
 | **AI report narrative** | Thin layer over the live views | Live views primary; narrative never canonical |
 
@@ -325,7 +324,7 @@ External to the plugin; these must exist before scaffolding works. (Realizes the
 |---|---|---|
 | **P1.0 Core** | `lib/gh.py` + `lib/pm.py` port + `lib/engine.sh` | (needs Phase 0 App + a test project) Resolves & caches a real project's IDs; round-trips one field write; unit-tested helpers |
 | **P1.1 Scaffold** | `scaffold-repo` (golden-template copy) + Issue Types/Fields + no-squash setting + issue forms + PR template + CODEOWNERS + README + `board-status` action + `release.yml` | Clean repo gets full schema + 8 views + iteration + org Issue Fields + the action/templates; re-run **diffs/skips** (iterations never blind re-PUT) and re-resolves IDs |
-| **P1.2 Intake** | `intake-issues` (tiers, phases, size+split, machine-verifiable AC) | A dump → tiered issues; prose-only AC is **refused** `Ready`; phases drive size + Epic-split |
+| **P1.2 Intake** | `intake-issues` (tier→rigor, grouped AC, size+split, machine-verifiable AC) | A dump → tiered issues; prose-only AC is **refused** `Ready`; **AC-group count** drives size + Epic-split (per-group sub-issues, `needs §X`→blocked-by) |
 | **P1.3 Board sync** | `board-sync.yml` + native built-ins (PR-merged→On Staging) + the `board-status` action | Push/PR move Status; PR↔issue link resolves (linked-branch→branch-name); adding the action step yields deploy-accurate On Staging/Done+close+Release; zero AI |
 | **P1.4 Route & promote** | `route-issue`, `promote-pr`, `guard.sh` | Issue projects with all fields; linked branch created; guard blocks `--squash`/unsafe prod |
 | **P1.5 Signals, status & views** | `signals-sync.yml` + `sync-signals` + `lib/dag.py` + Number fields + 8 views + Insights playbook | Auto signals (incl. `Blocked`, Slippage-days, Blast-count) recompute; project **Status update** posts; 8 views live; Insights applied manually |
