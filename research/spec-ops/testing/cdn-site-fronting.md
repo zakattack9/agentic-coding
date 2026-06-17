@@ -6,9 +6,9 @@ deferred (see [Deferred](#deferred)).
 
 ## TL;DR
 
-- A **new CloudFront distribution** (`[env]-zilarent-site`) fronts every tenant host with the existing **ALB as origin**: `/assets/*` is edge-cached hard; everything else passes through uncached so auth/checkout/dashboard stay correct.
-- Cache-busting is per-release **`?v=<sha>`** (the deploy already stamps `asset.version` = SHA). Two things must hold: the `/assets/*` cache policy must **key on the `v` query** (`Managed-CachingOptimized` drops it), and **every** asset URL must actually carry `?v=` — today hundreds don't ([§0](#static-caching-asset-versioning--cache-busting)). Prod also runs a **post-deploy `/assets/*` invalidation** to close the rolling-deploy race.
-- **Breaks the site if missed:** CloudFront must **forward the viewer `Host`** (tenant resolution); nginx must **trust CloudFront's IP ranges** (or the real client IP is lost and auto-ban misfires); the WAF must **carve out file-upload routes** (or checkout breaks); and **only `/assets/*`** may be cached (per-tenant paths would cross-pollinate).
+- **New CloudFront distribution** (`[env]-zilarent-site`) fronts every tenant host with the **ALB as origin**: `/assets/*` edge-cached hard, everything else uncached so auth/checkout/dashboard stay correct.
+- Cache-busting is per-release **`?v=<sha>`** — but hundreds of asset URLs don't carry it today, the highest-risk fix (AC-24).
+- **Breaks the site if missed:** forward the viewer `Host` (AC-2), trust CloudFront's IPs so auto-ban doesn't misfire (AC-19), carve out file-upload routes or checkout breaks (AC-16), cache **only** `/assets/*` (AC-3).
 
 ---
 
@@ -19,73 +19,73 @@ deferred (see [Deferred](#deferred)).
 ### 1. CloudFront distribution & static delivery — start here
 
 | AC | Criterion |
-|------|-----------|
-| AC-1 | A new CloudFront distribution `[env]-zilarent-site` fronts every tenant host with the existing ALB as origin. |
-| AC-2 | The default `*` behavior is uncached (`CachingDisabled` + `AllViewer`): forwards viewer Host + cookies + query, allows all HTTP methods, compresses. |
-| AC-3 | `/assets/*` is the only cached behavior: the cache key includes the `v` query and omits Host/cookies, TTL min 0 / default 86400 / max 31536000, brotli+gzip — **not** `Managed-CachingOptimized`. |
-| AC-4 | No cache behavior exists for `/robots.txt`, `/sitemap.xml`, or `/favicon.ico` (they stay on the uncached default). |
-| AC-5 | Distribution settings hold: `http2and3`, `PriceClass_All`, viewer protocol `redirect-to-https`, IPv6 enabled, `us-east-1` SNI-only `TLSv1.2_2021` ACM cert keyed on `site_aliases`, `origin_read_timeout = 60`, raised origin keep-alive. |
-| AC-6 | 5xx responses are not edge-cached (`custom_error_response error_caching_min_ttl = 0` for 500/502/503/504). |
-| AC-7 | A CloudFront response-headers policy on `site` sets HSTS `max-age=300` (no `preload`/`includeSubDomains`), `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`. |
-| AC-8 | The existing `uploads` distribution is bumped to `PriceClass_All`. |
-| AC-9 | Uploads are served through the `uploads` CloudFront domain: `aws.cdn.domain` is set per env and the legacy `aws.cdn.{bucket,region,credentials}` keys are retired. |
+|----|-----------|
+| 1 | A new CloudFront distribution `[env]-zilarent-site` fronts every tenant host with the existing ALB as origin. |
+| 2 | The default `*` behavior is uncached (`CachingDisabled` + `AllViewer`): forwards viewer Host + cookies + query, allows all HTTP methods, compresses. |
+| 3 | `/assets/*` is the only cached behavior: the cache key includes the `v` query and omits Host/cookies, TTL min 0 / default 86400 / max 31536000, brotli+gzip — **not** `Managed-CachingOptimized`. |
+| 4 | No cache behavior exists for `/robots.txt`, `/sitemap.xml`, or `/favicon.ico` (they stay on the uncached default). |
+| 5 | Distribution settings hold: `http2and3`, `PriceClass_All`, viewer protocol `redirect-to-https`, IPv6 enabled, `us-east-1` SNI-only `TLSv1.2_2021` ACM cert keyed on `site_aliases`, `origin_read_timeout = 60`, raised origin keep-alive. |
+| 6 | 5xx responses are not edge-cached (`custom_error_response error_caching_min_ttl = 0` for 500/502/503/504). |
+| 7 | A CloudFront response-headers policy on `site` sets HSTS `max-age=300` (no `preload`/`includeSubDomains`), `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`. |
+| 8 | The existing `uploads` distribution is bumped to `PriceClass_All`. |
+| 9 | Uploads are served through the `uploads` CloudFront domain: `aws.cdn.domain` is set per env and the legacy `aws.cdn.{bucket,region,credentials}` keys are retired. |
 
 ### 2. Origin trust & lock-down — needs §1
 
 | AC | Criterion |
-|-------|-----------|
-| AC-10 | `origin.<env>.zila.rent` (CNAME → ALB DNS) is the CloudFront origin `domain_name` and a SAN on the ALB ACM cert, so origin TLS validates. |
-| AC-11 | An `X-Origin-Verify` secret (Secrets Manager, `ignore_changes`) is sent by the CloudFront origin header and enforced by the ALB listener rule (403 on missing/mismatch). |
-| AC-12 | The ALB security group is restricted to the CloudFront origin-facing managed prefix list. |
-| AC-13 | The ALB WAF is reduced/removed **only after** AC-11 + AC-12 are deployed and verified. |
+|----|-----------|
+| 10 | `origin.<env>.zila.rent` (CNAME → ALB DNS) is the CloudFront origin `domain_name` and a SAN on the ALB ACM cert, so origin TLS validates. |
+| 11 | An `X-Origin-Verify` secret (Secrets Manager, `ignore_changes`) is sent by the CloudFront origin header and enforced by the ALB listener rule (403 on missing/mismatch). |
+| 12 | The ALB security group is restricted to the CloudFront origin-facing managed prefix list. |
+| 13 | The ALB WAF is reduced/removed **only after** AC-11 + AC-12 are deployed and verified. |
 
 ### 3. WAF migration — needs §2
 
 | AC | Criterion |
-|-------|-----------|
-| AC-14 | A new `CLOUDFRONT`-scoped WebACL on `site` is the sole home of IP blocking: operator IPv4 block set + AWS-managed Common + Known-Bad-Inputs + IP-Reputation. |
-| AC-15 | A Stripe-webhook carve-out waives `SizeRestrictions_BODY` / `RestrictedExtensions` for `api/stripe/webhook/(:segment)`. |
-| AC-16 | Upload routes carve out `SizeRestrictions_BODY` **and** `CrossSiteScripting_BODY` (→ Count): public `Checkout::uploadDrivingLicense\|uploadInsurance` (**breaks checkout if missed**) plus the listed admin upload routes. |
-| AC-17 | Staging removes the regional ALB WebACL entirely; prod keeps a managed content-rules backstop (Common + Known-Bad-Inputs; no IP set, no IP-reputation) mirroring the Stripe + upload carve-outs. |
-| AC-18 | The old regional operator IP set is deleted (recreated at `CLOUDFRONT` scope). |
+|----|-----------|
+| 14 | A new `CLOUDFRONT`-scoped WebACL on `site` is the sole home of IP blocking: operator IPv4 block set + AWS-managed Common + Known-Bad-Inputs + IP-Reputation. |
+| 15 | A Stripe-webhook carve-out waives `SizeRestrictions_BODY` / `RestrictedExtensions` for `api/stripe/webhook/(:segment)`. |
+| 16 | Upload routes carve out `SizeRestrictions_BODY` **and** `CrossSiteScripting_BODY` (→ Count): public `Checkout::uploadDrivingLicense\|uploadInsurance` (**breaks checkout if missed**) plus the listed admin upload routes. |
+| 17 | Staging removes the regional ALB WebACL entirely; prod keeps a managed content-rules backstop (Common + Known-Bad-Inputs; no IP set, no IP-reputation) mirroring the Stripe + upload carve-outs. |
+| 18 | The old regional operator IP set is deleted (recreated at `CLOUDFRONT` scope). |
 
 ### 4. Behind-the-edge request correctness — needs §1
 
 | AC | Criterion |
-|-------|-----------|
-| AC-19 | `get_client_ip()` returns the real viewer IP, not a CloudFront edge IP: nginx `set_real_ip_from` includes CloudFront's published CIDRs (IPv4 + IPv6), regenerated at each AMI bake from `ip-ranges.json`. |
-| AC-20 | The dead `CF-Connecting-IP` branch is removed from `get_client_ip()` + `error_blocked.php`; `security.enableAutoBan` stays off until verified. |
-| AC-21 | Cookies are `Secure` (`Config\Cookie::$secure = true`). |
-| AC-22 | CloudFront forwards `X-Forwarded-Proto`, so the app keeps emitting `https://` URLs. |
-| AC-23 | http→https and any www→apex redirects happen at CloudFront or the nginx vhost (never the `.htaccess` literal); no redirect loop, no mixed content. |
+|----|-----------|
+| 19 | `get_client_ip()` returns the real viewer IP, not a CloudFront edge IP: nginx `set_real_ip_from` includes CloudFront's published CIDRs (IPv4 + IPv6), regenerated at each AMI bake from `ip-ranges.json`. |
+| 20 | The dead `CF-Connecting-IP` branch is removed from `get_client_ip()` + `error_blocked.php`; `security.enableAutoBan` stays off until verified. |
+| 21 | Cookies are `Secure` (`Config\Cookie::$secure = true`). |
+| 22 | CloudFront forwards `X-Forwarded-Proto`, so the app keeps emitting `https://` URLs. |
+| 23 | http→https and any www→apex redirects happen at CloudFront or the nginx vhost (never the `.htaccess` literal); no redirect loop, no mixed content. |
 
 ### 5. Asset versioning & cache correctness — needs §1
 
 | AC | Criterion |
-|-------|-----------|
-| AC-24 | Every `/assets/*` URL carries `?v=<sha>`: an idempotent pass in `GlobalFilter::after()` stamps `?v=<asset.version>` onto unversioned `/assets/…` URLs, gated on `RUNNING_MODE==='prod'` and **separate** from `content_cdn_process`. |
-| AC-25 | nginx sets `Cache-Control: public, max-age=31536000, immutable` on `^/assets/` (baked into the AMI); landed **only after** AC-24. |
-| AC-26 | nginx `gzip` is enabled for dynamic content types at the origin. |
-| AC-27 | The deploy busts the page cache (`rm -rf shared/writable/cache/public`) after the symlink swap. |
-| AC-28 | `asset.version` continues to stamp the release SHA per deploy (not regressed). |
+|----|-----------|
+| 24 | Every `/assets/*` URL carries `?v=<sha>`: an idempotent pass in `GlobalFilter::after()` stamps `?v=<asset.version>` onto unversioned `/assets/…` URLs, gated on `RUNNING_MODE==='prod'` and **separate** from `content_cdn_process`. |
+| 25 | nginx sets `Cache-Control: public, max-age=31536000, immutable` on `^/assets/` (baked into the AMI); landed **only after** AC-24. |
+| 26 | nginx `gzip` is enabled for dynamic content types at the origin. |
+| 27 | The deploy busts the page cache (`rm -rf shared/writable/cache/public`) after the symlink swap. |
+| 28 | `asset.version` continues to stamp the release SHA per deploy (not regressed). |
 
 ### 6. Deploy & timeout correctness — needs §5
 
 | AC | Criterion |
-|-------|-----------|
-| AC-29 | Prod runs a post-deploy `/assets/*` CloudFront invalidation after the fleet is fully on the new release; staging does not. |
-| AC-30 | The smoke test validates `/health` through CloudFront (uncached) against the locked-down origin; the `--resolve` direct-ALB bypass is dropped; a direct ALB hit from outside the prefix list is refused at the SG. |
-| AC-31 | No stale PHP (distinct `releases/<sha>` realpath + FPM reload per deploy) and no stale assets/HTML (given AC-24 + AC-27). |
-| AC-32 | Long synchronous requests (>60s imports/exports) are moved to the Redis task queue (else accept a CloudFront 504). |
+|----|-----------|
+| 29 | Prod runs a post-deploy `/assets/*` CloudFront invalidation after the fleet is fully on the new release; staging does not. |
+| 30 | The smoke test validates `/health` through CloudFront (uncached) against the locked-down origin; the `--resolve` direct-ALB bypass is dropped; a direct ALB hit from outside the prefix list is refused at the SG. |
+| 31 | No stale PHP (distinct `releases/<sha>` realpath + FPM reload per deploy) and no stale assets/HTML (given AC-24 + AC-27). |
+| 32 | Long synchronous requests (>60s imports/exports) are moved to the Redis task queue (else accept a CloudFront 504). |
 
 ### 7. DNS cutover — needs §2, §4, §5, §6
 
 | AC | Criterion |
-|-------|-----------|
-| AC-33 | Per env, the app/web/deploy changes land **before** any host is repointed, so the first edge traffic is correct. |
-| AC-34 | Each brand host is repointed to the CloudFront domain per-brand (staging `stagingv3.zila.rent` first, then prod): apex hosts via ALIAS/ANAME/CNAME-flattening (or `www` + redirect), subdomains via plain CNAME. |
-| AC-35 | `domains.settings.cdn_enable = 0` is forced on every domain. |
-| AC-36 | A break-glass rollback is documented: repoint the host to the ALB, reopen the ALB SG, and disable the `X-Origin-Verify` listener rule. |
+|----|-----------|
+| 33 | Per env, the app/web/deploy changes land **before** any host is repointed, so the first edge traffic is correct. |
+| 34 | Each brand host is repointed to the CloudFront domain per-brand (staging `stagingv3.zila.rent` first, then prod): apex hosts via ALIAS/ANAME/CNAME-flattening (or `www` + redirect), subdomains via plain CNAME. |
+| 35 | `domains.settings.cdn_enable = 0` is forced on every domain. |
+| 36 | A break-glass rollback is documented: repoint the host to the ALB, reopen the ALB SG, and disable the `X-Origin-Verify` listener rule. |
 
 ---
 
@@ -347,18 +347,17 @@ step — schedule with each brand and keep TTLs low across the window.
 
 ## Validation
 
-Run on staging before cutover and after each repoint:
+How to verify on staging before cutover and after each repoint — each step *checks* an AC (the assertions live in the Acceptance Criteria table, not here):
 
-- [ ] `/assets/*` returns `X-Cache: Hit from cloudfront` on second hit + `Cache-Control: immutable`. Deploy a CSS/JS change → the new `?v=<sha>` URL is served (no stale file).
-- [ ] Spot-check vendor JS / tabler CSS / favicon URLs carry `?v=` (no unversioned asset slips through).
-- [ ] Dashboard login, checkout, and any cookie/CSRF flow work — responses **uncached** (`X-Cache: Miss`, no `Age`); cookies are `Secure`.
-- [ ] Correct tenant renders per host — BDV host shows BDV. Cross-tenant `/robots.txt` + `/sitemap.xml`: tenant A's content never appears on tenant B (uncached).
-- [ ] Public checkout driving-license/insurance upload (multi-MB) completes — not 403'd by `SizeRestrictions_BODY`.
-- [ ] Dynamic HTML is gzip/br compressed (origin nginx) and `/assets/*` is compressed (CloudFront).
-- [ ] Heaviest import/report completes without a CloudFront **504** (origin timeout 60s).
-- [ ] `get_client_ip()` shows the **real viewer IP**, not a CloudFront edge IP — test an IP ban + a logged request before re-enabling auto-ban.
-- [ ] `smoke-test.sh` passes **through CloudFront** against the locked-down origin (`/health` uncached); a direct ALB hit from outside the CloudFront prefix list is **refused at the SG**.
-- [ ] No `www`→apex / trailing-slash redirect loop; all stays on `https://`; no mixed content; HTTP/3 negotiated.
+- **AC-3, AC-24, AC-25** — `/assets/*` returns `X-Cache: Hit from cloudfront` on the second hit with `Cache-Control: immutable`; deploy a CSS/JS change and confirm the new `?v=<sha>` URL is served (no stale file); spot-check vendor JS / tabler CSS / favicon for `?v=`.
+- **AC-2, AC-21** — dashboard login, checkout, and cookie/CSRF flows work and stay **uncached** (`X-Cache: Miss`, no `Age`); cookies are `Secure`.
+- **AC-1, AC-4** — the correct tenant renders per host (BDV host shows BDV); cross-tenant `/robots.txt` + `/sitemap.xml` never leak between tenants.
+- **AC-16** — public checkout driving-license/insurance upload (multi-MB) completes, not 403'd.
+- **AC-3, AC-26** — `/assets/*` is compressed by CloudFront and dynamic HTML is gzip/br compressed at the origin.
+- **AC-5, AC-32** — the heaviest import/report completes without a CloudFront **504**.
+- **AC-19, AC-20** — `get_client_ip()` shows the real viewer IP; test an IP ban + a logged request before re-enabling auto-ban.
+- **AC-30** — `smoke-test.sh` passes through CloudFront against the locked-down origin; a direct ALB hit from outside the prefix list is refused at the SG.
+- **AC-5, AC-23** — no `www`→apex / trailing-slash redirect loop; all stays `https://`; no mixed content; HTTP/3 negotiated.
 
 ---
 

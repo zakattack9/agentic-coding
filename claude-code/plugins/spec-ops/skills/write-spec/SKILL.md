@@ -31,9 +31,11 @@ Consolidate related concepts into one section. Validation rules, edge cases, and
 
 Write from the end-user or admin perspective. Describe what should happen, not how to code it. "Discount applies to the rental cost only" tells the developer what the user should see. "Add a discount_percentage column to the pricing_rules table" is an implementation decision that belongs in code, not the spec.
 
+**Infra / platform / config / migration specs are the exception** — there the *configuration is the observable contract*. For a CDN, WAF, deploy-pipeline, or networking change, the resource names, settings, file paths, and policies are exactly what must be true, so specifying them is not over-reach — a "behavior-only" version would be unimplementable. The rule still holds in spirit: pin the **end-state config**, don't narrate the coding steps or the history of how the system got here. Expect these specs to be denser than a feature spec; that density is inherent, not bloat.
+
 ### Enumerate the acceptance criteria
 
-Lead with a **markdown table** of **acceptance criteria** — every behavior and constraint that must hold once the change is done, each row a single testable assertion (`| AC | Criterion |`) with a stable id (`AC-1`, `AC-2`, …). This table is the spec's contract: it's the reader's two-minute scan of *what must be true*, and it's what the implementation is later gated against criterion-by-criterion. Two rules make it work:
+Lead with a **markdown table** of **acceptance criteria** — every behavior and constraint that must hold once the change is done, each row a single testable assertion (`| AC | Criterion |`). The `AC` column holds the bare stable number (`1`, `2`, …; the header already says "AC", so don't repeat the prefix); everywhere else — the body, the Checklist, the gates — cite it as `AC-1`, `AC-2`, …. This table is the spec's contract: it's the reader's two-minute scan of *what must be true*, and it's what the implementation is later gated against criterion-by-criterion. Two rules make it work:
 
 - **Enumerate exhaustively — never condense.** Unlike prose, which you cut to the bone, the criteria are the one place you list *everything*. A requirement that lives only in a paragraph below is a requirement that gets missed at completion. Brevity is for wording, not for coverage. A separate **Validation** or "how we'll test it" list is acceptance criteria wearing another hat — put those assertions here, not in a parallel section.
 - **Each criterion is one atomic, observable end-state** — "Unrouted mail is quarantined, never dropped", not "build the quarantine system". Phrase what is *true* when done (so it's checkable), not a task to do. Keep the criteria behavior-level; the detailed rule that implements each one lives in the body and carries its `AC-id`, so each fact is stated once, at its altitude.
@@ -65,11 +67,11 @@ A spec is often read in isolation by someone with no prior context — a teammat
 
 ### Keep the TL;DR tight
 
-2-3 bullets max. If the spec body is already concise, a long TL;DR just repeats it. The TL;DR should answer: what is the change in one sentence, and what's the one behavioral detail someone might get wrong without a heads-up.
+2-3 bullets max, **each one short line — not a paragraph**. If the spec body is already concise, a long TL;DR just repeats it. The TL;DR should answer: what is the change in one sentence, and what's the one behavioral detail someone might get wrong without a heads-up. If the change has a **"breaks if missed"** risk, lead with it as a terse list that **points at the relevant `AC-id`s** rather than re-explaining them — the detail lives in the AC table and the body.
 
 ## Spec Structure
 
-Use only sections that are relevant. Not every spec needs every section.
+Use only sections that are relevant. Not every spec needs every section. The skeleton below is shaped for a typical feature change: **infra / platform / migration specs** usually drop **UI Changes** and **Data Migration** and add two — a **Current state → Target** view (what exists today vs. the end state, load-bearing when you're changing a running system) and a short **Architecture** diagram (mermaid). Add them only when they earn their place.
 
 ```markdown
 # {Feature Name} Spec
@@ -85,9 +87,9 @@ Use only sections that are relevant. Not every spec needs every section.
 <!-- Default to a single FLAT table. OPTIONALLY split into named groups (### N. <capability>), one table per group, when the ACs fall into ≥2 obvious capabilities — a "what am I building" map. AC-ids stay globally unique and stable across groups. Do NOT assert a build order or cross-group `needs §X` here; refine-spec commits that after grounding against the codebase. -->
 
 | AC | Criterion |
-|------|-----------|
-| AC-1 | {single testable assertion about the end state} |
-| AC-2 | {…} |
+|----|-----------|
+| 1 | {single testable assertion about the end state} |
+| 2 | {…} |
 
 ---
 
