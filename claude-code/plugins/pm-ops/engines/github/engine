@@ -1,0 +1,532 @@
+#!/usr/bin/env python3
+"""pm-ops GitHub board engine.
+
+Implements the engine contract in ../INTERFACE.md by projecting a normalized
+pm-ops task onto GitHub Issues + Projects via the `gh` CLI. Dry by default:
+every verb prints the plan it WOULD run and changes nothing unless `--apply`
+is passed. stdout = a single result JSON object; stderr = human-readable plan/log.
+
+Verbs:
+  capabilities                 print engines/github/capabilities.json
+  upsert  [--apply]            create/update the issue, add to the project, set fields
+  link    [--apply]            set sub-issue parent + blocked-by dependencies
+  set-status [--apply]         set the project Status field for the issue
+  sync                         read-only: print the issue's current GitHub state
+
+Reads board config from $PM_OPS_REPO/.pm-ops/config.json (key "github").
+Exit: 0 ok · 2 usage/config · 3 not found · 4 gh missing · 1 unexpected.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def die(msg: str, code: int = 2):
+    sys.stderr.write(f"error: {msg}\n")
+    sys.exit(code)
+
+
+def log(msg: str):
+    sys.stderr.write(msg + "\n")
+
+
+def emit(obj):
+    sys.stdout.write(json.dumps(obj) + "\n")
+
+
+def load_config() -> dict:
+    repo = os.environ.get("PM_OPS_REPO", os.getcwd())
+    path = os.path.join(repo, ".pm-ops", "config.json")
+    if not os.path.isfile(path):
+        die(f"no config at {path}", 2)
+    with open(path, "r", encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def read_task() -> dict:
+    raw = sys.stdin.read().strip()
+    if not raw:
+        die("expected a normalized task JSON on stdin", 2)
+    try:
+        task = json.loads(raw)
+    except ValueError as e:
+        die(f"stdin is not valid JSON: {e}", 2)
+    if not isinstance(task, dict):
+        die("stdin task must be a JSON object", 2)
+    return task
+
+
+def resolve_repo(task: dict, gh: dict) -> str:
+    repo = task.get("impl_repo") or gh.get("default_repo")
+    if not repo:
+        labels = task.get("labels") or []
+        for label in labels:
+            if label in (gh.get("repo_map") or {}):
+                repo = gh["repo_map"][label]
+                break
+    if not repo:
+        die("no target repo: set 'impl_repo' on the item, or github.default_repo / github.repo_map in config", 2)
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
+        die(f"invalid repo '{repo}' (want owner/name)", 2)
+    return repo
+
+
+# --------------------------------------------------------------------------- #
+# gh helpers
+# --------------------------------------------------------------------------- #
+def require_gh():
+    if not shutil.which("gh"):
+        die("gh CLI not found on PATH; install GitHub CLI or switch engines", 4)
+
+
+def run_gh(args, apply: bool, plan: list, capture=True):
+    """Record the gh command in `plan`; run it only when apply is True."""
+    printable = "gh " + " ".join(shellquote(a) for a in args)
+    plan.append(printable)
+    if not apply:
+        log("  would run: " + printable)
+        return None
+    log("  run: " + printable)
+    res = subprocess.run(["gh", *args], capture_output=capture, text=True)
+    if res.returncode != 0:
+        raise GhError(printable, res.stderr.strip() or res.stdout.strip())
+    return res.stdout.strip() if capture else ""
+
+
+def shellquote(s: str) -> str:
+    s = str(s)
+    return s if re.fullmatch(r"[A-Za-z0-9_./:@=-]+", s) else "'" + s.replace("'", "'\\''") + "'"
+
+
+class GhError(Exception):
+    def __init__(self, cmd, stderr):
+        super().__init__(stderr)
+        self.cmd = cmd
+        self.stderr = stderr
+
+
+def gh_version_ok() -> bool:
+    """True if gh is >= 2.94 (native --type / --add-parent / --add-blocked-by)."""
+    if not shutil.which("gh"):
+        return False
+    try:
+        out = subprocess.run(["gh", "--version"], capture_output=True, text=True).stdout
+        m = re.search(r"(\d+)\.(\d+)\.(\d+)", out)
+        if not m:
+            return False
+        major, minor = int(m.group(1)), int(m.group(2))
+        return (major, minor) >= (2, 94)
+    except Exception:
+        return False
+
+
+# --------------------------------------------------------------------------- #
+# Project field helpers (apply path only — needs live ids)
+# --------------------------------------------------------------------------- #
+def project_fields(owner: str, number, warnings: list):
+    try:
+        out = subprocess.run(
+            ["gh", "project", "field-list", str(number), "--owner", owner, "--format", "json", "-L", "100"],
+            capture_output=True, text=True,
+        )
+        if out.returncode != 0:
+            warnings.append(f"could not list project fields: {out.stderr.strip()}")
+            return {}
+        data = json.loads(out.stdout or "{}")
+        fields = {}
+        for f in data.get("fields", data if isinstance(data, list) else []):
+            fields[f.get("name")] = f
+        return fields
+    except Exception as e:  # noqa: BLE001
+        warnings.append(f"field-list failed: {e}")
+        return {}
+
+
+def project_id(owner: str, number, warnings: list):
+    try:
+        out = subprocess.run(
+            ["gh", "project", "view", str(number), "--owner", owner, "--format", "json"],
+            capture_output=True, text=True,
+        )
+        if out.returncode != 0:
+            warnings.append(f"could not resolve project id: {out.stderr.strip()}")
+            return None
+        return json.loads(out.stdout or "{}").get("id")
+    except Exception as e:  # noqa: BLE001
+        warnings.append(f"project view failed: {e}")
+        return None
+
+
+def set_field(proj_id, item_id, field, value, apply, plan, warnings):
+    """Set one Project field (text / number / single-select) for an item."""
+    name = field.get("name")
+    fid = field.get("id")
+    ftype = (field.get("type") or "").upper()
+    base = ["project", "item-edit", "--id", item_id, "--project-id", proj_id, "--field-id", fid]
+    if "SINGLE_SELECT" in ftype or field.get("options"):
+        opt = next((o for o in field.get("options", []) if str(o.get("name")).lower() == str(value).lower()), None)
+        if not opt:
+            warnings.append(f"field '{name}': no option matching '{value}' — skipped")
+            return
+        args = base + ["--single-select-option-id", opt["id"]]
+    elif "NUMBER" in ftype:
+        try:
+            args = base + ["--number", str(float(value))]
+        except ValueError:
+            warnings.append(f"field '{name}': '{value}' is not a number — skipped")
+            return
+    else:
+        args = base + ["--text", str(value)]
+    try:
+        run_gh(args, apply, plan)
+    except GhError as e:
+        warnings.append(f"field '{name}' set failed: {e.stderr}")
+
+
+def find_item_id(owner: str, number, issue_url: str, warnings: list):
+    try:
+        out = subprocess.run(
+            ["gh", "project", "item-list", str(number), "--owner", owner, "--format", "json", "-L", "1000"],
+            capture_output=True, text=True,
+        )
+        if out.returncode != 0:
+            warnings.append(f"item-list failed: {out.stderr.strip()}")
+            return None
+        for item in json.loads(out.stdout or "{}").get("items", []):
+            content = item.get("content") or {}
+            if content.get("url") == issue_url:
+                return item.get("id")
+    except Exception as e:  # noqa: BLE001
+        warnings.append(f"item-list error: {e}")
+    return None
+
+
+# --------------------------------------------------------------------------- #
+# Verbs
+# --------------------------------------------------------------------------- #
+def verb_capabilities():
+    with open(os.path.join(HERE, "capabilities.json"), "r", encoding="utf-8") as fh:
+        sys.stdout.write(fh.read())
+
+
+def verb_upsert(apply: bool):
+    cfg = load_config()
+    gh = cfg.get("github", {})
+    task = read_task()
+    repo = resolve_repo(task, gh)
+    if not shutil.which("gh"):
+        emit_paste_ready(task, repo, gh)  # degrade, don't fail (markdown stays canonical)
+        return
+    plan, warnings, actions = [], [], []
+    native = gh_version_ok()
+    type_native = gh.get("type_field", "native") == "native" and native
+
+    title = task.get("title") or task.get("id") or "Untitled"
+    body = task.get("body") or default_body(task)
+    labels = list(task.get("labels") or [])
+    assignees = task.get("assignees") or []
+    itype = task.get("type")
+    if itype and not type_native:
+        labels.append(f"type:{itype}")
+
+    board = task.get("board") or {}
+    existing_ref = board.get("ref")
+    existing_url = board.get("url")
+
+    log(f"== github upsert ({'APPLY' if apply else 'dry-run'}) repo={repo} ==")
+    ref, url = existing_ref, existing_url
+    if existing_ref:
+        args = ["issue", "edit", str(existing_ref), "--repo", repo, "--title", title, "--body", body]
+        for l in labels:
+            args += ["--add-label", l]
+        for a in assignees:
+            args += ["--add-assignee", a]
+        if itype and type_native:
+            args += ["--type", itype]
+        try:
+            run_gh(args, apply, plan)
+            actions.append(f"updated issue #{existing_ref}")
+        except GhError as e:
+            if itype and type_native and "type" in (e.stderr or "").lower():
+                warnings.append("native --type unsupported; retrying with type: label")
+                args = [a for a in args if a not in ("--type", itype)] + ["--add-label", f"type:{itype}"]
+                run_gh(args, apply, plan)
+            else:
+                raise
+    else:
+        args = ["issue", "create", "--repo", repo, "--title", title, "--body", body]
+        if labels:
+            args += ["--label", ",".join(labels)]
+        if assignees:
+            args += ["--assignee", ",".join(assignees)]
+        if itype and type_native:
+            args += ["--type", itype]
+        out = None
+        try:
+            out = run_gh(args, apply, plan)
+        except GhError as e:
+            if itype and type_native and "type" in (e.stderr or "").lower():
+                warnings.append("native --type unsupported; creating with type: label")
+                args = [a for a in args if a not in ("--type", itype)]
+                args = with_added_label(args, f"type:{itype}")
+                out = run_gh(args, apply, plan)
+            else:
+                raise
+        if apply and out:
+            url = out.splitlines()[-1].strip()
+            m = re.search(r"/issues/(\d+)", url)
+            ref = int(m.group(1)) if m else None
+            actions.append(f"created issue {url}")
+
+    # Add to the project board + set custom fields.
+    owner, number = gh.get("owner"), gh.get("project")
+    if owner and number:
+        item_url = url or (f"https://github.com/{repo}/issues/{ref}" if ref else None)
+        add_args = ["project", "item-add", str(number), "--owner", owner]
+        if item_url:
+            add_args += ["--url", item_url]
+        item_id = None
+        try:
+            add_out = run_gh(add_args + (["--format", "json"] if apply else []), apply, plan)
+            if apply and add_out:
+                item_id = json.loads(add_out).get("id")
+                actions.append("added to project board")
+        except GhError as e:
+            warnings.append(f"project item-add failed: {e.stderr}")
+
+        field_map = gh.get("fields", {})
+        wanted = {
+            field_map.get("size"): task.get("size"),
+            field_map.get("priority"): task.get("priority"),
+            field_map.get("stage"): map_status(task.get("status")),
+            field_map.get("pm_id"): task.get("id"),
+            field_map.get("spec_url"): task.get("spec"),
+        }
+        wanted = {k: v for k, v in wanted.items() if k and v}
+        if wanted:
+            if apply and item_id:
+                pid = project_id(owner, number, warnings)
+                fields = project_fields(owner, number, warnings)
+                for fname, val in wanted.items():
+                    if fname in fields and pid:
+                        set_field(pid, item_id, fields[fname], val, apply, plan, warnings)
+                    else:
+                        warnings.append(f"project field '{fname}' not found — skipped")
+            else:
+                for fname, val in wanted.items():
+                    plan.append(f"set project field {fname} = {val}")
+                    log(f"  would set field: {fname} = {val}")
+    else:
+        warnings.append("github.owner/project not set in config — skipping board placement")
+
+    result = {"engine": "github", "applied": apply, "ref": ref, "url": url,
+              "actions": actions, "plan": plan, "warnings": warnings}
+    emit(result)
+
+
+def with_added_label(create_args, label):
+    """Merge `label` into an existing --label a,b in a create command (or add one)."""
+    out, i = [], 0
+    merged = False
+    while i < len(create_args):
+        if create_args[i] == "--label" and i + 1 < len(create_args):
+            out += ["--label", create_args[i + 1] + "," + label]
+            i += 2
+            merged = True
+        else:
+            out.append(create_args[i])
+            i += 1
+    if not merged:
+        out += ["--label", label]
+    return out
+
+
+def verb_link(apply: bool):
+    cfg = load_config()
+    gh = cfg.get("github", {})
+    task = read_task()
+    require_gh()
+    repo = resolve_repo(task, gh)
+    board = task.get("board") or {}
+    ref = board.get("ref")
+    if not ref:
+        die("link needs board.ref (route the item with upsert first)", 2)
+    plan, warnings, actions = [], [], []
+    native = gh_version_ok()
+    if not native:
+        warnings.append("gh < 2.94: native sub-issue/dependency links unavailable; record them in the issue body instead")
+    parent_ref = task.get("parent_ref")
+    blocked_by = task.get("blocked_by_refs") or []
+
+    log(f"== github link ({'APPLY' if apply else 'dry-run'}) issue #{ref} ==")
+    if parent_ref:
+        args = ["issue", "edit", str(ref), "--repo", repo, "--add-parent", str(parent_ref)]
+        try:
+            run_gh(args, apply and native, plan)
+            actions.append(f"parent → #{parent_ref}")
+        except GhError as e:
+            warnings.append(f"add-parent failed: {e.stderr}")
+    for dep in blocked_by:
+        args = ["issue", "edit", str(ref), "--repo", repo, "--add-blocked-by", str(dep)]
+        try:
+            run_gh(args, apply and native, plan)
+            actions.append(f"blocked-by → #{dep}")
+        except GhError as e:
+            warnings.append(f"add-blocked-by #{dep} failed: {e.stderr}")
+    emit({"engine": "github", "applied": apply and native, "ref": ref,
+          "actions": actions, "plan": plan, "warnings": warnings})
+
+
+def verb_set_status(apply: bool):
+    cfg = load_config()
+    gh = cfg.get("github", {})
+    task = read_task()
+    require_gh()
+    board = task.get("board") or {}
+    ref = board.get("ref")
+    url = board.get("url")
+    status = map_status(task.get("status"))
+    owner, number = gh.get("owner"), gh.get("project")
+    plan, warnings, actions = [], [], []
+    if not (owner and number):
+        die("set-status needs github.owner and github.project in config", 2)
+    if not status:
+        die("set-status needs a 'status' on the task", 2)
+    stage_field = gh.get("fields", {}).get("stage", "Status")
+    log(f"== github set-status ({'APPLY' if apply else 'dry-run'}) → {stage_field}={status} ==")
+    if apply:
+        item_id = find_item_id(owner, number, url, warnings) if url else None
+        pid = project_id(owner, number, warnings)
+        fields = project_fields(owner, number, warnings)
+        if item_id and pid and stage_field in fields:
+            set_field(pid, item_id, fields[stage_field], status, apply, plan, warnings)
+            actions.append(f"{stage_field} = {status}")
+        else:
+            warnings.append("could not resolve project item/field for status update")
+    else:
+        plan.append(f"set project field {stage_field} = {status} for issue #{ref}")
+        log(f"  would set {stage_field} = {status}")
+    emit({"engine": "github", "applied": apply, "ref": ref,
+          "actions": actions, "plan": plan, "warnings": warnings})
+
+
+def verb_sync():
+    cfg = load_config()
+    gh = cfg.get("github", {})
+    task = read_task()
+    require_gh()
+    repo = resolve_repo(task, gh)
+    board = task.get("board") or {}
+    ref = board.get("ref")
+    if not ref:
+        die("sync needs board.ref", 2)
+    out = subprocess.run(
+        ["gh", "issue", "view", str(ref), "--repo", repo, "--json",
+         "number,title,state,url,assignees,labels"],
+        capture_output=True, text=True,
+    )
+    if out.returncode != 0:
+        die(f"gh issue view failed: {out.stderr.strip()}", 1)
+    emit({"engine": "github", "ref": ref, "state": json.loads(out.stdout)})
+
+
+# --------------------------------------------------------------------------- #
+def emit_paste_ready(task: dict, repo: str, gh: dict):
+    """gh is absent — emit a copy-paste issue card instead of failing (markdown-first
+    degradation: the canonical artifact still exists; this is just the manual push)."""
+    title = task.get("title") or task.get("id") or "Untitled"
+    body = task.get("body") or default_body(task)
+    labels = list(task.get("labels") or [])
+    assignees = task.get("assignees") or []
+    itype = task.get("type")
+    field_map = gh.get("fields", {})
+    fields = {
+        field_map.get("size"): task.get("size"),
+        field_map.get("priority"): task.get("priority"),
+        field_map.get("stage"): map_status(task.get("status")),
+        field_map.get("pm_id"): task.get("id"),
+        field_map.get("spec_url"): task.get("spec"),
+    }
+    fields = {k: v for k, v in fields.items() if k and v}
+
+    lines = ["# Paste-ready issue (gh CLI not found)", "", f"Repo: {repo}"]
+    if itype:
+        lines.append(f"Type: {itype}")
+    if labels:
+        lines.append("Labels: " + ", ".join(labels))
+    if assignees:
+        lines.append("Assignees: " + ", ".join(assignees))
+    owner, number = gh.get("owner"), gh.get("project")
+    if owner and number:
+        lines.append(f"Project: {owner} #{number}")
+    lines += ["", f"Title: {title}", "", "--- body ---", body]
+    if fields:
+        lines += ["", "--- project fields to set ---"]
+        lines += [f"{k}: {v}" for k, v in fields.items()]
+    card = "\n".join(lines)
+
+    log("== github upsert (paste-ready: gh not found) ==")
+    log(card)
+    emit({"engine": "github", "applied": False, "mode": "paste-ready", "ref": None,
+          "url": None, "repo": repo, "card": card, "actions": [], "plan": [],
+          "warnings": ["gh CLI not found on PATH — emitted a paste-ready issue card "
+                       "instead of calling GitHub. Create the issue manually, or install "
+                       "gh and re-run to push automatically."]})
+
+
+def default_body(task: dict) -> str:
+    lines = []
+    if task.get("id"):
+        lines.append(f"**pm-ops id:** `{task['id']}`")
+    if task.get("spec"):
+        lines.append(f"**Spec:** `{task['spec']}`")
+    if task.get("depends_on"):
+        lines.append("**Depends on:** " + ", ".join(f"`{d}`" for d in task["depends_on"]))
+    lines.append("")
+    lines.append("_Routed by pm-ops. See the linked spec for full detail._")
+    return "\n".join(lines)
+
+
+def map_status(status):
+    if not status:
+        return None
+    table = {
+        "inbox": "Todo", "candidate": "Todo", "draft": "Todo",
+        "active": "In Progress", "promoted": "In Progress",
+        "done": "Done",
+    }
+    return table.get(str(status).lower(), str(status))
+
+
+def main(argv):
+    if not argv:
+        die("usage: engine <capabilities|upsert|link|set-status|sync> [--apply]", 2)
+    verb = argv[0]
+    apply = "--apply" in argv[1:]
+    if verb == "capabilities":
+        verb_capabilities()
+    elif verb == "upsert":
+        verb_upsert(apply)
+    elif verb == "link":
+        verb_link(apply)
+    elif verb == "set-status":
+        verb_set_status(apply)
+    elif verb == "sync":
+        verb_sync()
+    else:
+        die(f"unknown verb '{verb}'", 2)
+
+
+if __name__ == "__main__":
+    try:
+        main(sys.argv[1:])
+    except GhError as e:
+        sys.stderr.write(f"error: gh command failed: {e.cmd}\n{e.stderr}\n")
+        sys.exit(1)
