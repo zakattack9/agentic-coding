@@ -13,8 +13,8 @@
     {
       "name": "spec-ops",
       "source": "./claude-code/plugins/spec-ops",
-      "description": "Spec workflow (write \u2192 refine \u2192 launch \u2192 verify): write-spec drafts concise feature specs that open with a flat, id'd Acceptance Criteria contract; refine-spec hardens a draft into an implementation-ready spec; launch-spec compiles the ready spec into a self-contained /goal driver gated on every acceptance criterion (emit-only); verify-spec checks the implementation matches the spec's claims and every acceptance criterion against real code, git, and live state.",
-      "version": "0.4.0"
+      "description": "Spec workflow (write \u2192 refine \u2192 launch \u2192 verify): write-spec drafts concise feature specs that open with a flat, id'd Acceptance Criteria contract (optionally organized into ordered named groups); refine-spec hardens a draft into an implementation-ready spec and commits the grounded group order; launch-spec compiles the ready spec into a self-contained /goal driver gated on every acceptance criterion (emit-only); verify-spec checks the implementation matches the spec's claims and every acceptance criterion against real code, git, and live state, and flags delivered code that maps to no criterion (backward coverage).",
+      "version": "0.5.0"
     },
     {
       "name": "ralph",

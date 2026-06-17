@@ -42,6 +42,9 @@ Readiness (all required) once the ledger is valid:
   4. The independent judge ran (`judge.ran`), returned `verdict: "complete"`, and
      reported no `missed` claims and no `weakEvidence`.
   `contradicted` claims are findings, not blockers — they do NOT hold the stop.
+  `backwardSweep` (R1 backward-coverage pass) is OPTIONAL and shape-validated when
+  present, but NEVER gates the stop — its `findings` are reports like `contradicted`
+  claims, and the judge (not this hook) attests the sweep actually ran.
 
 Input:  JSON on stdin (hook payload; uses `session_id`).
 Output: nothing to allow the stop; {"decision":"block","reason":...} to force
@@ -78,6 +81,19 @@ SCHEMA_HINT = (
     '    "verdict": "pending | gaps | complete",\n'
     '    "missed": ["claims the judge found absent from the ledger"],\n'
     '    "weakEvidence": ["claims whose evidence the judge found hollow/stale/doc-based"]\n'
+    '  },\n'
+    '  "backwardSweep": {\n'
+    '    "ran": false,\n'
+    '    "base": "diff base swept (commit range), or empty if none",\n'
+    '    "skippedReason": "why the sweep was skipped, if it was (else empty)",\n'
+    '    "findings": [\n'
+    '      {\n'
+    '        "hunk": "file:line / path of a substantive change mapping to NO acceptance criterion",\n'
+    '        "evidence": "git sha / file:line",\n'
+    '        "disposition": "intended | unintended | unsure",\n'
+    '        "proposedAC": "candidate AC text"\n'
+    '      }\n'
+    '    ]\n'
     '  }\n'
     '}'
 )
@@ -108,7 +124,9 @@ def reject_ledger(marker_path: str, problems: list):
         + marker_path
         + " is invalid, so the verification gate cannot be evaluated. Do NOT stop. "
         "Rewrite it as STRICT, valid JSON exactly matching this schema "
-        "(`verdict` must be one of unchecked/confirmed/contradicted/unverifiable):\n\n"
+        "(`verdict` must be one of unchecked/confirmed/contradicted/unverifiable; "
+        "`backwardSweep` is OPTIONAL and report-only — include it for a spec "
+        "implementation, omit it otherwise):\n\n"
         + SCHEMA_HINT
         + "\n\nProblems found:\n"
         + "\n".join(f"- {p}" for p in problems)
@@ -167,6 +185,36 @@ def validate_ledger(m):
         for key in ("missed", "weakEvidence"):
             if key in judge and not isinstance(judge.get(key), list):
                 problems.append(f"'judge.{key}' must be a JSON array")
+
+    # backwardSweep: OPTIONAL, report-only (R1 backward-coverage pass). It is
+    # shape-validated when present so a malformed sweep self-corrects, but it
+    # NEVER gates the stop — its findings are reports, exactly like
+    # `contradicted` claims. Omitted entirely for non-spec targets.
+    sweep = m.get("backwardSweep")
+    if sweep is not None:
+        if not isinstance(sweep, dict):
+            problems.append(
+                "'backwardSweep' must be a JSON object {ran, base, skippedReason, findings} when present"
+            )
+        else:
+            if not isinstance(sweep.get("ran"), bool):
+                problems.append("'backwardSweep.ran' must be a JSON boolean (true/false)")
+            for key in ("base", "skippedReason"):
+                if key in sweep and not isinstance(sweep.get(key), str):
+                    problems.append(f"'backwardSweep.{key}' must be a string")
+            findings = sweep.get("findings")
+            if findings is not None and not isinstance(findings, list):
+                problems.append("'backwardSweep.findings' must be a JSON array")
+            elif isinstance(findings, list):
+                for i, f in enumerate(findings):
+                    if not isinstance(f, dict):
+                        problems.append(f"backwardSweep.findings[{i}] must be an object")
+                        continue
+                    if not isinstance(f.get("hunk"), str) or not f.get("hunk").strip():
+                        problems.append(f"backwardSweep.findings[{i}].hunk must be a non-empty string")
+                    for key in ("evidence", "disposition", "proposedAC"):
+                        if key in f and not isinstance(f.get(key), str):
+                            problems.append(f"backwardSweep.findings[{i}].{key} must be a string")
 
     return problems
 
