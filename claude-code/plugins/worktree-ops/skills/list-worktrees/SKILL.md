@@ -1,6 +1,8 @@
 ---
 name: list-worktrees
 description: Show a dashboard of every git worktree in this repo — branch, commits ahead/behind the base branch, uncommitted (dirty) file count, and open-PR status — with the current session's worktree marked, so all parallel sessions are visible at a glance. Use when the user asks to "list worktrees", "worktree status", "what worktrees do I have", "show my parallel sessions", "which branches am I working on", or wants an overview of in-flight worktree work before pulling, switching, or merging.
+model: opus
+effort: low
 # model: claude-sonnet-4-6
 # effort: medium
 allowed-tools: Bash(git *), Bash(gh *), Bash(bash *)
