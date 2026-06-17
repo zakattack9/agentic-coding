@@ -1,0 +1,18 @@
+{
+  "engine": "github",
+  "id_prefix": "PM",
+  "github": {
+    "owner": "",
+    "project": 0,
+    "default_repo": "",
+    "repo_map": {},
+    "type_field": "native",
+    "fields": {
+      "size": "Size",
+      "priority": "Priority",
+      "stage": "Status",
+      "pm_id": "PM-ID",
+      "spec_url": "Spec"
+    }
+  }
+}
