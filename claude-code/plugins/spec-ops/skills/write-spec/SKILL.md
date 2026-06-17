@@ -15,6 +15,8 @@ Ask the user what the change is and where to save the spec file. Use `AskUserQue
 
 **Don't assert ungrounded facts.** When the spec states a concrete detail — a file path, table or column name, route, or config key — confirm it cheaply against the codebase before writing it. If you can't confirm it cheaply, write it as an explicit open question or ask via `AskUserQuestion` rather than asserting a "currently X" claim that might be wrong. Keep this light: a quick check or a question, not a full verification pass — fact-checking the finished spec is `refine-spec`'s job.
 
+**If a detail truly can't be resolved** — not by a cheap check and not by asking — leave a single inline `[NEEDS CLARIFICATION: <what's unknown>]` marker rather than guessing. Prefer `AskUserQuestion` first; the marker is the fallback for genuine unknowns. `refine-spec` blocks on any that remain, so a marker can't survive into a finished spec.
+
 ## Writing Philosophy
 
 The goal is a spec that a human can scan in under 2 minutes and know exactly what to build. Every piece of the spec should pass a simple test: "Would removing this cause someone to build the wrong thing?" If no, cut it.
@@ -36,6 +38,8 @@ Lead with a flat, numbered list of **acceptance criteria** — every behavior an
 - **Enumerate exhaustively — never condense.** Unlike prose, which you cut to the bone, the criteria are the one place you list *everything*. A requirement that lives only in a paragraph below is a requirement that gets missed at completion. Brevity is for wording, not for coverage.
 - **Each criterion is one atomic, observable end-state** — "Unrouted mail is quarantined, never dropped", not "build the quarantine system". Phrase what is *true* when done (so it's checkable), not a task to do. Keep the criteria behavior-level; the detailed rule that implements each one lives in the body and carries its `AC-id`, so each fact is stated once, at its altitude.
 - **Group only to aid the reader — never invent an order you can't ground.** Flat is the default. If the criteria fall into ≥2 obvious capability clusters, you *may* loosely group them under named `###` headers (`### 1. <capability>`) as a "what am I building" map. But do **not** assert a build order or a cross-group `needs §X` dependency in the first draft — a real dependency is a grounded fact, and committing it is `refine-spec`'s job. AC-ids stay globally unique and stable across groups; a one-group spec is just the flat list.
+- **Don't silently drop non-functional constraints.** Performance, security, idempotency, limits, concurrency — if the change implies one, make it its own `AC` (these are the requirements most often lost). `refine-spec` hunts for any you miss, but capture the obvious ones up front.
+- **Encode a "thin end-to-end first" as a criterion, not a build step.** Where a walking skeleton matters, write it as a behavioral AC — `AC-1` — *an end-to-end path from {X} to an observable {Y} runs* — rather than an instruction to "build the skeleton first." It stays checkable like any other criterion and naturally becomes the first group's "start here" AC.
 
 ### Show, don't tell
 

@@ -54,6 +54,17 @@ The parts:
 
 Write `tasks.md` beside the spec only when it adds decomposition the Checklist lacked. To bound a long run, the user can append a turn/time guard to the condition (e.g. `or stop after N turns`); by default it runs until the done-gate holds. Show the driver prompt in chat for the user to run; **do not run it**.
 
+## Context bounding — phase by AC group only when escalated
+
+**Default: one context holds every `AC-1..N` — no phasing.** This is the common case; emit a single driver gated on all acceptance criteria at once.
+
+Step up to a **phased driver** only when the structural triggers above already escalate beyond one `/goal` context (the `ultracode` signals, or a genuinely large / hard-sequenced criteria set) — **never on an AC count alone** (no count threshold; inherit the same structural signals). The reason is real: the share of criteria a single context reliably honors decays as the number it must hold at once grows, with *omissions* dominating the failures. So when you escalate, **partition the AC-ids by the spec's named AC groups (R2), in their `needs §X` order**, so no one context carries all N:
+
+- Each phase is one fresh context that **front-loads only its own AC-ids** (re-applying the "criteria open the context" win per phase) and carries the inlined Boundaries.
+- **Each phase's exit gate is "these AC-ids verify clean"** — the same `verify-spec` done-gate, scoped to the phase's subset. Reuse the machinery; never invent a new gate.
+- **`needs §X` is the binding order.** A `needs §X` chain → a `pipeline()` of fresh-context stages carrying the shared contract forward; independent groups (no `needs`) → `parallel()` leaves with disjoint per-leaf boundaries. That is exactly the `ultracode` shape the trigger already selected — R2's groups simply supply the partition boundaries.
+- A spec with **one group (or a flat list) never phases** — it stays a single context, all `AC-1..N` in the one done-gate.
+
 ## Handoff
 
 Emit the driver, tell the user how to run it (paste into a fresh `/goal` session — pair with **auto mode** so each goal turn runs unattended), and **stop**. Then the native flow continues: `/goal` implements → `verify-spec` grounds every claim against HEAD → zero contradicted claims = done.

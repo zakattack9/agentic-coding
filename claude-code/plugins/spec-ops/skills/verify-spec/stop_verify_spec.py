@@ -37,7 +37,9 @@ that is the judge's job, which is why the judge's sign-off is itself gated.
 
 Readiness (all required) once the ledger is valid:
   1. No claim is still `unchecked`.
-  2. Every `confirmed` / `contradicted` claim cites non-empty `evidence`.
+  2. Every `confirmed` / `contradicted` claim cites non-empty `evidence` AND
+     records a non-empty `method` (R6 — HOW it was grounded; the judge, not this
+     hook, attests the method actually meets the standard the claim asserts).
   3. Every `unverifiable` claim carries a non-empty `disposition`.
   4. The independent judge ran (`judge.ran`), returned `verdict: "complete"`, and
      reported no `missed` claims and no `weakEvidence`.
@@ -73,6 +75,7 @@ SCHEMA_HINT = (
     '      "claim": "short text of one checkable claim",\n'
     '      "verdict": "unchecked | confirmed | contradicted | unverifiable",\n'
     '      "evidence": "file:line / git sha / read-only CLI output (required once verdict is confirmed/contradicted)",\n'
+    '      "method": "how it was grounded: static-read / measurement / exhaustive-check / cli-observation / test-run (required once confirmed/contradicted)",\n'
     '      "disposition": "the user\'s call (required once verdict is unverifiable)"\n'
     '    }\n'
     '  ],\n'
@@ -167,6 +170,8 @@ def validate_ledger(m):
                 )
             if "evidence" in c and not isinstance(c.get("evidence"), str):
                 problems.append(f"claims[{i}].evidence must be a string")
+            if "method" in c and not isinstance(c.get("method"), str):
+                problems.append(f"claims[{i}].method must be a string")
             if "disposition" in c and not isinstance(c.get("disposition"), str):
                 problems.append(f"claims[{i}].disposition must be a string")
 
@@ -250,6 +255,24 @@ def evaluate(marker_path: str, marker: dict):
         failures.append(
             "These claims have a verdict but cite no evidence "
             f"(add a file:line / git sha / read-only CLI output): {preview}{more}"
+        )
+
+    # 2b. Every confirmed/contradicted claim must record HOW it was grounded (R6).
+    #     The hook only requires the method be present; whether it MEETS the
+    #     standard the claim asserts (a threshold needs a measurement, an
+    #     invariant an exhaustive check) is the judge's call, surfaced as weakEvidence.
+    no_method = [
+        c["claim"]
+        for c in claims
+        if c.get("verdict") in ("confirmed", "contradicted")
+        and not str(c.get("method", "")).strip()
+    ]
+    if no_method:
+        preview = "; ".join(no_method[:5])
+        more = f" (+{len(no_method) - 5} more)" if len(no_method) > 5 else ""
+        failures.append(
+            "These claims have a verdict but record no 'method' (how it was grounded — "
+            f"static-read / measurement / exhaustive-check / cli-observation / test-run): {preview}{more}"
         )
 
     # 3. Every unverifiable claim must carry an explicit user disposition.

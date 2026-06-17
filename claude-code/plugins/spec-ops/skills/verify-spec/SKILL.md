@@ -49,6 +49,7 @@ A **`Stop` hook blocks you from ending your turn** until the ledger shows a stru
       "claim": "short text of one checkable claim",
       "verdict": "unchecked",
       "evidence": "",
+      "method": "",
       "disposition": ""
     }
   ],
@@ -76,10 +77,11 @@ A **`Stop` hook blocks you from ending your turn** until the ledger shows a stru
 
 - `verdict` is one of: `unchecked` (not yet verified) · `confirmed` (true — `evidence` must cite the source) · `contradicted` (false — `evidence` must cite the source and state the actual value) · `unverifiable` (cannot be grounded — `disposition` must record the user's call).
 - `evidence` must be **concrete ground truth**: a `file:line`, a `git show <sha>` hunk, or read-only CLI output. **Never** the spec, an audit, a checklist, or your own prior output.
+- `method` records **how** the claim was grounded (step 2's evidence standard): `static-read`, `measurement`, `exhaustive-check`, `cli-observation`, or `test-run`. Required for every `confirmed`/`contradicted` claim; it is what makes the evidence standard auditable (a measurable-threshold claim whose `method` is `static-read` is under-verified by construction — the judge flags it). Leave empty for `unverifiable`.
 - `judge` records the independent judge's result (step 4): `ran` true once it has run, `verdict` one of `pending` / `gaps` / `complete`, `missed` = checkable claims it found were absent from the ledger, `weakEvidence` = confirmed/contradicted claims whose evidence it found hollow, stale, or doc-based.
 - `backwardSweep` records the **backward-coverage pass** (step 2's backward direction): `ran` true once it has run, `base` the diff base swept, `skippedReason` why it was skipped (if it was — e.g. no determinable base when running autonomously), and `findings` the substantive hunks that map to **no** `AC-id`. Findings are **report-only — they never block the stop** (exactly like `contradicted` claims). Omit `backwardSweep` entirely when the target is not a spec implementation with a diff to walk.
 
-**What the hook enforces vs. what you own.** The hook mechanically requires: no claim left `unchecked`; every `confirmed`/`contradicted` claim cites non-empty `evidence`; every `unverifiable` claim has a `disposition`; and the judge `ran` with `verdict: "complete"` and empty `missed`/`weakEvidence`. It **cannot** see whether you enumerated every claim or whether a citation is genuine — **that is the judge's job**, which is why the judge's sign-off is itself gated. The hook is a backstop against a shallow stop, not a substitute for an honest verification. `contradicted` claims do **not** block the stop — they are the findings you report; **`backwardSweep.findings` are the same — reported, never gate-blockers** (the hook shape-validates the field but never gates on it; the judge attests the sweep actually ran). **If the user redirects to unrelated work, delete the ledger file and stop.**
+**What the hook enforces vs. what you own.** The hook mechanically requires: no claim left `unchecked`; every `confirmed`/`contradicted` claim cites non-empty `evidence` **and records a non-empty `method`**; every `unverifiable` claim has a `disposition`; and the judge `ran` with `verdict: "complete"` and empty `missed`/`weakEvidence`. It checks the `method` is *present*, never whether it *fits* the claim — that the standard matches what the AC asserts is the judge's call. It **cannot** see whether you enumerated every claim or whether a citation is genuine — **that is the judge's job**, which is why the judge's sign-off is itself gated. The hook is a backstop against a shallow stop, not a substitute for an honest verification. `contradicted` claims do **not** block the stop — they are the findings you report; **`backwardSweep.findings` are the same — reported, never gate-blockers** (the hook shape-validates the field but never gates on it; the judge attests the sweep actually ran). **If the user redirects to unrelated work, delete the ledger file and stop.**
 
 ### 1. Enumerate — list every checkable claim
 
@@ -91,9 +93,20 @@ From the target, extract every **checkable assertion** as a discrete claim: "add
 
 Dispatch **parallel `Explore` subagents** (the `Task` tool, `subagent_type: Explore`) to ground the claims — they are read-only and fast. Split the claims by area and scale the agent count to the size of the work. Require, for every claim, a verdict **with cited ground-truth evidence**:
 
-> For each claim return `confirmed` / `contradicted` (state the actual value) / `unverifiable`, and cite the evidence: a `file:line`, a `git show <sha>` / `git diff` hunk, or read-only CLI output. You are **forbidden from citing the spec, an audit, a checklist, or any doc as evidence** — only real source. If you cannot ground it, return `unverifiable` and say why. Do not speculate.
+> For each claim return `confirmed` / `contradicted` (state the actual value) / `unverifiable`, cite the evidence — a `file:line`, a `git show <sha>` / `git diff` hunk, or read-only CLI output — and record the **`method`** (how you grounded it: `static-read` / `measurement` / `exhaustive-check` / `cli-observation` / `test-run`). You are **forbidden from citing the spec, an audit, a checklist, or any doc as evidence** — only real source. If you cannot ground it, return `unverifiable` and say why. Do not speculate.
 
 Ground truth, in order of authority: the **codebase at branch HEAD**; the **git history** (`git log` / `git diff` / `git show` on the working branch — re-ground against HEAD, since claims drift after out-of-band commits and merges); and, for infra / ops claims, **live state via read-only CLI** (e.g. `aws … describe/list/get`, `gh api`).
+
+#### Evidence standard — scale grounding to what the claim asserts, and record the method
+
+The strength of evidence a claim needs is a function of **what it asserts** — infer it from the claim's text, no type tags required. A bare code citation is **not** automatically sufficient:
+
+- A **measurable threshold** ("p95 < 200ms", "≤ 5 retries", "bundle < 500 KB") demands an actual **measurement** — an observed number, a benchmark, a metric read. "The code sets a 200ms timeout" does *not* prove the bound holds → `method: measurement`.
+- A **universal invariant** ("no asset is served from the ALB", "every endpoint authenticates", "nothing logs PII") demands an **exhaustive / static check** over the whole surface — a `grep`/AST sweep proving the absence — not one representative citation that happens to comply → `method: exhaustive-check`.
+- A plain **behavior** ("clicking X does Y", "route returns Z") grounds against code/git or an exercise of the path → `method: static-read` / `test-run`.
+- Keep **read-only CLI observation a first-class method** — an infra AC ("the bucket blocks public access") is verified by `aws … get-public-access-block`, never forced into a test suite → `method: cli-observation`.
+
+This is the real value of "typing" without the formality: it closes the gap where a perf or security constraint gets **rubber-stamped by code-reading**. Record the technique in each claim's `method`; the judge (step 4) flags any whose method falls short of what the assertion demands.
 
 #### Backward sweep — delivered code that owns no AC (report-only)
 
@@ -105,13 +118,13 @@ The claim grounding above is the *forward* direction (every claim/`AC-id` has ev
 
 ### 3. Reconcile — record verdicts and discrepancies
 
-Update each claim's verdict + evidence in the ledger. For every `contradicted` claim, capture a precise discrepancy: **claim → expected → actual → evidence** (`file:line` / sha / CLI). For an `unverifiable` claim, dig further; if it genuinely can't be grounded (e.g. it depends on runtime state you can't observe), ask the user with `AskUserQuestion` and record their `disposition`. If many claims come back `unverifiable`, batch the dispositions into one `AskUserQuestion` rather than asking per claim. Never guess a verdict to clear the gate.
+Update each claim's verdict, evidence, and **`method`** (how it was grounded) in the ledger. For every `contradicted` claim, capture a precise discrepancy: **claim → expected → actual → evidence** (`file:line` / sha / CLI). For an `unverifiable` claim, dig further; if it genuinely can't be grounded (e.g. it depends on runtime state you can't observe), ask the user with `AskUserQuestion` and record their `disposition`. If many claims come back `unverifiable`, batch the dispositions into one `AskUserQuestion` rather than asking per claim. Never guess a verdict to clear the gate.
 
 Also write the **backward sweep** into the ledger's `backwardSweep`: set `ran` true, record the `base` swept (or `skippedReason`), and list every unmapped substantive hunk in `findings`. These are reported, never blockers, and never edited away.
 
 ### 4. Judge — an independent agent confirms completeness
 
-**The agent that did the verifying does not get to declare it complete.** Before you try to stop, dispatch a fresh **verification judge** — an independent `Task` subagent (`subagent_type: Explore`, so it can re-check source read-only) with **no memory of your passes**; hand it only the **target and the ledger**, not your reasoning. Instruct it to be adversarial: *independently re-derive the checkable claims from the target and (a) list any that are missing from the ledger (`missed`) — and if the target has an Acceptance Criteria section, confirm **every `AC-id` appears as a claim**, treating any absent one as `missed`; (b) list any `confirmed`/`contradicted` claim whose cited evidence is hollow, stale, or doc-based rather than real source (`weakEvidence`); and (c) return `verdict: "complete"` only if both lists are empty, else `"gaps"`.* Write its result into the ledger's `judge` field. Every entry in `missed`/`weakEvidence` becomes another pass.
+**The agent that did the verifying does not get to declare it complete.** Before you try to stop, dispatch a fresh **verification judge** — an independent `Task` subagent (`subagent_type: Explore`, so it can re-check source read-only) with **no memory of your passes**; hand it only the **target and the ledger**, not your reasoning. Instruct it to be adversarial: *independently re-derive the checkable claims from the target and (a) list any that are missing from the ledger (`missed`) — and if the target has an Acceptance Criteria section, confirm **every `AC-id` appears as a claim**, treating any absent one as `missed`; (b) list any `confirmed`/`contradicted` claim whose cited evidence is hollow, stale, doc-based rather than real source, **or below the standard the claim demands** — a measurable threshold "verified" only by code-reading, a universal invariant by a single example, a `method` that doesn't match what the assertion needs (`weakEvidence`); and (c) return `verdict: "complete"` only if both lists are empty, else `"gaps"`.* Write its result into the ledger's `judge` field. Every entry in `missed`/`weakEvidence` becomes another pass.
 
 **Also have the judge attest the backward sweep** (when the target is a spec implementation): that `backwardSweep.ran` is honest — it actually walked the diff against the right base, or recorded a legitimate `skippedReason` — and that no obviously substantive hunk was left out of `findings`. A backward gap the judge spots (an unmapped hunk that should have been a finding) is its own pass; but the **findings themselves never block** `verdict: "complete"` — they are reports, not unresolved claims.
 
@@ -126,13 +139,14 @@ Finish only when **all** of these hold (the first four + the judge sign-off are 
 - [ ] Every checkable claim is enumerated in the ledger — none missed. If the target has acceptance criteria, **every `AC-id` is present as a claim** with a grounded verdict (a `contradicted` AC is a finding to report, not a blocker).
 - [ ] Every claim has a definitive verdict — none `unchecked`.
 - [ ] Every `confirmed` / `contradicted` verdict cites concrete ground-truth evidence (`file:line` / `git sha` / read-only CLI), never a doc.
+- [ ] Every `confirmed` / `contradicted` claim records a **`method`** (how it was grounded), and that method meets the standard the claim asserts — a measurable threshold has a measurement, a universal invariant an exhaustive check (presence is hook-enforced; fit is judge-attested via `weakEvidence`).
 - [ ] Every `unverifiable` claim carries an explicit user disposition.
 - [ ] The independent judge ran and returned `complete` — no missed claims, no weak / doc-based evidence.
 - [ ] If the target is a spec implementation, the **backward sweep** ran against the right diff base (or recorded why it was skipped), and every unmapped substantive hunk is reported in `backwardSweep.findings`. These are reports, never gate-blockers (judge-attested, not hook-enforced).
 
 ## Handoff
 
-When the gate passes, report a **per-claim verdict table** — `claim | verdict | evidence (file:line / sha / CLI)` — plus a short discrepancy summary for every `contradicted` claim (expected vs actual). State plainly how many claims were confirmed vs contradicted vs unverifiable. If the backward sweep ran, add a short **backward-coverage** section listing every unmapped substantive hunk with its proposed AC and triage (`intended` / `unintended` / `unsure`), or state "every change maps to an AC" when it found nothing (and note it if the sweep was skipped, with the reason). **Stop there — do not fix the discrepancies** unless the user asks; surfacing them is the deliverable (enumerate, then let the user decide). The `Stop` hook clears the ledger automatically once the gate passes.
+When the gate passes, report a **per-claim verdict table** — `claim | verdict | method | evidence (file:line / sha / CLI)` — plus a short discrepancy summary for every `contradicted` claim (expected vs actual). State plainly how many claims were confirmed vs contradicted vs unverifiable. When the target is a spec, render it as a compact **coverage matrix** keyed on `AC-id` — `AC-id | verdict | method | evidence | checklist-item` (the implementing Checklist task, from the spec's `AC-id` citations) — where an **empty cell is itself the finding**: an `AC-id` with no evidence is a forward gap, and one no Checklist item cites is a criterion nobody implemented. Keep the matrix *generated* from the ledger — never an author-maintained document. If the backward sweep ran, add a short **backward-coverage** section listing every unmapped substantive hunk with its proposed AC and triage (`intended` / `unintended` / `unsure`), or state "every change maps to an AC" when it found nothing (and note it if the sweep was skipped, with the reason). **Stop there — do not fix the discrepancies** unless the user asks; surfacing them is the deliverable (enumerate, then let the user decide). The `Stop` hook clears the ledger automatically once the gate passes.
 
 ## Guardrails
 

@@ -60,6 +60,7 @@ NOT_DONE_PATTERNS = [
     r"to be (?:determined|decided|defined)",
     r"\bdecide later\b",
     r"open question",
+    r"NEEDS CLARIFICATION",
 ]
 NOT_DONE_RE = re.compile("|".join(NOT_DONE_PATTERNS), re.IGNORECASE)
 
@@ -200,7 +201,7 @@ def evaluate(marker_path: str, marker: dict):
     if hits:
         failures.append(
             "Spec still contains not-finalized markers "
-            "(TODO/TBD/FIXME/???/'to be decided'/'open question'):\n  "
+            "(TODO/TBD/FIXME/???/'to be decided'/'open question'/'NEEDS CLARIFICATION'):\n  "
             + "\n  ".join(hits)
         )
 
