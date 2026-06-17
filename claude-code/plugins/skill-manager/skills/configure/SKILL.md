@@ -3,8 +3,6 @@ name: configure
 description: Choose which centralized skill plugins the current project uses, written to the project's .claude/settings.local.json. Use when the user opens a repo and wants to wire up their skills, says "set up skills for this project", "which skills does this project use", "enable/disable a plugin here", or "configure plugins for this project".
 # model: claude-sonnet-4-6
 # effort: medium
-model: claude-sonnet-4-6-20251114
-effort: medium
 disable-model-invocation: true
 allowed-tools: Bash(python3 *) AskUserQuestion
 argument-hint: "[plugins or 1 3 5]"
@@ -22,7 +20,7 @@ The engine is the source of truth at every step: it numbers the menu, resolves t
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" configure
    ```
-   **Reproduce the menu in your reply inside a fenced ``` block** — copy it verbatim (numbers, `[on]`/`[  ]` markers, descriptions, skills) so the user can read it without expanding the raw tool output. Those values are ground truth; don't renumber or invent entries.
+   **Paste the engine's menu straight into your reply** — it prints a Markdown table; copy it verbatim (don't wrap it in a code block, so it renders) so the user can read it without expanding the raw tool output. The numbers, ✓ markers, and skills are ground truth; don't renumber or invent entries.
 
 2. **Get the selection.** If the user already gave plugins or numbers (as args or in chat), use that. Otherwise ask in plain text to reply with the numbers to enable (e.g. `1 3 5`, a range `1-3`, `all`, or `none`) — this open-ended reply doesn't fit `AskUserQuestion`'s fixed options. Pass their reply through unchanged.
 

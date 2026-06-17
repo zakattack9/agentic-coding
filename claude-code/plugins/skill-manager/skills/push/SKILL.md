@@ -18,7 +18,7 @@ Take a skill from this project's `.claude/skills/<name>/` and publish or update 
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" push --list
    ```
-   **Reproduce the menu in your reply inside a fenced ``` block** — copy it verbatim (numbers, paths, notes) so the user can read it without expanding the raw tool output. Then ask in plain text for the number(s) to push — one (`3`), several (`1 3 5`), or a range (`1-3`); this open-ended reply doesn't fit `AskUserQuestion`'s fixed options. Pass it through with `--select`:
+   **Paste the engine's menu straight into your reply** — it prints a Markdown table; copy it verbatim (don't wrap it in a code block, so it renders) so the user can read it without expanding the raw tool output. Then ask in plain text for the number(s) to push — one (`3`), several (`1 3 5`), or a range (`1-3`); this open-ended reply doesn't fit `AskUserQuestion`'s fixed options. Pass it through with `--select`:
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" push --select "<number(s)>" [--plugin <plugin>] [--md <file>]
    ```

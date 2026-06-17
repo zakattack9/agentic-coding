@@ -440,23 +440,25 @@ def _plugin_skills(cfg: dict, name: str) -> list[str]:
 
 
 def _print_menu(cfg: dict):
-    """The deterministic, numbered selection menu. Numbering is the catalog (marketplace.json)
-    order — stable within a session — so a reply of indices resolves the same way every time.
-    The skill prints this verbatim; selection is resolved by `--select`, never by the model."""
+    """The deterministic, numbered selection menu, rendered as a Markdown table so the skill can
+    paste it straight into its reply and have it render cleanly. Numbering is the catalog
+    (marketplace.json) order — stable within a session — so a reply of indices resolves the same
+    way every time. Selection is resolved by `--select`, never by the model. Descriptions are
+    omitted (they don't fit a table cell); the Skills column carries what the choice grants."""
     enabled = project_enabled(cfg)
     cat = catalog(cfg)
     info(f"Plugins in marketplace '{cfg['marketplace']}' ({len(cat)} available) "
-         f"— enabled here marked [on]:\n")
+         f"— enabled here marked ✓:\n")
     if not cat:
         info("  (none yet — create one with: skillctl new-plugin <name>)")
         return
+    info("| # | On | Plugin | Version | Skills |")
+    info("|:-:|:--:|--------|:-------:|--------|")
     for i, e in enumerate(cat, 1):
         name = e["name"]
-        mark = "[on]" if name in enabled else "[  ]"
-        info(f"  {i:>2}. {mark} {name}  v{e.get('version', '?')}")
-        if e.get("description"):
-            info(f"          {e['description']}")
-        info(f"          skills: {', '.join(_plugin_skills(cfg, name)) or '(none)'}")
+        mark = "✓" if name in enabled else ""
+        skills = ", ".join(_plugin_skills(cfg, name)) or "(none)"
+        info(f"| {i} | {mark} | `{name}` | v{e.get('version', '?')} | {skills} |")
     info("\nReply with the numbers to enable (e.g. 1 3 5), a range (1-3), 'all', or 'none'.")
     info("That set becomes this project's enabled plugins; you'll see the changes before they apply.")
 
@@ -707,19 +709,23 @@ def _discover_local_skills(from_dir: str | None = None) -> list[tuple]:
 
 
 def _print_push_menu(found: list[tuple]):
+    """Numbered table of local skills to push, rendered as Markdown so the skill pastes it
+    straight into its reply. Selection is resolved by --select, never by the model."""
     cwd = Path.cwd()
     info(f"Local skills you can push ({len(found)} found):\n")
     if not found:
         info("  (none found — author one with the skill-creator skill, or pass --from <dir>)")
         return
+    info("| # | Skill | Location | Note |")
+    info("|:-:|-------|----------|------|")
     for i, (name, d, md_name) in enumerate(found, 1):
         try:
             loc = d.resolve().relative_to(cwd.resolve())
         except ValueError:
             loc = d
-        note = "" if md_name == "SKILL.md" else (f"   ({md_name} -> SKILL.md)" if md_name
-                                                 else "   (multiple .md — needs --md)")
-        info(f"  {i:>2}. {name}    {loc}{note}")
+        note = "" if md_name == "SKILL.md" else (f"`{md_name}` → SKILL.md" if md_name
+                                                 else "multiple .md — needs --md")
+        info(f"| {i} | `{name}` | `{loc}` | {note} |")
     info("\nReply with the number(s) to push — one (e.g. 3), several (e.g. 1 3 5), or a range (1-3).")
 
 
@@ -1109,21 +1115,21 @@ def _catalog_with_skills(cfg: dict) -> list[tuple]:
 
 
 def _print_remove_menu(cfg: dict):
-    """Numbered tree of central content. Plugins take a bare index (N); each skill takes a
-    compound index (N.M). Printed verbatim by the skill; the index is resolved by --select,
-    never by the model — and because a skill index encodes its plugin, there's no ambiguity."""
+    """Numbered table of central content. Plugins take a bare index (N); each skill takes a
+    compound index (N.M). Rendered as Markdown so the skill pastes it straight into its reply;
+    the index is resolved by --select, never by the model — and because a skill index encodes
+    its plugin, there's no ambiguity."""
     rows = _catalog_with_skills(cfg)
     info(f"Central content in marketplace '{cfg['marketplace']}' (type a number to remove):\n")
     if not rows:
         info("  (nothing to remove — the catalog is empty)")
         return
+    info("| # | Plugin | Version | Skills — use the shown index to remove just one |")
+    info("|:-:|--------|:-------:|--------------------------------------------------|")
     for i, (name, ver, skills) in enumerate(rows, 1):
-        info(f"  {i:>2}. {name}  v{ver}")
-        if skills:
-            info("        " + "   ".join(f"{i}.{j} {s}" for j, s in enumerate(skills, 1)))
-        else:
-            info("        (no skills)")
-    info("\nType a skill index (e.g. 1.2) to delete one skill,")
+        cell = " · ".join(f"`{i}.{j}` {s}" for j, s in enumerate(skills, 1)) if skills else "(no skills)"
+        info(f"| {i} | `{name}` | v{ver} | {cell} |")
+    info("\nType a skill index (e.g. 2.3) to delete one skill,")
     info("or a plugin number (e.g. 2) to delete the whole plugin and all its skills.")
 
 
