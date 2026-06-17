@@ -1,7 +1,7 @@
 ---
 name: write-spec
 description: Write concise, scannable feature specs that contain everything needed to implement a change — and nothing more. Use this skill when the user asks to write or update a spec, PRD, feature specification, requirements doc, or wants to document what a feature should do. Also use it when the user describes a change they want to build and needs it written up or updated in a spec, even if they don't use the word "spec."
-argument-hint: [what to build] [@path/to/spec.md to create or update]
+argument-hint: [what to build] [@path/to/spec.md to create or update] [rigor: light|standard|full]
 model: opus
 effort: xhigh
 allowed-tools: Read, Grep, Glob, Edit, Write
@@ -9,13 +9,25 @@ allowed-tools: Read, Grep, Glob, Edit, Write
 
 # Write Spec
 
+## Rigor — how deep to go
+
+`write-spec` always produces the **WHAT** (the behavior/contract), but at one of three depths. Read the requested rigor from the arguments (`rigor: light|standard|full`). If none is given, infer it from the ask — a self-evidently trivial change is `light`, a routine bounded feature is `standard`, a complex change or any infra / platform / config / migration spec is `full` — and **when unsure, default to `full`** (more rigor is the safe error). A caller delegating to this skill in batch (e.g. a board-intake workflow) passes the rigor explicitly; honor it.
+
+| Rigor | Use for | Emit | Clarifying questions |
+|---|---|---|---|
+| **`light`** | a trivial, self-contained task | The `## Acceptance Criteria` table **only** (plus a one-line goal if it isn't obvious from the title). No TL;DR, Boundaries, body sections, or Checklist. A few lines total. | **Markers only.** Draft from what's given; flag a genuine unknown with one `[NEEDS CLARIFICATION: …]` and move on. Do **not** open an `AskUserQuestion` loop. |
+| **`standard`** | a routine, bounded feature | TL;DR (lead with any "breaks if missed") + the AC table (grouped only if ≥2 obvious clusters) + **Boundaries** + a *lean* body **only** for behavioral rules the AC don't already make obvious. | **Markers only**, as above. |
+| **`full`** | a complex change, or any infra / config-as-contract spec | The complete structure below — exhaustive AC, self-contained body, every relevant section. | **Interactive.** Use `AskUserQuestion` before guessing; better to ask one too many. Then hand the result to **`refine-spec`** to ground and harden. |
+
+**Constant across all three:** the **Acceptance Criteria are enumerated exhaustively, never condensed** — "cut to the bone" is for *prose*, never for coverage. A `light` spec is *all* criteria and almost no prose; it still lists every one. And `light`/`standard` stay strictly **behavior-level — the implementer chooses the HOW**; only a `full` infra/config-as-contract spec pins implementation, because there the config *is* the contract.
+
 ## Inputs
 
-Ask the user what the change is and where to save the spec file. Use `AskUserQuestion` to clarify any ambiguous requirements before writing — don't guess at behavior. It is better to ask one too many questions than to produce an incomplete or inaccurate spec.
+Ask the user what the change is and where to save the spec file. How you then handle ambiguity depends on the **rigor** (see [Rigor](#rigor--how-deep-to-go)): at **`full`**, clarify with `AskUserQuestion` before writing — don't guess at behavior; it is better to ask one too many questions than to produce an inaccurate spec. At **`light`/`standard`** (and whenever a caller is delegating in batch), do **not** open a question loop — draft from what's given and leave a `[NEEDS CLARIFICATION: …]` marker on any genuine unknown for later resolution.
 
 **Don't assert ungrounded facts.** When the spec states a concrete detail — a file path, table or column name, route, or config key — confirm it cheaply against the codebase before writing it. If you can't confirm it cheaply, write it as an explicit open question or ask via `AskUserQuestion` rather than asserting a "currently X" claim that might be wrong. Keep this light: a quick check or a question, not a full verification pass — fact-checking the finished spec is `refine-spec`'s job.
 
-**If a detail truly can't be resolved** — not by a cheap check and not by asking — leave a single inline `[NEEDS CLARIFICATION: <what's unknown>]` marker rather than guessing. Prefer `AskUserQuestion` first; the marker is the fallback for genuine unknowns. `refine-spec` blocks on any that remain, so a marker can't survive into a finished spec.
+**If a detail truly can't be resolved** — not by a cheap check and not by asking — leave a single inline `[NEEDS CLARIFICATION: <what's unknown>]` marker rather than guessing. Prefer `AskUserQuestion` first **at `full`** rigor; at `light`/`standard` the marker *is* the primary tool (no question loop). `refine-spec` blocks on any that remain, so a marker can't survive into a finished `full` spec.
 
 ## Writing Philosophy
 
@@ -71,7 +83,7 @@ A spec is often read in isolation by someone with no prior context — a teammat
 
 ## Spec Structure
 
-Use only sections that are relevant. Not every spec needs every section. The skeleton below is shaped for a typical feature change: **infra / platform / migration specs** usually drop **UI Changes** and **Data Migration** and add two — a **Current state → Target** view (what exists today vs. the end state, load-bearing when you're changing a running system) and a short **Architecture** diagram (mermaid). Add them only when they earn their place.
+The skeleton below is the **`full`**-rigor shape; `light` is the Acceptance Criteria table alone and `standard` is TL;DR + AC + Boundaries (see [Rigor](#rigor--how-deep-to-go)). Use only sections that are relevant. Not every spec needs every section. The full skeleton is shaped for a typical feature change: **infra / platform / migration specs** usually drop **UI Changes** and **Data Migration** and add two — a **Current state → Target** view (what exists today vs. the end state, load-bearing when you're changing a running system) and a short **Architecture** diagram (mermaid). Add them only when they earn their place.
 
 ```markdown
 # {Feature Name} Spec
