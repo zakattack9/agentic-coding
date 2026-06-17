@@ -23,7 +23,7 @@ The goal is a spec that a human can scan in under 2 minutes and know exactly wha
 
 ### Say things once, in the right place
 
-Repeating information across sections creates maintenance burden and contradictions. If a field has a constraint, put it in the field's definition table — not in a separate "Validation" section. If a checklist covers which systems are affected, don't also include an "Affected Systems" table.
+Repeating information across sections creates maintenance burden and contradictions. If a field has a constraint, put it in the field's definition table — not in a separate "Validation" section. If a checklist covers which systems are affected, don't also include an "Affected Systems" table. Once a spec has an **Acceptance Criteria** table, the most common offender is a **Checklist that re-describes those criteria** — keep the Checklist a thin *code-area → `AC-id`* index that points at the criteria, never a second statement of them.
 
 Consolidate related concepts into one section. Validation rules, edge cases, and selection logic about a feature belong inline with the feature's definition — not split into separate "Validation," "Edge Cases," or "Rules" sections.
 
@@ -133,7 +133,12 @@ Use only sections that are relevant. Not every spec needs every section. The ske
 ---
 
 ## Checklist
-<!-- Group by system/area (e.g., Dashboard, Frontend, Backend) -->
-<!-- Concrete, actionable items with markdown checkboxes -->
-<!-- The Checklist is the *task* view (what to DO); the Acceptance Criteria above are the *assertion* view (what must be TRUE). Cite the AC-id(s) each item satisfies so every criterion is traceably covered. -->
+<!-- OPTIONAL, and a thin TRACEABILITY INDEX — never a third copy of the spec. The AC table is the *assertion* view (what must be TRUE); the body is the *detail* view (how/where + the load-bearing why); the Checklist is the *task* view, organized by the one axis neither of those gives: CODE AREA. -->
+<!-- Include it only when the work spans several code areas/systems and a "by where in the code" map helps the implementer. If every item would just restate one AC, the Checklist adds nothing over the AC table — omit it. -->
+<!-- Each item is ONE line: name the area's work in a few words and cite the AC-id(s) that land there. Cite the ids; do NOT re-describe what the criteria assert — that text already lives in the AC table and the body. -->
+<!-- Never let a checklist item be the SOLE home of a fact. Exact config values, file paths, and policy/resource names are part of the contract and belong in the body (or an AC); a checklist item points at them, it never introduces them. -->
+
+**{Code area — e.g. Terraform · modules/cdn}**
+- [ ] {the area's work in a few words} — AC-1, AC-3, AC-8
+- [ ] {…} — AC-5
 ```

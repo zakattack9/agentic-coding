@@ -195,6 +195,7 @@ origin fails TLS. Fix:
 
 - Create a stable **origin hostname** `origin.<env>.zila.rent` (a **CNAME → the ALB DNS name** — a subdomain, so CNAME is fine; the `zila.rent` zone is at GoDaddy, not Route 53) and use it as the CloudFront origin `domain_name`.
 - Add it as a **SAN on the ALB ACM cert** (the Console-managed SAN pattern in `modules/acm` — `ignore_changes = [subject_alternative_names]` + `prevent_destroy` — survives `apply`; each brand onboarding already adds SANs this way).
+- **Lock the ALB to the edge.** Restrict the ALB security group to the CloudFront **origin-facing managed prefix list** (`com.amazonaws.global.cloudfront.origin-facing`, via an `aws_ec2_managed_prefix_list` data source) so only CloudFront can reach the origin. Combined with the `X-Origin-Verify` header (see [CloudFront site distribution](#cloudfront-site-distribution)), this is the origin lock-down that must be deployed and verified **before** the ALB WAF is reduced.
 
 ---
 
@@ -383,54 +384,33 @@ follow-ups, out of scope here:
 
 ## Checklist
 
+*Coverage index — each item names a **code area** and the `AC-id`s that land there; the assertion lives in the [Acceptance Criteria](#acceptance-criteria) table and the detail in the body. This is a map, not a restatement.*
+
 **Terraform — `modules/cdn`**
-- [ ] `aws_cloudfront_distribution.site` (ALB origin, `origin_read_timeout = 60`, `http2and3`, `PriceClass_All`, default `CachingDisabled`+`AllViewer` allowing **all methods**, only `/assets/*` cached).
-- [ ] Custom `aws_cloudfront_cache_policy` `[env]-zilarent-assets` (query `v` in key, brotli+gzip, TTL **min 0 / default 86400 / max 31536000**) on `/assets/*` — **not** `CachingOptimized`. **No** cached behavior for `/robots.txt` · `/sitemap.xml` · `/favicon.ico`.
-- [ ] CloudFront **response-headers policy** on `site` (HSTS `max-age=300`, no `preload`/`includeSubDomains`; `nosniff`; `Referrer-Policy: strict-origin-when-cross-origin`).
-- [ ] `custom_error_response` `error_caching_min_ttl = 0` for 500/502/503/504.
-- [ ] Bump the existing `uploads` dist to `PriceClass_All`.
-- [ ] `site_aliases` variable (**staging:** `stagingv3.zila.rent`; **prod:** `cars.bluediamondvacations.com`, `akamaikauairental.com`) + `us-east-1` ACM cert.
+- [ ] `site` distribution: default `*` (forwards Host/cookies/`X-Forwarded-Proto`, all methods) + `/assets/*` cache behaviors, settings, response-headers policy, 5xx no-cache — AC-1, AC-2, AC-3, AC-4, AC-6, AC-7, AC-22
+- [ ] `site_aliases` var + `us-east-1` ACM cert; bump `uploads` dist → `PriceClass_All` — AC-5, AC-8
 
 **Terraform — WAF (`modules/edge` + new CloudFront WebACL)**
-- [ ] New `CLOUDFRONT`-scoped WebACL (`us-east-1`) on `site`: IP block set + managed Common / Known-Bad-Inputs / IP-Reputation + Stripe carve-out (`api/stripe/webhook/(:segment)`).
-- [ ] **Upload carve-outs** — override `SizeRestrictions_BODY` **and** `CrossSiteScripting_BODY` to `Count`: public `checkout/.../driving-license|insurance/upload`, admin `Files::upload`/`s3_upload_batch`/image+import uploads — sized for `client_max_body_size 100m`. (Missing the public ones **breaks checkout**.)
-- [ ] Recreate the operator IPv4 block set at `CLOUDFRONT` scope; delete the regional one.
-- [ ] **Staging:** remove the regional ALB WebACL + association. **Prod:** reduce to managed content rules (Common + Known-Bad-Inputs); mirror Stripe + upload carve-outs; drop the IP set + IP-reputation rule.
+- [ ] `CLOUDFRONT` WebACL: operator IP block set + managed rules + Stripe & upload carve-outs — AC-14, AC-15, AC-16
+- [ ] Recreate the IP set at `CLOUDFRONT` scope (delete the regional one); staging drops the ALB WebACL, prod keeps a content-rules backstop — **only after** the origin lock-down verifies — AC-13, AC-17, AC-18
 
 **Terraform — origin lock-down (`compute`)**
-- [ ] ALB SG restricted to the CloudFront origin-facing managed prefix list (`com.amazonaws.global.cloudfront.origin-facing`, via an `aws_ec2_managed_prefix_list` data source).
-- [ ] `X-Origin-Verify` secret in Secrets Manager (`ignore_changes`); referenced by the CloudFront origin custom header **and** the ALB listener rule (403 if missing/mismatched).
-- [ ] `origin.<env>.zila.rent` added as a SAN on the ALB ACM cert.
+- [ ] ALB SG → CloudFront origin-facing prefix list; `X-Origin-Verify` secret enforced at the ALB listener; `origin.<env>.zila.rent` SAN on the ALB cert — AC-10, AC-11, AC-12
 
 **Terraform — `accounts/<env>`**
-- [ ] Wire `module.cdn` `site_*` inputs; pass tenant hostnames into `site_aliases`.
+- [ ] Wire `module.cdn` `site_*` inputs (tenant hostnames → `site_aliases`) — AC-1, AC-5
 
-**App (code) — required before `immutable` caching**
-- [ ] **Stamp `?v=` on all `/assets/*` in the output filter** (§0): idempotent pass in `GlobalFilter::after()` (`GlobalFilter.php:67-68`) appending `?v=<asset.version>` to unversioned `/assets/…` URLs — gated on `RUNNING_MODE==='prod'`, **separate** from `content_cdn_process` (don't nest it behind the `cdn_url_status()` guard). Version any compiled-JS-referenced assets at source. (Optional: version `asset_url()`/`get_favicon()` at source.)
-- [ ] **Client IP:** at AMI bake (`build.sh`), fetch `ip-ranges.amazonaws.com/ip-ranges.json` and write a `set_real_ip_from` per `service == "CLOUDFRONT"` CIDR (IPv4 + IPv6) into an nginx `include` file the `server` block sources; remove the dead `CF-Connecting-IP` branch in `get_client_ip()` + `error_blocked.php`. Keep `security.enableAutoBan` **off** until verified.
-- [ ] `Config\Cookie::$secure = true`.
+**App (code)**
+- [ ] Stamp `?v=` in the output filter; CloudFront real-IP + dead `CF-Connecting-IP` removal (auto-ban off until verified); `Cookie::$secure = true` — AC-19, AC-20, AC-21, AC-24
 
 **Web server (nginx, baked via `infra/ami/build.sh`)**
-- [ ] Add `location ~* ^/assets/` → `Cache-Control: public, max-age=31536000, immutable`. (**Not** `public/.htaccess` — inert under nginx.)
-- [ ] Enable `gzip` (dynamic content types) at the origin.
-- [ ] Do http→https + any www→apex redirect at CloudFront or in the nginx vhost.
+- [ ] `/assets/*` `immutable` Cache-Control; enable dynamic `gzip`; http→https + www→apex redirect — AC-23, AC-25, AC-26
 
 **Deploy pipeline**
-- [ ] Bust page cache on deploy: `rm -rf "$APP_ROOT/shared/writable/cache/public"` after the symlink swap in `deploy.sh`.
-- [ ] **Prod-only:** post-deploy `aws cloudfront create-invalidation --paths '/assets/*'` in `deploy-prod.yml` after the fleet is fully on N. **Not** on staging.
-- [ ] **Smoke test through CloudFront:** point `/zilarent/<env>/config/smoke-test-host` at the site dist's CloudFront domain (`terraform output` `domain_name`) and drop `smoke-test.sh`'s `--resolve` ALB bypass (the SG lock-down blocks the runner's direct ALB hit; `/health` is uncached so it still reflects origin health). Land with the lock-down.
-- [ ] Confirm per-release `?v=<sha>` reaches the edge and changes on deploy (stamping already works).
+- [ ] Page-cache bust after the symlink swap; prod-only post-deploy `/assets/*` invalidation; smoke test via CloudFront (drop `--resolve`); confirm per-release `?v=<sha>` at the edge — AC-27, AC-28, AC-29, AC-30, AC-31
 
 **Pre-cutover audits**
-- [ ] **Long synchronous requests:** audit admin imports + report exports for in-request ops > 60s; move them to the Redis task queue (else accept the CloudFront 504).
-- [ ] **`domains.settings`:** force `cdn_enable=0` on all domains (a `1` would double-apply the app's own `content_cdn_process` over CloudFront).
-- [ ] **Uploads via CDN domain (in scope):** land [`infra-side-todos.md` §5](./infra-side-todos.md) — `terraform output` the uploads dist `domain_name`, set `aws.cdn.domain=<domain>` in the encrypted `.env` per env (decrypt → edit → encrypt → commit), retire the old `aws.cdn.{bucket,region,credentials.*}` keys. Until set, the OAC-only uploads bucket 403s images.
-- [ ] **Onboarding runbook** updated: a new brand domain needs ACM SAN + CloudFront alias + apex DNS (ALIAS/ANAME) + a `domains` row (the last also feeds the AutoBan host whitelist).
+- [ ] Move >60s sync requests to the Redis queue; force `domains.settings.cdn_enable = 0`; serve uploads via `aws.cdn.domain` (retire legacy keys); refresh the onboarding runbook (new brand = ACM SAN + alias + apex DNS + `domains` row) — AC-9, AC-32, AC-35
 
 **DNS / cutover (per brand)**
-- [ ] Lower each host's DNS TTL (e.g. 60s) **before** repoint; raise after stable.
-- [ ] ACM DNS-validation records at each host's provider (the two prod hosts; staging `stagingv3.zila.rent` at GoDaddy).
-- [ ] `origin.<env>.zila.rent` CNAME → ALB DNS name (GoDaddy-hosted `zila.rent` zone).
-- [ ] **Akamai apex (`akamaikauairental.com`):** confirm its provider supports ALIAS/ANAME/CNAME-flattening; where not, move the zone or use `www` + apex→www redirect. (BDV's `cars.bluediamondvacations.com` is a subdomain — plain CNAME.)
-- [ ] Break-glass documented: rollback = repoint the host to the ALB, temporarily reopen the ALB SG, **and** disable the `X-Origin-Verify` listener rule (else direct viewers without the header get 403).
-- [ ] Each host repointed to CloudFront per brand (staging → prod).
+- [ ] Lower TTLs; ACM DNS-validation records; `origin.<env>` CNAME → ALB; apex ALIAS/ANAME (Akamai) vs plain CNAME (BDV); land app/web/deploy **before** repoint; repoint each host (staging → prod); break-glass documented — AC-10, AC-33, AC-34, AC-36
