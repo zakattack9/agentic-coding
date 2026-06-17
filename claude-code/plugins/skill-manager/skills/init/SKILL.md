@@ -1,6 +1,8 @@
 ---
 name: init
 description: One-time setup for skill-manager — point it at your local checkout of a marketplace repo, register the marketplace, and optionally enable plugins for all projects. Use the first time the user sets up skill-manager, or when they say "set up skill manager", "configure my skills marketplace", or status reports it's not configured. Run once per machine.
+model: opus
+effort: low
 # model: claude-sonnet-4-6
 # effort: medium
 disable-model-invocation: true
