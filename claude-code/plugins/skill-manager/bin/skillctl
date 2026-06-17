@@ -720,7 +720,7 @@ def _print_push_menu(found: list[tuple]):
         note = "" if md_name == "SKILL.md" else (f"   ({md_name} -> SKILL.md)" if md_name
                                                  else "   (multiple .md — needs --md)")
         info(f"  {i:>2}. {name}    {loc}{note}")
-    info("\nReply with the number of the skill to push.")
+    info("\nReply with the number(s) to push — one (e.g. 3), several (e.g. 1 3 5), or a range (1-3).")
 
 
 def _dirs_equal(a: Path, b: Path) -> bool:
@@ -745,6 +745,112 @@ def _materialize_skill(src: Path, dst: Path, md_name: str):
         (dst / md_name).replace(dst / "SKILL.md")
 
 
+def _parse_push_select(spec: str, n: int) -> list[int]:
+    """Resolve a push-menu selection to a sorted, deduped list of 1-based indices. Accepts a
+    single number, several (space/comma separated), and ranges (1-3) — so one reply can push a
+    batch. Raises ValueError with a corrective message on anything non-numeric or out of range."""
+    s = (spec or "").strip()
+    if not s:
+        return []
+    chosen: set[int] = set()
+    for tok in re.split(r"[\s,]+", s):
+        if not tok:
+            continue
+        rng = re.fullmatch(r"(\d+)-(\d+)", tok)
+        if rng:
+            lo, hi = int(rng.group(1)), int(rng.group(2))
+            if lo < 1 or hi > n or lo > hi:
+                raise ValueError(f"range '{tok}' is out of bounds (valid indices: 1-{n})")
+            chosen.update(range(lo, hi + 1))
+        elif tok.isdigit():
+            i = int(tok)
+            if not 1 <= i <= n:
+                raise ValueError(f"index {i} is out of range (valid: 1-{n})")
+            chosen.add(i)
+        else:
+            raise ValueError(f"'{tok}' is not a number or range (valid indices: 1-{n}). "
+                             f"Run `push --list` for the menu.")
+    return sorted(chosen)
+
+
+def _push_batch(cfg: dict, selected: list[tuple], *, force: bool, dry_run: bool,
+                message: str | None, no_refresh: bool):
+    """Push every ready skill in `selected` (each a (name, src_dir, md_name) tuple from the push
+    menu) and skip the rest with a reason the user can act on. A batch never auto-creates a
+    plugin or guesses an ambiguous target — those need a one-off push with --plugin/--md, so we
+    skip and say so. Each pushed skill is its own commit (granular history, same as a single
+    push); we refresh once at the end. Mirrors cmd_push's per-skill logic, minus the dies."""
+    pushed: list[tuple] = []     # (name, plugin, version|None)
+    skipped: list[tuple] = []    # (name, reason)
+    push_failed = False
+
+    for name, src, _menu_md in selected:
+        md = _resolve_skill_md(src, None)
+        if md is None:
+            roots = _root_md_files(src)
+            reason = ("no skill markdown (expected SKILL.md or a root-level .md file)" if not roots
+                      else f"multiple root .md files and no SKILL.md "
+                           f"({', '.join(p.name for p in roots)}) — push it on its own with --md <file>")
+            skipped.append((name, reason))
+            continue
+        md_name = md.name
+        errs, warns, _ = _check_skill_md(src, md_name)
+        for w in warns:
+            warn(w)
+        if errs:
+            skipped.append((name, "would be broken once published: " + "; ".join(errs)))
+            continue
+        matches = _find_plugins_for_skill(cfg, name)
+        if len(matches) > 1:
+            skipped.append((name, f"exists in multiple plugins ({', '.join(matches)}) — push it "
+                                  f"on its own with --plugin <name>"))
+            continue
+        if not matches:
+            skipped.append((name, "isn't central yet — push it on its own with --plugin <name> "
+                                  "to choose its target plugin"))
+            continue
+        plugin = matches[0]
+        dst = plugin_dir(cfg, plugin) / "skills" / name        # exists: _find_plugins_for_skill matched it
+        with tempfile.TemporaryDirectory() as td:
+            staged = Path(td) / name
+            _materialize_skill(src, staged, md_name)
+            if _dirs_equal(staged, dst) and not force:
+                skipped.append((name, "already up to date (no changes to push)"))
+                continue
+            if dry_run:
+                pushed.append((name, plugin, None))
+                continue
+            shutil.rmtree(dst)
+            shutil.copytree(staged, dst)
+        newver = _bump_version(cfg, plugin)
+        ok = _commit_push(cfg, message or f"Update skill '{name}' in {plugin} (v{newver})",
+                          [str(plugin_dir(cfg, plugin)), str(marketplace_json_path(cfg))])
+        push_failed = push_failed or not ok
+        pushed.append((name, plugin, newver))
+
+    _report_push_batch(pushed, skipped, dry_run, push_failed)
+    if pushed and not dry_run and not no_refresh:
+        _refresh(cfg)
+
+
+def _report_push_batch(pushed: list[tuple], skipped: list[tuple], dry_run: bool, push_failed: bool):
+    info(f"\nBatch push — {len(pushed) + len(skipped)} selected:")
+    label = "would push" if dry_run else "pushed"
+    info(f"  {label} ({len(pushed)}):" if pushed else f"  {label} (0): none were ready")
+    for name, plugin, ver in pushed:
+        v = "" if ver is None else f"  (now v{ver})"
+        info(f"    - {name}  ->  /{plugin}:{name}{v}")
+    if skipped:
+        info(f"  skipped ({len(skipped)}) — reconcile each on its own:")
+        for name, reason in skipped:
+            info(f"    - {name}  —  {reason}")
+    if push_failed:
+        info("\nWARNING: at least one git push did NOT succeed (see errors above). Those changes "
+             "are committed locally but are NOT on the remote yet.")
+    if dry_run:
+        info("\n(dry run — nothing written. Re-run without --dry-run to push the ready ones.)")
+
+
 def cmd_push(args):
     cfg = load_config()
 
@@ -755,12 +861,19 @@ def cmd_push(args):
         return
     if args.select is not None:
         found = _discover_local_skills(args.from_dir)
-        if not str(args.select).isdigit():
-            die(f"--select must be a number (1-{len(found)})")
-        idx = int(args.select)
-        if not 1 <= idx <= len(found):
-            die(f"--select {idx} is out of range (1-{len(found)}). Run `push --list` for the menu.")
-        name, d, _ = found[idx - 1]
+        try:
+            idxs = _parse_push_select(args.select, len(found))
+        except ValueError as e:
+            die(str(e))
+        if not idxs:
+            die("no skills selected. Run `push --list` for the menu.")
+        if len(idxs) > 1:
+            # Batch: push the skills that are ready, skip the rest with a reason. New/ambiguous
+            # ones are skipped (they need a one-off push with --plugin/--md) — never guessed.
+            _push_batch(cfg, [found[i - 1] for i in idxs], force=args.force,
+                        dry_run=args.dry_run, message=args.message, no_refresh=args.no_refresh)
+            return
+        name, d, _ = found[idxs[0] - 1]
         args.skill, args.from_dir = name, str(d)    # _resolve_skill_src checks `from_dir` itself first
     if not args.skill:
         die("name a skill to push, or run `push --list` to pick one by number.")
@@ -1390,7 +1503,7 @@ def build_parser() -> argparse.ArgumentParser:
     pu = sub.add_parser("push", help="publish a project skill central, or sync edits up")
     pu.add_argument("skill", nargs="?", help="skill name; omit with --list/--select to pick from a menu")
     pu.add_argument("--list", action="store_true", help="print a numbered menu of local skills to push")
-    pu.add_argument("--select", help="pick a skill from the menu by number")
+    pu.add_argument("--select", help="pick skill(s) from the menu by number (e.g. 2, or 1 3 5, or 1-3)")
     pu.add_argument("--from", dest="from_dir",
                     help="dir to read the skill from (default: search .claude/skills/, a folder "
                          "in cwd, ~/.claude/skills/, skills/)")

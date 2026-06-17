@@ -18,7 +18,7 @@ Delete a central skill (or a whole plugin), clean up the catalog and bump the ve
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" remove
    ```
-   Print the engine's tree verbatim — plugins get a bare number (`2`), each skill a compound index (`2.3`). Those numbers are ground truth; don't renumber or invent entries.
+   **Reproduce the menu in your reply inside a fenced ``` block** — copy it verbatim so the user can read it without expanding the raw tool output. Plugins get a bare number (`2`), each skill a compound index (`2.3`). Those numbers are ground truth; don't renumber or invent entries.
 
 2. **Get the pick.** If the user already named a target (as args or in chat), use it. Otherwise ask in plain text to reply with a number — a skill index like `1.2`, or a plugin number like `2` to delete the whole plugin (this open-ended reply doesn't fit `AskUserQuestion`'s fixed options). Pass their reply through unchanged.
 

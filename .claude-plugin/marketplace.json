@@ -26,7 +26,7 @@
       "name": "skill-manager",
       "source": "./claude-code/plugins/skill-manager",
       "description": "Manage Claude Code skills from inside any project: configure which plugins a project uses, publish/sync local skills to a central marketplace, remove them, and diagnose and auto-repair the setup. Adapts to any repo layout; authoring is delegated to the native skill-creator skill.",
-      "version": "0.2.20"
+      "version": "0.2.21"
     },
     {
       "name": "worktree-ops",

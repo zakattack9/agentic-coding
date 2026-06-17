@@ -20,7 +20,7 @@ The engine is the source of truth at every step: it numbers the menu, resolves t
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/bin/skillctl" configure
    ```
-   Print the engine's tree verbatim — the numbers, `[on]`/`[  ]` markers, and skills are ground truth.
+   **Reproduce the menu in your reply inside a fenced ``` block** — copy it verbatim (numbers, `[on]`/`[  ]` markers, descriptions, skills) so the user can read it without expanding the raw tool output. Those values are ground truth; don't renumber or invent entries.
 
 2. **Get the selection.** If the user already gave plugins or numbers (as args or in chat), use that. Otherwise ask in plain text to reply with the numbers to enable (e.g. `1 3 5`, a range `1-3`, `all`, or `none`) — this open-ended reply doesn't fit `AskUserQuestion`'s fixed options. Pass their reply through unchanged.
 
