@@ -1,8 +1,8 @@
 ---
 name: remove
 description: Remove a skill from a central plugin, or delete an entire plugin from the marketplace, then push the removal. Use when the user says "remove this skill", "delete this skill from the marketplace", "deprecate this skill", "delete this plugin", or "unregister a plugin". Destructive and pushes to git; user-invoked only.
-model: claude-sonnet-4-6
-effort: medium
+# model: claude-sonnet-4-6
+# effort: medium
 disable-model-invocation: true
 allowed-tools: Bash(python3 *) Bash(git *) AskUserQuestion
 argument-hint: "[skill or plugin]"

@@ -26,13 +26,13 @@
       "name": "skill-manager",
       "source": "./claude-code/plugins/skill-manager",
       "description": "Manage Claude Code skills from inside any project: configure which plugins a project uses, publish/sync local skills to a central marketplace, remove them, and diagnose and auto-repair the setup. Adapts to any repo layout; authoring is delegated to the native skill-creator skill.",
-      "version": "0.2.21"
+      "version": "0.2.22"
     },
     {
       "name": "worktree-ops",
       "source": "./claude-code/plugins/worktree-ops",
       "description": "Git worktree workflow for parallel Claude Code sessions, built on native worktree support, with deterministic enforcement (a skill-scoped PreToolUse guard, active only while the pull/merge skills run, blocks squash merges and committing unresolved conflicts; helper scripts make pre-flight, conflict listing, and merge-confirm repeatable): create-worktree spins up an isolated worktree and flips the session into it (fresh from origin, .worktreeinclude env files copied, optional issue/PR seed, idempotently keeps .claude/worktrees/ gitignored, opt-in setup script); list-worktrees shows a dashboard of every worktree (ahead/behind, dirty, PR, current marked); pull-worktree rebases/merges a worktree onto a chosen base branch with an ask-first conflict policy; merge-worktree commits, pushes, opens/merges the PR into a chosen target (never squashed) only after confirming MERGED, runs an opt-in teardown script, then removes the worktree and returns to main.",
-      "version": "0.3.4"
+      "version": "0.3.5"
     }
   ]
 }

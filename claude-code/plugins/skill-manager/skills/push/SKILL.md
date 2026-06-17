@@ -1,8 +1,8 @@
 ---
 name: push
 description: Publish a skill from this project (its .claude/skills/, a plain folder, or ~/.claude/skills/) up into the central marketplace, or sync local edits of an already-central skill back up. Auto-detects new vs update. Use when the user says "push this skill", "publish this skill", "promote this to my marketplace", "make this skill available everywhere", "sync my skill changes up", or "save these skill edits upstream". Authoring a skill from scratch is the native skill-creator skill's job — use this to centralize one that already exists. Pushes to git; user-invoked only.
-model: claude-sonnet-4-6
-effort: medium
+# model: claude-sonnet-4-6
+# effort: medium
 disable-model-invocation: true
 allowed-tools: Bash(python3 *) Bash(git *) AskUserQuestion
 argument-hint: "[skill-name] [--from <dir>] [--md <file>] [--plugin <plugin>]"
