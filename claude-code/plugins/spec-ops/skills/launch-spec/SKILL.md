@@ -63,6 +63,7 @@ Step up to a **phased driver** only when the structural triggers above already e
 - Each phase is one fresh context that **front-loads only its own AC-ids** (re-applying the "criteria open the context" win per phase) and carries the inlined Boundaries.
 - **Each phase's exit gate is "these AC-ids verify clean"** — the same `verify-spec` done-gate, scoped to the phase's subset. Reuse the machinery; never invent a new gate.
 - **`needs §X` is the binding order.** A `needs §X` chain → a `pipeline()` of fresh-context stages carrying the shared contract forward; independent groups (no `needs`) → `parallel()` leaves with disjoint per-leaf boundaries. That is exactly the `ultracode` shape the trigger already selected — R2's groups simply supply the partition boundaries.
+- **A group DAG (the common case) → a topologically-ordered `pipeline()` with a `parallel()` stage** wherever sibling groups depend only on already-built ones (e.g. three groups that each `needs §1` become one parallel phase after §1, then their dependents follow). Walk the partition in dependency order and front-load each phase's own AC-ids — it is neither a pure chain nor a pure fan-out but a mix of both.
 - A spec with **one group (or a flat list) never phases** — it stays a single context, all `AC-1..N` in the one done-gate.
 
 ## Handoff
