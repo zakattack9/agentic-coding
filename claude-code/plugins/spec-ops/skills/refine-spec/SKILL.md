@@ -49,7 +49,8 @@ A **`Stop` hook blocks you from ending your turn** until the spec is genuinely r
     "no_open_questions": false,
     "no_overengineering": false,
     "no_bloat": false,
-    "implementable_cold": false
+    "implementable_cold": false,
+    "ac_complete": false
   },
   "openQuestions": [
     { "q": "short text of an open question you found", "resolved": false }
@@ -82,7 +83,7 @@ Dedupe the findings and bucket each one:
 | **Inaccuracy**       | Contradicts the codebase                                                                                                                                                                                                                                              | Fix to the verified value |
 | **Open question**    | Cannot be verified; needs a human decision                                                                                                                                                                                                                            | Queue for **Resolve**     |
 | **Over-engineering** | Speculative, gold-plated, or beyond the stated goal                                                                                                                                                                                                                   | Propose cutting           |
-| **Bloat**            | Text not needed to *build* it: historical/background prose, rationale or "why / previously / originally", problem statements, changelog, speculative out-of-scope narrative, restated field names, duplication. **Decision, config, and field tables are pertinent — keep them.** | Cut                       |
+| **Bloat**            | Text not needed to *build* it: historical/background prose, rationale or "why / previously / originally", problem statements, changelog, speculative out-of-scope narrative, restated field names, duplication. **Decision, config, and field tables — and the Acceptance Criteria list — are pertinent; keep them.** | Cut                       |
 
 ### 3. Resolve — ask the user
 
@@ -98,6 +99,7 @@ Apply, as one coherent edit per pass:
 - **Resolutions** — fold in the user's answers.
 - **Cuts** — remove over-engineering and bloat.
 - **Simplification** — tighten so another dev can grasp the objective and the details fast, following the `write-spec` philosophy: say things once, in the right place; describe behavior, not implementation; show with tables / mermaid / examples instead of prose; bold the key terms; every sentence must earn its place.
+- **Acceptance criteria** — ensure the spec opens with a flat, stable-id'd **Acceptance Criteria** list that captures *every* functional requirement and constraint as a discrete, atomic, testable assertion. Promote anything that exists only in prose into a criterion, split compound ones, and confirm each is an observable end-state (not a task). Cross-check coverage both ways: every criterion is addressed by the Checklist/plan, and every behavioral rule in the body maps back to an `AC-id`. This list is load-bearing — never cut it as bloat.
 - **Boundaries** — ensure the spec states explicit **Boundaries** (what the implementer must NOT touch) whenever the change has out-of-bounds areas; they are the top anti-drift lever for the implementation run. Add them, or ask, if missing. Keep them change-specific: if a boundary is really a standing project convention (architecture, "don't touch prod") rather than specific to this change, recommend it live in **CLAUDE.md** instead — re-injected every turn, durable across any driver.
 
 **Preserve every detail an implementer needs.** Simplify *wording and structure*, never silently drop substance. If you are unsure whether a detail is load-bearing, ask before cutting it. Keep edits reviewable as a clean git diff.
@@ -112,13 +114,14 @@ Re-read the edited spec. Edits can introduce new claims, new ambiguities, or new
 
 Finish only when **all** of these hold. Report the gate's status at the end of each pass. Each maps to a ledger flag (in parentheses).
 
-**The agent that did the refining does not get to declare it done.** Before setting any gate flag to `true`, dispatch a fresh **readiness judge** — an independent subagent (`Task`) with no memory of your edits — and hand it the current spec plus the criteria below. Instruct it to be adversarial: *read the spec and the codebase and hunt for any remaining inaccuracy, ambiguity, over-engineering, bloat, or missing detail that would block implementation; return a per-criterion `PASS`/`FAIL` with specific reasons.* Set each `gate` flag `true` only for the criteria the judge passes; every `FAIL` becomes findings for another pass.
+**The agent that did the refining does not get to declare it done.** Before setting any gate flag to `true`, dispatch a fresh **readiness judge** — an independent subagent (`Task`) with no memory of your edits — and hand it the current spec plus the criteria below. Instruct it to be adversarial: *read the spec and the codebase and hunt for any remaining inaccuracy, ambiguity, over-engineering, bloat, missing detail that would block implementation, or any functional requirement/constraint not captured in the Acceptance Criteria list as a discrete, testable assertion; return a per-criterion `PASS`/`FAIL` with specific reasons.* Set each `gate` flag `true` only for the criteria the judge passes; every `FAIL` becomes findings for another pass.
 
 - [ ] Every factual claim is verified against the codebase or confirmed by the user — zero unverified "currently X" statements. (`claims_verified`)
 - [ ] No open questions, TBDs, "decide later", or contradictions remain anywhere in the spec. (`no_open_questions`)
 - [ ] No speculative scope or gold-plating — everything present serves the stated goal. (`no_overengineering`)
 - [ ] No text that exists *only* for history, context, or rationale (the **Bloat** row above) — nothing a builder doesn't need. Decision/config/field **tables** stay. (`no_bloat`)
 - [ ] A developer who has never seen this work could implement it end-to-end without asking a question. (`implementable_cold`)
+- [ ] Every functional requirement and constraint is captured in the **Acceptance Criteria** list as a discrete, atomic, testable assertion — nothing load-bearing left only in prose, and every criterion is addressed by the plan. (`ac_complete`)
 
 ## Handoff
 

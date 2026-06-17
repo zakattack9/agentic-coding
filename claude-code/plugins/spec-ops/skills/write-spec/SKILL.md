@@ -29,6 +29,13 @@ Consolidate related concepts into one section. Validation rules, edge cases, and
 
 Write from the end-user or admin perspective. Describe what should happen, not how to code it. "Discount applies to the rental cost only" tells the developer what the user should see. "Add a discount_percentage column to the pricing_rules table" is an implementation decision that belongs in code, not the spec.
 
+### Enumerate the acceptance criteria
+
+Lead with a flat, numbered list of **acceptance criteria** — every behavior and constraint that must hold once the change is done, each a single testable assertion with a stable id (`AC-1`, `AC-2`, …). This list is the spec's contract: it's the reader's two-minute scan of *what must be true*, and it's what the implementation is later gated against criterion-by-criterion. Two rules make it work:
+
+- **Enumerate exhaustively — never condense.** Unlike prose, which you cut to the bone, the criteria are the one place you list *everything*. A requirement that lives only in a paragraph below is a requirement that gets missed at completion. Brevity is for wording, not for coverage.
+- **Each criterion is one atomic, observable end-state** — "Unrouted mail is quarantined, never dropped", not "build the quarantine system". Phrase what is *true* when done (so it's checkable), not a task to do. Keep the criteria behavior-level; the detailed rule that implements each one lives in the body and carries its `AC-id`, so each fact is stated once, at its altitude.
+
 ### Show, don't tell
 
 A visual communicates faster than prose. Prefer these formats over text-based descriptions:
@@ -65,6 +72,14 @@ Use only sections that are relevant. Not every spec needs every section.
 ## TL;DR
 - {What the change is in one line}
 - {The most important behavioral detail someone might get wrong}
+
+---
+
+## Acceptance Criteria
+<!-- The enumerated contract: every behavior/constraint that must hold when done, as a discrete, testable assertion with a stable id. The reader's 2-minute scan AND what launch-spec's done-gate and verify-spec check 1:1. Enumerate exhaustively — never condense. Each AC is ONE atomic, observable end-state ("X is true"), not a task. Detailed rules in the body cite their AC-id so each fact is said once. -->
+
+- **AC-1** — {single testable assertion about the end state}
+- **AC-2** — {…}
 
 ---
 
@@ -110,4 +125,5 @@ Use only sections that are relevant. Not every spec needs every section.
 ## Checklist
 <!-- Group by system/area (e.g., Dashboard, Frontend, Backend) -->
 <!-- Concrete, actionable items with markdown checkboxes -->
+<!-- The Checklist is the *task* view (what to DO); the Acceptance Criteria above are the *assertion* view (what must be TRUE). Cite the AC-id(s) each item satisfies so every criterion is traceably covered. -->
 ```

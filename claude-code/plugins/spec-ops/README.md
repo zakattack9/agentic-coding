@@ -17,13 +17,14 @@ flowchart LR
 
 | Skill | Does |
 |-------|------|
-| `/spec-ops:write-spec` | Draft a concise, scannable spec — **behavior, not implementation**; tables / mermaid / mockups over prose; say things once; an explicit **Boundaries** section (what NOT to touch). Asks before guessing via `AskUserQuestion`. |
+| `/spec-ops:write-spec` | Draft a concise, scannable spec — **behavior, not implementation**; tables / mermaid / mockups over prose; say things once; opens with a flat, id'd **Acceptance Criteria** list (the testable contract); an explicit **Boundaries** section (what NOT to touch). Asks before guessing via `AskUserQuestion`. |
 | `/spec-ops:refine-spec` | Harden a draft into an implementation-ready spec. A grounded multi-pass loop: dispatch parallel `Explore` agents to **verify every claim against the codebase**, resolve open questions with you, cut bloat and over-engineering, and loop until an **independent judge** passes a five-point readiness gate. |
 | `/spec-ops:launch-spec` | Compile a verified spec into the self-contained **`/goal` driver** that implements it — goal, spec/checklist references, inlined boundaries, and a `verify-spec` done-gate. Picks the driver (see below), copies it to your clipboard, and **stops** (never runs it). |
 | `/spec-ops:verify-spec` | Check that what was actually built matches the claims — every "we did X" / "the system does Y" grounded in **real source, git, or live read-only CLI**, never the spec. Enumerates claims, verifies each with cited evidence, has a fresh judge confirm completeness, and reports discrepancies. **Edits nothing.** |
 
 ## Design principles
 
+- **Enumerated, gated acceptance criteria.** Every spec opens with a flat, stable-id'd **Acceptance Criteria** list — the reader's scannable contract of *what must be true*, and the machine's checklist. The detailed body says *how/where* and cites each `AC-id`; the criteria say *what*, enumerated exhaustively and never condensed. `launch-spec`'s done-gate and `verify-spec` both check the implementation against **every `AC-id`**, so a requirement can't silently fall off between spec and "done".
 - **Grounded against reality, never docs.** `refine-spec` and `verify-spec` check claims against the codebase at branch HEAD, the git history, and (for infra/ops) live read-only CLI state. Sibling or "completed" specs are treated as *possibly stale* — the thing under review is the hypothesis, not the evidence.
 - **Enforced loops, not one-shot passes.** `refine-spec` and `verify-spec` run multi-pass loops gated by a `Stop` hook plus a `/tmp` ledger, so neither can sign off after a shallow pass.
 - **A fresh judge decides "done."** The agent that did the work never declares it complete — an independent subagent with no memory of the work attests readiness (refine) or completeness (verify), mirroring how `/goal` uses a separate evaluator.

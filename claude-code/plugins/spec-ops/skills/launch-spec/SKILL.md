@@ -20,7 +20,7 @@ Arguments: $ARGUMENTS
 - **Spec** — the path / `@`-mention of the finished spec. If none is given, ask with `AskUserQuestion`.
 - **Focus areas** — anything to scope (e.g. "just the backend tasks").
 
-**Precondition (heuristic, not a gate).** This skill assumes the spec already passed `refine-spec`. Before compiling, scan it for readiness: does it have a concrete **Checklist** of work items, and — unless the change is genuinely self-contained — an explicit **Boundaries** section (what NOT to touch)? If the Checklist is missing (or Boundaries are absent for a change that clearly has out-of-bounds areas), say so and recommend running `refine-spec` first — don't silently emit a driver for an under-baked spec. (The real enforcement is `verify-spec` at the end, which catches a weak spec by contradiction.)
+**Precondition (heuristic, not a gate).** This skill assumes the spec already passed `refine-spec`. Before compiling, scan it for readiness: does it have a flat, id'd **Acceptance Criteria** list (the contract the done-gate enforces), a concrete **Checklist** of work items, and — unless the change is genuinely self-contained — an explicit **Boundaries** section (what NOT to touch)? If the Acceptance Criteria or Checklist are missing (or Boundaries are absent for a change that clearly has out-of-bounds areas), say so and recommend running `refine-spec` first — don't silently emit a driver for an under-baked spec. (The real enforcement is `verify-spec` at the end, which catches a weak spec by contradiction.)
 
 ## Choosing the driver
 
@@ -46,10 +46,10 @@ The parts:
 
 | Part | Source | Why |
 | --- | --- | --- |
-| **Goal** | the spec's TL;DR | the **measurable end state** in one line — the spec implemented per its Checklist; what must be *true* at the end, not a description of the change |
+| **Goal** | the spec's TL;DR + **Acceptance Criteria** | the **measurable end state** — the spec implemented so that **every acceptance criterion (`AC-1..N`) holds**; what must be *true* at the end, not a description of the change |
 | **Spec + checklist** | `@`-reference the spec; derive a `tasks.md` **only if** the Checklist lacks ordering/dependencies (else `@`-reference the Checklist directly) | the contract + tick-and-write-back continuity if the run compacts |
 | **Boundaries** | **change-specific** boundaries from the spec, **inlined**; promote **durable/cross-cutting** ones (conventions, architecture, "don't touch prod") to **CLAUDE.md** instead | the top anti-drift lever. Inline change-specific boundaries; durable ones live in CLAUDE.md, re-injected every turn |
-| **Done-gate** | fixed | *"You are not done until the spec is fully implemented AND `verify-spec` returns zero contradicted claims."* — the worker **runs `verify-spec`** (which grounds against HEAD/git/live state) and surfaces its verdict, so the evaluator confirms 'done' from a code-grounded check in the transcript, not the worker's say-so |
+| **Done-gate** | fixed | *"You are not done until **every acceptance criterion (`AC-1..N`) is satisfied** AND `verify-spec` returns zero contradicted claims."* — the worker **runs `verify-spec`**, which grounds **each `AC-id`** against HEAD/git/live state and surfaces the per-criterion verdict, so the evaluator confirms 'done' from a code-grounded check in the transcript, not the worker's say-so |
 | **Durability note** | fixed | state lives in git + `tasks.md` + `CLAUDE.md`, not the conversation |
 
 Write `tasks.md` beside the spec only when it adds decomposition the Checklist lacked. To bound a long run, the user can append a turn/time guard to the condition (e.g. `or stop after N turns`); by default it runs until the done-gate holds. Show the driver prompt in chat for the user to run; **do not run it**.

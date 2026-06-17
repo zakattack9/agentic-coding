@@ -69,7 +69,9 @@ A **`Stop` hook blocks you from ending your turn** until the ledger shows a stru
 
 ### 1. Enumerate — list every checkable claim
 
-From the target, extract every **checkable assertion** as a discrete claim: "added X", "removed Y", "the system now does Z", "endpoint A returns B", "table / column / route / config exists", "resource is named N", counts, and every "currently / now X" statement. Add them all to the ledger as `unchecked`. Be exhaustive — an unenumerated claim is an unverified claim, and missing one is worse than a slow pass. If the target genuinely has **no checkable claims**, say so plainly and stop (record one `unverifiable` claim noting that, dispositioned "no checkable claims in target") — don't invent claims to fill the ledger.
+From the target, extract every **checkable assertion** as a discrete claim: "added X", "removed Y", "the system now does Z", "endpoint A returns B", "table / column / route / config exists", "resource is named N", counts, and every "currently / now X" statement. Add them all to the ledger as `unchecked`. Be exhaustive — an unenumerated claim is an unverified claim, and missing one is worse than a slow pass.
+
+**If the target is a spec with an `## Acceptance Criteria` section, seed the ledger with every `AC-id` as a claim first** — each criterion is the contract the implementation is judged against, so a missing `AC-id` is the worst kind of missed claim. Carry the `AC-id` in the claim text. Then add any other checkable claims from the body. A criterion that grounds out `contradicted` is the exact "requirement built wrong / not built" finding this gate exists to surface. If the target genuinely has **no checkable claims**, say so plainly and stop (record one `unverifiable` claim noting that, dispositioned "no checkable claims in target") — don't invent claims to fill the ledger.
 
 ### 2. Verify — ground each claim against reality
 
@@ -85,7 +87,7 @@ Update each claim's verdict + evidence in the ledger. For every `contradicted` c
 
 ### 4. Judge — an independent agent confirms completeness
 
-**The agent that did the verifying does not get to declare it complete.** Before you try to stop, dispatch a fresh **verification judge** — an independent `Task` subagent (`subagent_type: Explore`, so it can re-check source read-only) with **no memory of your passes**; hand it only the **target and the ledger**, not your reasoning. Instruct it to be adversarial: *independently re-derive the checkable claims from the target and (a) list any that are missing from the ledger (`missed`), (b) list any `confirmed`/`contradicted` claim whose cited evidence is hollow, stale, or doc-based rather than real source (`weakEvidence`), and (c) return `verdict: "complete"` only if both lists are empty, else `"gaps"`.* Write its result into the ledger's `judge` field. Every entry in `missed`/`weakEvidence` becomes another pass.
+**The agent that did the verifying does not get to declare it complete.** Before you try to stop, dispatch a fresh **verification judge** — an independent `Task` subagent (`subagent_type: Explore`, so it can re-check source read-only) with **no memory of your passes**; hand it only the **target and the ledger**, not your reasoning. Instruct it to be adversarial: *independently re-derive the checkable claims from the target and (a) list any that are missing from the ledger (`missed`) — and if the target has an Acceptance Criteria section, confirm **every `AC-id` appears as a claim**, treating any absent one as `missed`; (b) list any `confirmed`/`contradicted` claim whose cited evidence is hollow, stale, or doc-based rather than real source (`weakEvidence`); and (c) return `verdict: "complete"` only if both lists are empty, else `"gaps"`.* Write its result into the ledger's `judge` field. Every entry in `missed`/`weakEvidence` becomes another pass.
 
 ### 5. Re-check — settle or loop
 
@@ -95,7 +97,7 @@ If the judge reported `gaps`, **loop**: enumerate the `missed` claims, re-ground
 
 Finish only when **all** of these hold (the first four + the judge sign-off are hook-enforced; enumeration completeness and evidence authenticity are what the judge attests):
 
-- [ ] Every checkable claim is enumerated in the ledger — none missed.
+- [ ] Every checkable claim is enumerated in the ledger — none missed. If the target has acceptance criteria, **every `AC-id` is present as a claim** with a grounded verdict (a `contradicted` AC is a finding to report, not a blocker).
 - [ ] Every claim has a definitive verdict — none `unchecked`.
 - [ ] Every `confirmed` / `contradicted` verdict cites concrete ground-truth evidence (`file:line` / `git sha` / read-only CLI), never a doc.
 - [ ] Every `unverifiable` claim carries an explicit user disposition.
