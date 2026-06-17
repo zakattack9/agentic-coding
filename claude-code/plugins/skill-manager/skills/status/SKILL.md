@@ -6,6 +6,7 @@ effort: low
 # model: claude-sonnet-4-6
 # effort: medium
 allowed-tools: Bash(python3 *) AskUserQuestion
+argument-hint: "[--fix]"
 ---
 
 # Skill-manager status
