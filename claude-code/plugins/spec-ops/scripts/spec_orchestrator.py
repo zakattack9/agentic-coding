@@ -30,7 +30,7 @@ Stage completeness is judged from artifact GROUND TRUTH, never trusted status:
   - ``launch`` / ``build`` → transient (no standalone repo artifact); status-tracked,
     and the always-following ``verify`` artifact is the real downstream gate.
 
-Same-session resume (AC-28): re-invoking in the same session reloads the persisted
+Same-session resume: re-invoking in the same session reloads the persisted
 ACTIVE state and continues at the first incomplete in-range stage (artifact-present
 stages are already ``done`` in the persisted status, so they are skipped). A state
 file from a COMPLETED or ABORTED run — or for a different spec — is replaced by a
@@ -70,7 +70,7 @@ except Exception:  # noqa: BLE001
 
 STATE_PREFIX = "/tmp/claude-orchestrate-spec-"
 
-# The full pipeline, in order (AC-2). from/to selects a contiguous slice (AC-3).
+# The full pipeline, in order. from/to selects a contiguous slice.
 STAGES = ["write", "refine", "launch", "build", "verify"]
 
 # Stage statuses.
@@ -89,7 +89,7 @@ def state_path(session_id: str) -> str:
 
 
 def canonical_spec(spec_path: str) -> str:
-    """The single canonical absolute spec path passed to every script (AC-21):
+    """The single canonical absolute spec path passed to every script:
     symlinks resolved once up front, so the per-script /tmp keys stay self-consistent
     (drift baseline keys on abspath, amendments on realpath — both agree on a
     realpath input). realpath also makes abspath a no-op fixpoint."""
@@ -142,7 +142,7 @@ def needs_commit(spec_path: str) -> bool:
 
 
 def verify_artifact_ok(spec_path: str) -> bool:
-    """The verify stage's ground-truth artifact (AC-24): the drift baseline exists,
+    """The verify stage's ground-truth artifact: the drift baseline exists,
     its verifiedAtSHA equals the current HEAD, and NO criterion is ``contradicted``
     (stricter than verify-spec's own gate). Resolved through drift_baseline, never by
     recomputing the abspath key. False (incomplete) on any missing piece."""
@@ -164,7 +164,7 @@ def verify_artifact_ok(spec_path: str) -> bool:
 
 
 def stage_complete(stage: str, state: dict) -> bool:
-    """Is one stage complete, judged from artifact ground truth (AC-24)?"""
+    """Is one stage complete, judged from artifact ground truth?"""
     status = state.get("status", {})
     if status.get(stage) == SKIPPED:
         return True
@@ -254,11 +254,11 @@ def make_state(session_id: str, spec: str, frm: str, to: str) -> dict:
 
 
 def init(session_id: str, spec_arg: str, frm: str, to: str):
-    """Create/replace, or resume an active same-session run (AC-22, AC-28)."""
+    """Create/replace, or resume an active same-session run."""
     spec = canonical_spec(spec_arg)
     existing = load_state(session_id)
     # Resume ONLY an active run for the same spec; a completed/aborted/different-spec
-    # state is replaced by a fresh run (AC-28).
+    # state is replaced by a fresh run.
     if (
         isinstance(existing, dict)
         and existing.get("runState") == ACTIVE
@@ -289,7 +289,7 @@ def advance(session_id: str, stage: str):
 
 
 def abort(session_id: str):
-    """Set the abort flag (AC-25). The Stop hook then allows the turn to end."""
+    """Set the abort flag. The Stop hook then allows the turn to end."""
     state = load_state(session_id)
     if state is None:
         return None, "no active run"

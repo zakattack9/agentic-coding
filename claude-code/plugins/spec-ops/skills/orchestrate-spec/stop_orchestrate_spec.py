@@ -20,7 +20,7 @@ Completeness is judged from artifact GROUND TRUTH, never self-reported status
     verify-spec's own gate (located/read via ``drift_baseline``, never re-keyed);
   - launch / build → transient; the always-following verify artifact is the real gate.
 
-FAIL-OPEN, deliberately (AC-27): unlike the model-authored-ledger hooks (refine /
+FAIL-OPEN, deliberately: unlike the model-authored-ledger hooks (refine /
 verify), this state file is SCRIPT-written and trustworthy, and the load-bearing
 gate (the verify artifact) is pure ground truth — so when the hook cannot tell a run
 is active, or hits its own error, it RELEASES rather than risk wedging an unrelated
@@ -29,10 +29,10 @@ artifact-incomplete, in-range pipeline.
 
 Escape valves (so enforcement can never permanently trap someone):
   - Abort: when the orchestrator sets the abort flag (``spec_orchestrator.py abort``,
-    on the user's explicit request), the hook allows the stop (AC-25).
+    on the user's explicit request), the hook allows the stop.
   - Loud fallback: after FALLBACK_MAX consecutive blocks on the SAME stage with no
     artifact progress (default 3 — an independent counter from the build-loop cap),
-    it stops blocking and surfaces the stall (AC-26).
+    it stops blocking and surfaces the stall.
   - Freshness: a state file older than STALE_SECONDS (an abandoned run) is removed
     and released.
   - The user can interrupt the turn at any time; the block reason says to abort if
@@ -63,7 +63,7 @@ except Exception:  # noqa: BLE001
 STALE_SECONDS = 2 * 60 * 60
 
 # Consecutive no-progress blocks on one stage before the loud fallback releases.
-# Independent of the build loop's max-iteration cap (AC-14); default 3 (AC-26).
+# Independent of the build loop's max-iteration cap; default 3.
 FALLBACK_MAX = 3
 
 
@@ -79,7 +79,7 @@ def block(reason: str):
 
 def release_with_notice(message: str):
     """Allow the stop (no `decision: block`) but SURFACE a message to the user — the
-    loud-fallback path (AC-26): stop blocking, yet make the stall visible. Emits the
+    loud-fallback path: stop blocking, yet make the stall visible. Emits the
     documented `systemMessage` channel and also writes to stderr so the notice lands
     regardless of how the harness renders an allowed Stop hook."""
     sys.stderr.write(message + "\n")
@@ -89,7 +89,7 @@ def release_with_notice(message: str):
 
 def evaluate(state: dict):
     """Active, readable state: enforce the pipeline gate or release."""
-    # Abort wins immediately (AC-25).
+    # Abort wins immediately.
     if state.get("abort"):
         allow()
         return
@@ -104,7 +104,7 @@ def evaluate(state: dict):
 
     next_stage = state["next"]
 
-    # Loud fallback: bound consecutive no-progress blocks on the same stage (AC-26).
+    # Loud fallback: bound consecutive no-progress blocks on the same stage.
     count = engine.bump_no_progress(state, next_stage)
     engine.save_state(state)
     if count > FALLBACK_MAX:
@@ -119,7 +119,7 @@ def evaluate(state: dict):
         # release_with_notice() exits; nothing below runs.
         return
 
-    # Artifact-incomplete, in-range stage → re-inject the next action (AC-23).
+    # Artifact-incomplete, in-range stage → re-inject the next action.
     block(
         "orchestrate-spec pipeline is still active — do NOT stop. The next in-range "
         "stage's artifact does not yet exist.\n\n"
@@ -136,7 +136,7 @@ def evaluate(state: dict):
 
 
 def main():
-    # FAIL OPEN throughout (AC-27): if we cannot positively confirm an active,
+    # FAIL OPEN throughout: if we cannot positively confirm an active,
     # readable run with an incomplete in-range stage, we RELEASE.
     try:
         payload = json.load(sys.stdin)
@@ -184,7 +184,7 @@ def main():
         evaluate(state)
     except SystemExit:
         raise  # allow()/block() use sys.exit — let it through
-    except Exception:  # noqa: BLE001 — own error → fail open, never wedge (AC-27)
+    except Exception:  # noqa: BLE001 — own error → fail open, never wedge
         allow()
 
 

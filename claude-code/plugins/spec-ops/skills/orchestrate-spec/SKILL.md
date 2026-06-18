@@ -15,7 +15,7 @@ hooks:
 
 # Orchestrate Spec
 
-Fifth spec-ops skill. The other four are run **by hand, one at a time**, each piling onto one growing context: `write-spec` → `refine-spec` → `launch-spec` → the emitted driver → `verify-spec`. This skill drives all five from **one main session**, delegating the heavy stages to fresh contexts and keeping only the **interaction + control flow** in the main session — so a bare idea reaches a **code-grounded, verified implementation in a single run** (AC-1).
+Fifth spec-ops skill. The other four are run **by hand, one at a time**, each piling onto one growing context: `write-spec` → `refine-spec` → `launch-spec` → the emitted driver → `verify-spec`. This skill drives all five from **one main session**, delegating the heavy stages to fresh contexts and keeping only the **interaction + control flow** in the main session — so a bare idea reaches a **code-grounded, verified implementation in a single run**.
 
 **It composes; it never reimplements.** Every stage calls the *real* spec-ops skill (`write-spec`, `refine-spec`, `launch-spec`, `verify-spec`); this skill only sequences them, owns the user conversation, and drives the deterministic side-effects. `launch-spec` stays **emit-only** — you run its emitted brief via the Workflow tool, never `launch-spec` itself.
 
@@ -24,13 +24,13 @@ Arguments: $ARGUMENTS
 ## Inputs
 
 - **Spec or idea** — a `@`-path to an existing spec/draft, or a bare idea to start from. If a bare idea, the **write** stage (discovery + draft) produces and names the file.
-- **from / to range** — optional `from:<stage>` / `to:<stage>` over `write · refine · launch · build · verify`. Default `from:write to:verify`. The user may **enter later** (e.g. `from:launch` against an already-ready spec) and/or **stop early** (e.g. `to:refine` to finish at a ready spec); only stages in range run (AC-3). `from:verify to:verify` is a **verify-only** run against an existing implementation. If the range is ambiguous, ask with `AskUserQuestion`.
+- **from / to range** — optional `from:<stage>` / `to:<stage>` over `write · refine · launch · build · verify`. Default `from:write to:verify`. The user may **enter later** (e.g. `from:launch` against an already-ready spec) and/or **stop early** (e.g. `to:refine` to finish at a ready spec); only stages in range run. `from:verify to:verify` is a **verify-only** run against an existing implementation. If the range is ambiguous, ask with `AskUserQuestion`.
 
 ## The pipeline is a state machine — not prose
 
-Control flow lives in the **state engine** (`scripts/spec_orchestrator.py`) and is enforced by a **skill-scoped `Stop` hook** (`stop_orchestrate_spec.py`), never in this document or the conversation. The engine owns a **session-keyed state file** at `/tmp/claude-orchestrate-spec-${CLAUDE_SESSION_ID}.json` recording the ordered stages, each stage's status, the spec path, the from/to range, the next action, and an abort flag (AC-22). The hook re-reads it on every attempted turn-end and **blocks until the next in-range stage's artifact actually exists** (AC-23), so you cannot stop mid-pipeline.
+Control flow lives in the **state engine** (`scripts/spec_orchestrator.py`) and is enforced by a **skill-scoped `Stop` hook** (`stop_orchestrate_spec.py`), never in this document or the conversation. The engine owns a **session-keyed state file** at `/tmp/claude-orchestrate-spec-${CLAUDE_SESSION_ID}.json` recording the ordered stages, each stage's status, the spec path, the from/to range, the next action, and an abort flag. The hook re-reads it on every attempted turn-end and **blocks until the next in-range stage's artifact actually exists**, so you cannot stop mid-pipeline.
 
-The stages run **in order, each beginning only after the previous stage's artifact exists** (AC-2) — order is enforced from artifacts, not assumed:
+The stages run **in order, each beginning only after the previous stage's artifact exists** — order is enforced from artifacts, not assumed:
 
 | Stage | Runs where | Invoked via | Completeness **artifact** | Side-effect **you** call from main |
 |---|---|---|---|---|
@@ -42,10 +42,10 @@ The stages run **in order, each beginning only after the previous stage's artifa
 
 ### Initialize the state, then resolve ONE canonical spec path
 
-As soon as you know the spec's path (from args, or right after the **write** stage names the file), initialize the run. The engine canonicalizes the path (symlinks resolved once) and stores it as `state.spec` — **read that value back and pass it to every script** so the per-tool `/tmp` keys stay self-consistent (AC-21):
+As soon as you know the spec's path (from args, or right after the **write** stage names the file), initialize the run. The engine canonicalizes the path (symlinks resolved once) and stores it as `state.spec` — **read that value back and pass it to every script** so the per-tool `/tmp` keys stay self-consistent:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/spec_orchestrator.py" init <spec-path> <from> <to>   # writes the state file (AC-22)
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/spec_orchestrator.py" init <spec-path> <from> <to>   # writes the state file
 CANON=$(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/spec_orchestrator.py" status | python3 -c 'import json,sys;print(json.load(sys.stdin)["spec"])')
 ```
 
@@ -63,9 +63,9 @@ Drive the run with these verbs (the hook mirrors `check` against artifact ground
 
 ## Stage gates & the human-confirmed outer loop
 
-**At every stage transition, surface the stage's result and a `proceed / adjust / abort` gate** before continuing (AC-4) — one `AskUserQuestion` round. `adjust` loops the current stage with the user's steer; `abort` ends the run (below).
+**At every stage transition, surface the stage's result and a `proceed / adjust / abort` gate** before continuing — one `AskUserQuestion` round. `adjust` loops the current stage with the user's steer; `abort` ends the run (below).
 
-After **build ⇄ verify**, surface the verify findings **and any proposed amendments**, and **ask before looping back to refine** — the outer verify→refine loop is **human-confirmed, never automatic** (AC-5). On a confirmed loop (AC-6): re-arm a fresh refine→verify pass by re-initializing the range (a *completed* run is replaced, per resume rules), then re-enter **refine ingesting the verify→refine amendments**, and re-run the downstream stages:
+After **build ⇄ verify**, surface the verify findings **and any proposed amendments**, and **ask before looping back to refine** — the outer verify→refine loop is **human-confirmed, never automatic**. On a confirmed loop: re-arm a fresh refine→verify pass by re-initializing the range (a *completed* run is replaced, per resume rules), then re-enter **refine ingesting the verify→refine amendments**, and re-run the downstream stages:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/spec_orchestrator.py" init "$CANON" refine verify   # re-arm refine→verify
@@ -76,21 +76,21 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/spec_amendments.py" load "$CANON"        
 
 ## Main-session vs delegation boundary
 
-**Platform invariant this skill relies on: a subagent cannot call `AskUserQuestion`.** Therefore **all** user interaction — discovery, clarification, driver selection, every stage gate, surfacing findings — happens in the **main session; no subagent ever prompts the user** (AC-7). The split:
+**Platform invariant this skill relies on: a subagent cannot call `AskUserQuestion`.** Therefore **all** user interaction — discovery, clarification, driver selection, every stage gate, surfacing findings — happens in the **main session; no subagent ever prompts the user**. The split:
 
-- **Discovery + the initial draft run in the main session** (so discovery context is preserved), invoking `write-spec` in-session (AC-8).
-- **refine-grounding is delegated to a subagent** (`Task` → `spec-ops:refine-spec`) — the parallel, autonomous verification work that needs no live user (AC-8).
-- **build ⇄ verify runs as a Workflow** (AC-12, below). The Workflow tool is **main-loop-only** — a subagent cannot call it — which is another reason this skill runs in main.
+- **Discovery + the initial draft run in the main session** (so discovery context is preserved), invoking `write-spec` in-session.
+- **refine-grounding is delegated to a subagent** (`Task` → `spec-ops:refine-spec`) — the parallel, autonomous verification work that needs no live user.
+- **build ⇄ verify runs as a Workflow** (below). The Workflow tool is **main-loop-only** — a subagent cannot call it — which is another reason this skill runs in main.
 
-**Batched-question contract (AC-9, AC-11).** A delegated stage that hits a decision it cannot make returns a structured result — `{ "status": "blocked", "questions": [ { "q", "options", "recommended" } ] }` — else `{ "status": "ok", "result": … }`. Consume it as **structured data, schema-validated on the fields you depend on**; never treat a subagent's prose as ground truth. On `blocked`, render the questions in **one** `AskUserQuestion` round in the main session, then **re-dispatch the same stage** with the answers appended. Tell every delegated subagent: *return JSON in exactly this schema; do not ask the user; if you need a human decision, return `status:"blocked"` with the questions.*
+**Batched-question contract.** A delegated stage that hits a decision it cannot make returns a structured result — `{ "status": "blocked", "questions": [ { "q", "options", "recommended" } ] }` — else `{ "status": "ok", "result": … }`. Consume it as **structured data, schema-validated on the fields you depend on**; never treat a subagent's prose as ground truth. On `blocked`, render the questions in **one** `AskUserQuestion` round in the main session, then **re-dispatch the same stage** with the answers appended. Tell every delegated subagent: *return JSON in exactly this schema; do not ask the user; if you need a human decision, return `status:"blocked"` with the questions.*
 
-**Delegated stages invoke the real skills** (`refine-spec`, `verify-spec`) rather than reimplementing their logic (AC-10) — the subagent's job is to *run the skill* and *return its structured result*, not to re-derive it.
+**Delegated stages invoke the real skills** (`refine-spec`, `verify-spec`) rather than reimplementing their logic — the subagent's job is to *run the skill* and *return its structured result*, not to re-derive it.
 
 ## Build ⇄ verify — always a Workflow
 
-The build ⇄ verify stage **always executes via the Workflow tool** — the same dynamic-workflow mechanism (`pipeline()` / `parallel()` JS spawning subagents) that `launch-spec`'s `ultracode` driver emits — **never as a main-session `/goal` or `/batch` run** (AC-12). This skill's own instruction to use it satisfies the Workflow tool's opt-in.
+The build ⇄ verify stage **always executes via the Workflow tool** — the same dynamic-workflow mechanism (`pipeline()` / `parallel()` JS spawning subagents) that `launch-spec`'s `ultracode` driver emits — **never as a main-session `/goal` or `/batch` run**. This skill's own instruction to use it satisfies the Workflow tool's opt-in.
 
-`launch-spec` is **emit-only and unchanged**: it still selects among its three drivers and emits a prompt/brief; you **consume that emitted brief as the workflow's build instruction** (AC-16). The selected **driver-type maps to a workflow shape** (AC-13):
+`launch-spec` is **emit-only and unchanged**: it still selects among its three drivers and emits a prompt/brief; you **consume that emitted brief as the workflow's build instruction**. The selected **driver-type maps to a workflow shape**:
 
 | `launch-spec` driver | Workflow shape |
 |---|---|
@@ -98,20 +98,20 @@ The build ⇄ verify stage **always executes via the Workflow tool** — the sam
 | **`/batch`** | **`parallel` / `pipeline`** over the batch units, then a `verify-spec` stage as the gate. |
 | **`ultracode`** (dynamic workflow) | run its emitted workflow brief **directly** (its final stage is already `verify-spec`). |
 
-**The loop's verify stage invokes `verify-spec` and returns a structured `{ verdict, ledger }`.** The loop **exits when verify reports zero `contradicted` acceptance criteria** — a bar **deliberately stricter than verify-spec's own gate** (which lets `contradicted` findings pass), read from the verdict directly — bounded by a **max-iteration cap (default 3)** (AC-14). Reaching the cap unconverged returns a structured **`blocked — unconverged`** result the main session surfaces.
+**The loop's verify stage invokes `verify-spec` and returns a structured `{ verdict, ledger }`.** The loop **exits when verify reports zero `contradicted` acceptance criteria** — a bar **deliberately stricter than verify-spec's own gate** (which lets `contradicted` findings pass), read from the verdict directly — bounded by a **max-iteration cap (default 3)**. Reaching the cap unconverged returns a structured **`blocked — unconverged`** result the main session surfaces.
 
-**The build workflow is autonomous** (AC-15): it never attempts to ask the user; a genuine spec gap or blocker is returned as a structured **`blocked`** result that you surface in the main session (the loud, human-facing path — the workflow itself just reports).
+**The build workflow is autonomous**: it never attempts to ask the user; a genuine spec gap or blocker is returned as a structured **`blocked`** result that you surface in the main session (the loud, human-facing path — the workflow itself just reports).
 
-**The verify stage returns its complete verify ledger** as part of its structured result (AC-17). The session-keyed verify ledger is deleted on success and can't be read back from `/tmp`, so the workflow **returns the ledger** and you persist it yourself (next section) — materialization never depends on that ledger surviving.
+**The verify stage returns its complete verify ledger** as part of its structured result. The session-keyed verify ledger is deleted on success and can't be read back from `/tmp`, so the workflow **returns the ledger** and you persist it yourself (next section) — materialization never depends on that ledger surviving.
 
 A **verify-only range** (`from:verify`) skips the build loop: run verify as a **single delegated subagent** (`Task` → `spec-ops:verify-spec`) that returns its ledger — same materialize step, no loop.
 
 ## Deterministic side effects — driven from main
 
-Drive **every** spec side-effect from the **main session**, so correctness never depends on a skill-scoped hook firing inside a subagent/workflow (AC-18, AC-20). A hook double-write is a harmless **idempotent overwrite**; a non-fire is covered by your own call.
+Drive **every** spec side-effect from the **main session**, so correctness never depends on a skill-scoped hook firing inside a subagent/workflow. A hook double-write is a harmless **idempotent overwrite**; a non-fire is covered by your own call.
 
-- **Commits** — `spec_git.py commit "$CANON" "<msg>"` for the **draft** (after write) and the **ready** spec (after refine). Each commit is **scoped to the spec file only** — the helper does `git add -- <path>` then `git commit --only -- <path>`; **never `git add -A`/`.`, never a push** (AC-21).
-- **Materialize from the returned ledger** — write the workflow's returned verify ledger to a temp file, then emit the persistent artifacts with the additive `write` verbs (they reuse verify-spec's own module functions, so they emit the **identical** artifact the verify `Stop` hook would — AC-19):
+- **Commits** — `spec_git.py commit "$CANON" "<msg>"` for the **draft** (after write) and the **ready** spec (after refine). Each commit is **scoped to the spec file only** — the helper does `git add -- <path>` then `git commit --only -- <path>`; **never `git add -A`/`.`, never a push**.
+- **Materialize from the returned ledger** — write the workflow's returned verify ledger to a temp file, then emit the persistent artifacts with the additive `write` verbs (they reuse verify-spec's own module functions, so they emit the **identical** artifact the verify `Stop` hook would):
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/verify-spec/drift_baseline.py" write "$CANON" <ledger-file>   # baseline: verifiedAtSHA + per-AC verdicts
@@ -127,13 +127,13 @@ Front-load discovery and questions in main; delegate the heavy work; call the si
 1. **write** — Run discovery + draft by invoking `write-spec` (Skill, main session). When it names the spec file, `init` the state and capture `$CANON`. Commit the draft (`spec_git.py commit`), `advance write`, surface the **proceed/adjust/abort** gate.
 2. **refine** — On a loop-back, first `spec_amendments.py load "$CANON"` and fold accepted amendments in. Delegate grounding: `Task` → a subagent that invokes `spec-ops:refine-spec` on `$CANON` and returns the schema'd result. Surface any `blocked` questions in one `AskUserQuestion` round and re-dispatch. When ready, commit the ready spec from main (`spec_git.py commit`), `advance refine`, gate.
 3. **launch** — Invoke `spec-ops:launch-spec` (Skill, main, emit-only). Capture the emitted **driver brief + driver-type**. `advance launch`, gate.
-4. **build ⇄ verify** — Run the **Workflow tool** with the shape mapped from the driver-type; loop build→verify to **zero contradicted** (cap 3). On the workflow's return, persist the ledger and run the two `write` verbs (above). `advance build`; the verify artifact now exists, so `advance verify`. Surface verify findings + amendments and **ask before any outer loop** (AC-5).
+4. **build ⇄ verify** — Run the **Workflow tool** with the shape mapped from the driver-type; loop build→verify to **zero contradicted** (cap 3). On the workflow's return, persist the ledger and run the two `write` verbs (above). `advance build`; the verify artifact now exists, so `advance verify`. Surface verify findings + amendments and **ask before any outer loop**.
 5. **done / loop** — If `check` reports `complete`, hand off. If the user confirms an outer loop, re-arm `refine verify` and return to step 2.
 
 ## Resume & abort
 
-- **Same-session resume (AC-28).** Re-invoking `orchestrate-spec` in the same session **continues at the first incomplete in-range stage** — stages whose artifacts already exist are skipped (their status persists as done). A state file from a **completed or aborted** run — or for a different spec — is **not resumed; it is replaced** by a fresh run. `init` handles this; just call it.
-- **Abort (AC-25).** When the user explicitly stops the run, set the flag — `spec_orchestrator.py abort` — and the `Stop` hook then allows the turn to end. The hook also has a **loud fallback** (after a bounded number of no-progress blocks on one stage it surfaces the stall and releases) and **fails open** when it can't tell a run is active, so a run can never hard-trap the session. If the user redirects to unrelated work, `abort` and move on.
+- **Same-session resume.** Re-invoking `orchestrate-spec` in the same session **continues at the first incomplete in-range stage** — stages whose artifacts already exist are skipped (their status persists as done). A state file from a **completed or aborted** run — or for a different spec — is **not resumed; it is replaced** by a fresh run. `init` handles this; just call it.
+- **Abort.** When the user explicitly stops the run, set the flag — `spec_orchestrator.py abort` — and the `Stop` hook then allows the turn to end. The hook also has a **loud fallback** (after a bounded number of no-progress blocks on one stage it surfaces the stall and releases) and **fails open** when it can't tell a run is active, so a run can never hard-trap the session. If the user redirects to unrelated work, `abort` and move on.
 
 ## Handoff
 
@@ -142,7 +142,7 @@ When `check` reports `complete`, give a short summary: the spec's journey (draft
 ## Guardrails
 
 - **Compose, never reimplement.** Always call the real `write-spec` / `refine-spec` / `launch-spec` / `verify-spec`. Never inline their logic, and never change their behavior — `launch-spec` stays emit-only.
-- **You own every user question.** No subagent or workflow ever prompts the user; a delegated stage returns `blocked` + questions and you ask in main (AC-7, AC-9).
-- **Build ⇄ verify is always a Workflow** (AC-12) — never a literal `/goal`/`/batch` in the main session — and exits only on **zero contradicted** (AC-14).
+- **You own every user question.** No subagent or workflow ever prompts the user; a delegated stage returns `blocked` + questions and you ask in main.
+- **Build ⇄ verify is always a Workflow** — never a literal `/goal`/`/batch` in the main session — and exits only on **zero contradicted**.
 - **Side-effects from main, scoped, never pushed.** Commit only the spec file via `spec_git.py`; materialize baseline + amendments via the `write` verbs from the returned ledger. Never `git add -A`, never push, never depend on a subagent's hook firing.
 - **State lives in git + the spec + the state file — not the conversation.** If you compact or restart, re-read the spec and `git log`, then `init` to resume from committed state.

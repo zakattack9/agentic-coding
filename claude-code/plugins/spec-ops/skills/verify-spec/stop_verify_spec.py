@@ -52,7 +52,7 @@ that is the judge's job, which is why the judge's sign-off is itself gated.
 Readiness (all required) once the ledger is valid:
   1. No claim is still `unchecked`.
   2. Every `confirmed` / `contradicted` claim cites non-empty `evidence` AND
-     records a non-empty `method` (R6 — HOW it was grounded; the judge, not this
+     records a non-empty `method` (HOW it was grounded; the judge, not this
      hook, attests the method actually meets the standard the claim asserts).
   3. Every `unverifiable` claim carries a non-empty `disposition`.
   4. The independent judge ran (`judge.ran`), returned `verdict: "complete"`, and
@@ -242,7 +242,7 @@ def validate_ledger(m):
             if key in judge and not isinstance(judge.get(key), list):
                 problems.append(f"'judge.{key}' must be a JSON array")
 
-    # backwardSweep: OPTIONAL, report-only (R1 backward-coverage pass). It is
+    # backwardSweep: OPTIONAL, report-only (backward-coverage pass). It is
     # shape-validated when present so a malformed sweep self-corrects, but it
     # NEVER gates the stop — its findings are reports, exactly like
     # `contradicted` claims. Omitted entirely for non-spec targets.
@@ -373,7 +373,7 @@ def evaluate(marker_path: str, marker: dict):
             f"(add a file:line / git sha / read-only CLI output): {preview}{more}"
         )
 
-    # 2b. Every confirmed/contradicted claim must record HOW it was grounded (R6).
+    # 2b. Every confirmed/contradicted claim must record HOW it was grounded.
     #     The hook only requires the method be present; whether it MEETS the
     #     standard the claim asserts (a threshold needs a measurement, an
     #     invariant an exhaustive check) is the judge's call, surfaced as weakEvidence.
