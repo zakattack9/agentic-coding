@@ -8,7 +8,7 @@ acceptance criterion that must hold ACROSS §1–§6:
   AC-27  Every Projects field write uses the App installation token; none use
          GITHUB_TOKEN.
   AC-29  Manifest carries only name+description (no version); root marketplace
-         pins gh-projects 0.1.0 and marks pm-ops deprecated.
+         pins gh-projects 0.2.0 and marks pm-ops deprecated.
   AC-30  No schema mutation re-PUTs a single-select option list or
          iterationConfiguration without a prior diff (diff-gated, ID-stable).
   AC-31  Status writes from the three layers are idempotent + monotonic — a
@@ -201,7 +201,7 @@ class AC29_Manifest(unittest.TestCase):
         plugins = {p["name"]: p for p in mk["plugins"]}
         self.assertIn("gh-projects", plugins, "gh-projects must be registered in marketplace.json")
         gp = plugins["gh-projects"]
-        self.assertEqual(gp["version"], "0.1.0")
+        self.assertEqual(gp["version"], "0.2.0")
         self.assertEqual(gp["source"], "./claude-code/plugins/gh-projects")
         self.assertTrue(gp.get("description"))
 

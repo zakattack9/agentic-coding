@@ -2,7 +2,7 @@
 name: sync-signals
 description: On-demand recompute of the gh-projects board's deterministic Gantt-signals (Schedule health, Slippage, Slippage-days, Blast radius, Blast-count, Blocked) and post the project Status update — the same computation signals-sync.yml runs on events/cron, triggered by hand. Use when the user asks to "refresh the board signals", "recompute slippage/blast/blocked", "repost the project status update", or to force a signal refresh outside the cron. Dry-by-default — previews the exact plan, writes only on explicit --apply. NO AI/model call (pure date math + blocked-by DAG). Does NOT author specs (spec-ops) or move Status columns (board-sync/board-status).
 disable-model-invocation: true
-model: claude-haiku-4-6
+model: claude-opus-4-8
 effort: low
 allowed-tools: Bash(python3 *), Bash(gh *), Read, AskUserQuestion
 argument-hint: "--owner <org> --number <project#> (add --apply only after reviewing the dry run)"
