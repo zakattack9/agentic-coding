@@ -1000,7 +1000,19 @@ def link_repo(project_id: str, repo_id: str) -> dict:
 # --------------------------------------------------------------------------- #
 # Link a Project to a team (AC-23) — a REAL linkProjectV2ToTeam(projectId,teamId)
 # write-to-team mutation. NOT the scaffold _LINK_PROJECT_APP confirmation no-op.
+# Idempotent the same way link_repo is: read the project's linked teams; skip if
+# already linked (detected and skipped, never a 4xx re-link — AC-33).
 # --------------------------------------------------------------------------- #
+_PROJECT_LINKED_TEAMS = """
+query($project:ID!){
+  node(id:$project){
+    ... on ProjectV2 {
+      teams(first:100){ nodes { id } }
+    }
+  }
+}
+"""
+
 _LINK_TEAM = """
 mutation($project:ID!, $team:ID!){
   linkProjectV2ToTeam(input:{projectId:$project, teamId:$team}){
@@ -1010,16 +1022,28 @@ mutation($project:ID!, $team:ID!){
 """
 
 
+def _project_linked_team_ids(project_id: str) -> set:
+    """Read the Project's currently-linked team node ids (read-only)."""
+    data = graphql(_PROJECT_LINKED_TEAMS, {"project": project_id})
+    node = (data or {}).get("node") or {}
+    nodes = ((node.get("teams") or {}).get("nodes")) or []
+    return {n.get("id") for n in nodes if n.get("id")}
+
+
 def link_team(project_id: str, team_id: str) -> dict:
     """Link a Project to a team via linkProjectV2ToTeam (AC-23) — write-to-team.
 
     A real `linkProjectV2ToTeam(projectId, teamId)` mutation (the `teamId` is
     actually sent), distinct from scaffold's grant_app_access confirmation touch.
-    App-token Projects v2 write — never GITHUB_TOKEN (AC-28). Idempotent on the
-    platform side: re-linking an already-linked team is a no-op, never a 4xx.
+    App-token Projects v2 write — never GITHUB_TOKEN (AC-28). Idempotent like
+    `link_repo`: reads the project's already-linked teams first and makes NO write
+    when `team_id` is already linked (returns {"changed": False}) — detected and
+    skipped, never a 409/422 re-link (AC-33).
     """
+    if team_id in _project_linked_team_ids(project_id):
+        return {"changed": False, "project": project_id, "team": team_id, "linked": True}
     data = graphql(_LINK_TEAM, {"project": project_id, "team": team_id})
-    return {"project": project_id, "team": team_id, "linked": True,
+    return {"changed": True, "project": project_id, "team": team_id, "linked": True,
             "result": data.get("linkProjectV2ToTeam")}
 
 

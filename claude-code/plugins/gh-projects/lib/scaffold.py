@@ -513,21 +513,37 @@ _BASE_ROLE_MANUAL_STEP = (
 )
 
 
-def plan_team_link(org: str, team: str | None) -> dict | None:
-    """Plan linking the COPY Project to `team` + emit the base-role manual step.
+def plan_team_link(project_id: str | None, org: str, team: str | None) -> dict | None:
+    """Plan linking the COPY Project to `team` — diff-before-mutate (AC-23/AC-24).
 
-    Returns None when no team is given. Otherwise resolves the team node id and
-    plans a real linkProjectV2ToTeam write (gh.link_team), and carries the
-    base-role MANUAL step (UI-only, never an API mutation, AC-23). Shape:
-    {"team", "team_id", "action": "link", "base_role_manual": <str>}.
+    Returns None when no team is given. Mirrors `plan_repo_link`: on a dry preview
+    (no copy yet → project_id is None) the link is reported as a planned 'link'
+    WITHOUT resolving the team node id or reading the (not-yet-created) project —
+    the resolve + diff/skip happen at apply time against the real copy. On the
+    apply path (project_id set) it resolves the team node id and checks the
+    Project's already-linked teams: a team already linked is a SKIP (re-run no-op,
+    never a 409/422 re-link — AC-33). Always carries the base-role MANUAL step
+    (UI-only, never an API mutation, AC-23). Shape:
+    {"team", "team_id"|None, "action": "link"|"skip", "reason", "base_role_manual"}.
     """
     if not team:
         return None
+    if project_id is None:
+        return {"team": team, "team_id": None, "action": "link",
+                "reason": "dry preview: team node id + link resolved under --force",
+                "base_role_manual": _BASE_ROLE_MANUAL_STEP}
     try:
         team_id = resolve_team_id(org, team)
     except (ScaffoldError, gh.GhError):
-        team_id = None  # resolved at apply time (--force)
-    return {"team": team, "team_id": team_id, "action": "link",
+        # Team node id not resolvable at PLAN time — defer the resolve + diff/skip
+        # to apply (under --force). Planning never hard-fails on this read.
+        return {"team": team, "team_id": None, "action": "link",
+                "reason": "team node id resolved at apply time (--force)",
+                "base_role_manual": _BASE_ROLE_MANUAL_STEP}
+    already = team_id in gh._project_linked_team_ids(project_id)
+    return {"team": team, "team_id": team_id,
+            "action": "skip" if already else "link",
+            "reason": "already linked" if already else "missing — link",
             "base_role_manual": _BASE_ROLE_MANUAL_STEP}
 
 
@@ -945,7 +961,7 @@ def build_plan(*, org: str, template_title: str, repo: str | None,
     # repo-link plan is reported against project_id=None (planned, applied under
     # --force after the copy is made).
     repo_link = plan_repo_link(copy_info.get("id"), repo)
-    team_link = plan_team_link(org, team)
+    team_link = plan_team_link(copy_info.get("id"), org, team)
 
     return {
         "org": org,

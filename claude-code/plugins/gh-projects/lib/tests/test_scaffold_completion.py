@@ -60,9 +60,10 @@ class CompletionRunner(ScaffoldRunner):
     reads + the two link mutations. `linked_repo_ids` lets a test pre-link a repo
     so the idempotent SKIP path (AC-21/AC-24) is observable."""
 
-    def __init__(self, *, linked_repo_ids=None, **kw):
+    def __init__(self, *, linked_repo_ids=None, linked_team_ids=None, **kw):
         super().__init__(**kw)
         self.linked_repo_ids = set(linked_repo_ids or [])
+        self.linked_team_ids = set(linked_team_ids or [])
 
     def __call__(self, args):
         body = " ".join(str(a) for a in args)
@@ -79,6 +80,11 @@ class CompletionRunner(ScaffoldRunner):
             self.calls.append(list(args))
             return json.dumps({"data": {"node": {"repositories": {
                 "nodes": [{"id": r} for r in sorted(self.linked_repo_ids)]}}}})
+        # the project's currently-linked teams (idempotency read — AC-33)
+        if "teams(first:100)" in body and "ProjectV2" in body:
+            self.calls.append(list(args))
+            return json.dumps({"data": {"node": {"teams": {
+                "nodes": [{"id": t} for t in sorted(self.linked_team_ids)]}}}})
         # linkProjectV2ToRepository — a WRITE
         if "linkProjectV2ToRepository" in body:
             self.calls.append(list(args))
@@ -248,6 +254,28 @@ class TestTeamLinkAndBaseRole(CompletionBase):
         self.assertNotIn("teamId", scaffold._LINK_PROJECT_APP)
         self.assertIn("teamId:$team", gh._LINK_TEAM)
 
+    def test_link_team_skips_when_already_linked(self):
+        # AC-33: a team already linked to the Project is detected and SKIPPED — no
+        # write, never a 409/422 re-link (parity with link_repo).
+        runner = CompletionRunner(linked_team_ids={TEAM_NODE_ID})
+        gh.RUN = runner
+        res = gh.link_team(COPY_PROJECT_ID, TEAM_NODE_ID)
+        self.assertFalse(res["changed"], "already-linked team -> no write (AC-23/AC-33)")
+        self.assertNotIn(("graphql", "linkProjectV2ToTeam"), runner.writes)
+
+    def test_link_team_second_call_is_noop(self):
+        # AC-33: call 1 (not linked) writes; call 2 (now linked) makes no further
+        # write — one effective write total across two calls.
+        runner = CompletionRunner(linked_team_ids=set())
+        gh.RUN = runner
+        first = gh.link_team(COPY_PROJECT_ID, TEAM_NODE_ID)
+        self.assertTrue(first["changed"])
+        runner.linked_team_ids = {TEAM_NODE_ID}  # the link took effect
+        second = gh.link_team(COPY_PROJECT_ID, TEAM_NODE_ID)
+        self.assertFalse(second["changed"])
+        n = sum(1 for w in runner.writes if w == ("graphql", "linkProjectV2ToTeam"))
+        self.assertEqual(n, 1, "second link of the same team = one effective write total")
+
     def test_scaffold_plans_team_link_when_team_given(self):
         runner = CompletionRunner()
         with tempfile.TemporaryDirectory() as d:
@@ -349,6 +377,17 @@ class TestCompletionsDryAndIdempotent(CompletionBase):
             actions = scaffold.apply_plan(plan, repo_dir=d, force=True)
         self.assertFalse(actions["repo_link"]["changed"])
         self.assertNotIn(("graphql", "linkProjectV2ToRepository"), runner.writes)
+
+    def test_rerun_team_link_is_empty_no_blind_relink(self):
+        # On a re-run where the team is already linked, the plan's team_link is a
+        # SKIP and apply issues NO link mutation (diff-before-mutate, AC-23/AC-33).
+        runner = CompletionRunner(linked_repo_ids={REPO_NODE_ID}, linked_team_ids={TEAM_NODE_ID})
+        with tempfile.TemporaryDirectory() as d:
+            plan = self._plan(runner, d, repo="acme/web", team="dev")
+            self.assertEqual(plan["team_link"]["action"], "skip")
+            actions = scaffold.apply_plan(plan, repo_dir=d, force=True)
+        self.assertFalse(actions["team_link"]["changed"])
+        self.assertNotIn(("graphql", "linkProjectV2ToTeam"), runner.writes)
 
     def test_rerun_install_manifest_empty_for_add_to_project(self):
         # After a first --force install, the add-to-project.yml is identical ->
