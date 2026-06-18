@@ -2,7 +2,7 @@
 
 `Tier` is a Project single-select set by `intake-issues`. It picks the spec-ops
 `write-spec` **rigor dial** and decides whether a linked deep spec is required.
-(Tier subsumes the old `Rigor` field — there is no separate Rigor.)
+There is no separate `Rigor` field — `Tier` is the single rigor knob.
 
 | Tier | When | `write-spec` rigor | Artifact | Deep spec? |
 |---|---|---|---|---|

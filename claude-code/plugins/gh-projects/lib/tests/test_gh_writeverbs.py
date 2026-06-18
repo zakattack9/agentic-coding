@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Offline tests for lib/gh.py's write verbs — NO network, NO
 live org, NO mutation. Every test installs a fake RUN that returns canned JSON
-and counts round-trips (the CountingRunner pattern from test_gh.py).
+and counts round-trips.
 
 Covers:
   open_or_update_pr — non-closing `Relates to #N`; create -> edit round-trip

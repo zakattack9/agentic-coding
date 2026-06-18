@@ -309,7 +309,7 @@ def apply_file_install(repo_dir: str, rows: list[dict]) -> list[str]:
     """Copy each planned 'install' row whose source exists. Returns dests written.
 
     Manifest-first: only rows the plan marked 'install' AND whose source is
-    present on disk are written (sources owned by another phase are skipped with
+    present on disk are written (sources owned elsewhere are skipped with
     no error). Creates parent dirs as needed.
     """
     written = []
@@ -319,7 +319,7 @@ def apply_file_install(repo_dir: str, rows: list[dict]) -> list[str]:
             continue
         src = tdir / row["src"]
         if not src.is_file():
-            continue  # another phase's file; nothing to copy yet
+            continue  # source owned elsewhere; nothing to copy yet
         dest = Path(repo_dir) / row["dest"]
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")

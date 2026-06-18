@@ -249,7 +249,7 @@ class TestCopyFromTemplate(ScaffoldTestBase):
     def test_copy_carries_all_8_views(self):
         # View-catalog half: the copy's saved-view catalog, read read-only
         # from projectV2.views, must contain all 8 views.json titles with none
-        # missing — the "GraphQL dump diffs ... view catalog" Verify.
+        # missing.
         runner = ScaffoldRunner()
         with tempfile.TemporaryDirectory() as d:
             plan = self._plan(runner, d)
@@ -389,9 +389,9 @@ class TestInstallManifest(ScaffoldTestBase):
         for required in self.REQUIRED_DESTS:
             self.assertIn(required, dests, f"manifest must list destination {required}")
 
-    def test_manifest_enumerates_other_phase_files_even_without_source(self):
-        # board-sync.yml / signals-sync.yml / board-status are authored by other
-        # phases; the manifest must still ENUMERATE their destinations.
+    def test_manifest_enumerates_externally_sourced_files_even_without_source(self):
+        # board-sync.yml / signals-sync.yml / board-status are authored
+        # elsewhere; the manifest must still ENUMERATE their destinations.
         runner = ScaffoldRunner()
         with tempfile.TemporaryDirectory() as d:
             plan = self._plan(runner, d)

@@ -34,8 +34,8 @@ ADD_TO_PROJECT = os.path.join(
     PLUGIN_ROOT, "templates", "github", "workflows", "add-to-project.yml"
 )
 
-NEW_SKILLS = ["route-issue", "plan-sprint", "promote-pr"]
-ALL_SKILLS = NEW_SKILLS + ["scaffold-repo", "intake-issues", "sync-signals"]
+SIDE_EFFECTING_SKILLS = ["route-issue", "plan-sprint", "promote-pr"]
+ALL_SKILLS = SIDE_EFFECTING_SKILLS + ["scaffold-repo", "intake-issues", "sync-signals"]
 # Deliberate per-skill effort.
 EXPECTED_EFFORT = {
     "route-issue": "medium", "plan-sprint": "high", "promote-pr": "high",
@@ -73,10 +73,10 @@ class AC34_ModelAndEffort(unittest.TestCase):
                 f"{name}: effort must be {EXPECTED_EFFORT[name]}",
             )
 
-    def test_new_skills_are_explicit(self):
+    def test_side_effecting_skills_are_explicit(self):
         # The three side-effecting skills must be Explicit (user-invoked only).
         # Existing skills' Explicit-ness is out of scope here (assert-don't-change).
-        for name in NEW_SKILLS:
+        for name in SIDE_EFFECTING_SKILLS:
             fm = _frontmatter(_read_skill(name))
             self.assertRegex(
                 fm, r"(?m)^disable-model-invocation:\s*true\s*$",
@@ -137,7 +137,7 @@ class AC32_MarketplaceVersion(unittest.TestCase):
 
 
 class AC27_NoMeteredAI(unittest.TestCase):
-    """No metered AI/model API call in the new skills or the add-to-project template."""
+    """No metered AI/model API call in the side-effecting skills or the add-to-project template."""
 
     # An actual metered call — NOT the Claude Code skill `model:` selector.
     METERED = re.compile(
@@ -146,7 +146,7 @@ class AC27_NoMeteredAI(unittest.TestCase):
         re.IGNORECASE,
     )
 
-    def test_new_skills_make_no_metered_call(self):
+    def test_side_effecting_skills_make_no_metered_call(self):
         for name in ("route-issue", "plan-sprint", "promote-pr"):
             body = _read_skill(name)
             self.assertIsNone(

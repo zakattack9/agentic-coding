@@ -2,8 +2,7 @@
 """Offline tests for the FOUR route-issue / plan-sprint projection verbs on
 lib/gh.py's CLI — add-item, write-field, advance-status,
 create-linked-branch — NO network, NO live org, NO mutation. Every test installs
-a fake RUN that returns canned JSON and counts round-trips (the CountingRunner
-pattern from test_gh_writeverbs.py / test_route_issue.py).
+a fake RUN that returns canned JSON and counts round-trips.
 
 These verbs reuse the core lib functions (add_item / write_field /
 advance_status / create_linked_branch) — they add no new mutation primitive; they
