@@ -21,6 +21,12 @@ drift_baseline.py), so a later run can flag stale or regressed criteria. It is
 written ONLY when the ledger carries a `specPath`, is best-effort (never blocks
 the stop), and lives only in /tmp — verify-spec still writes nothing into the repo.
 
+It also writes a *spec-amendment handoff* (the backward sweep's proposed ACs) to
+  /tmp/claude-spec-amendments-<abs-spec-path>.json
+so refine-spec can ingest a missed-requirement finding on its next run without
+manual re-keying (see spec_amendments.py). Same best-effort /tmp discipline; a
+clean sweep clears it.
+
 The ledger is authored by the model, so it is treated as UNTRUSTED input and
 validated strictly. The guardrail must never be silently disabled by an AI
 mistake (malformed JSON, wrong types):
@@ -75,6 +81,15 @@ try:
     import drift_baseline
 except Exception:  # noqa: BLE001 — a missing helper must never disable the gate
     drift_baseline = None
+
+# The verify→refine amendment handoff (the backward sweep's proposed ACs, carried
+# to refine-spec via /tmp). Shared helper in the plugin's scripts/ dir; also
+# best-effort and guarded.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
+try:
+    import spec_amendments
+except Exception:  # noqa: BLE001 — a missing helper must never disable the gate
+    spec_amendments = None
 
 # Ledger is considered abandoned/stuck if not rewritten within this window.
 # Long enough for a heavy pass (parallel grounding subagents + user Q&A),
@@ -268,6 +283,24 @@ def write_drift_baseline(marker: dict, claims: list):
         pass
 
 
+def write_spec_amendments(marker: dict):
+    """On a clean pass, carry the backward sweep's proposed ACs to refine-spec via
+    /tmp (the verify→refine handoff). Only for a spec target (`specPath` set); a
+    clean sweep (no findings) clears any prior handoff. Entirely best-effort — a
+    missing helper, non-spec target, or write error is a silent no-op, and it must
+    NEVER block the allowed stop or raise. verify-spec still writes only /tmp."""
+    if spec_amendments is None:
+        return
+    try:
+        spec_path = str(marker.get("specPath", "")).strip()
+        if not spec_path:
+            return  # non-spec target: nothing to hand off
+        findings = spec_amendments.findings_from_ledger(marker)
+        spec_amendments.write_amendments(spec_path, findings)  # [] clears a stale handoff
+    except Exception:  # noqa: BLE001 — handoff is best-effort; never break the stop
+        pass
+
+
 def evaluate(marker_path: str, marker: dict):
     """Validated-ledger path: enforce the verification gate or block with specifics."""
     problems = validate_ledger(marker)
@@ -368,6 +401,7 @@ def evaluate(marker_path: str, marker: dict):
     # that set `specPath`) and never blocks the allowed stop.
     if not failures:
         write_drift_baseline(marker, claims)
+        write_spec_amendments(marker)
         remove(marker_path)
         allow()
         return

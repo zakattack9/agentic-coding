@@ -27,7 +27,7 @@ Read the spec in full before doing anything. Also read every doc, file, or sibli
 
 ## The loop
 
-Run the five-step pass below repeatedly. Keep looping until a pass produces **no corrections, no open questions, and the readiness gate passes**. Then stop. Announce each pass (e.g. "Pass 2") so the user can follow the convergence.
+Run the five-step pass below repeatedly (step 0 — ingesting any pending `verify-spec` amendments — runs once at the start). Keep looping until a pass produces **no corrections, no open questions, and the readiness gate passes**. Then stop. Announce each pass (e.g. "Pass 2") so the user can follow the convergence.
 
 ```
 Verify → Reconcile → Resolve → Refine → Re-check ↺
@@ -63,6 +63,23 @@ A **`Stop` hook blocks you from ending your turn** until the spec is genuinely r
 - The hook also scans the spec for leftover `TODO` / `TBD` / `FIXME` / `???` / "to be decided" / "open question" / `[NEEDS CLARIFICATION: …]` — those block the stop too, so don't leave them in the spec.
 
 When every flag is `true`, every question is `resolved`, the spec is clean, **and the ready spec is committed** (the hook enforces the commit — scoped to the spec file — see [Handoff](#handoff)), the hook removes the ledger and lets you stop. **If the user redirects to unrelated work, delete the ledger file and stop** instead of continuing to refine.
+
+### 0. Ingest pending verify amendments (once, at the start)
+
+A prior `verify-spec` run may have left **proposed acceptance criteria** — behaviors its backward sweep found in the *implementation* that map to no AC (a missed requirement). They're carried over a `/tmp` handoff so you don't re-key them. At the very start of the run, check for them:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/spec_amendments.py" load <abs-spec-path>
+```
+
+- **Empty output → nothing pending.** Proceed to step 1.
+- **Findings present → disposition each with the user** via `AskUserQuestion`: an **`intended`** proposal is a confirmed gap → offer to add it as a new `AC-id`; an **`unsure`** one → ask; an **`unintended`** one is *scope-creep in the code to remove*, **not** a spec change → flag it, don't add. Fold every accepted proposal into the **Acceptance Criteria** table as a new criterion (it then gets grounded by the normal loop like any other), then clear the handoff so it can't re-apply:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/spec_amendments.py" clear <abs-spec-path>
+```
+
+This closes the **verify→refine loop**: `verify-spec` (read-only) proposes the missed requirement, `refine-spec` (with your confirmation) amends the spec. It never edits the spec on its own.
 
 ### 1. Verify — ground every claim against reality
 
