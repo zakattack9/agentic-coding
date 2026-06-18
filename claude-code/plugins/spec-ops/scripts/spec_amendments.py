@@ -20,8 +20,12 @@ This module is the single source of truth for that path and IO, used by both:
     (`clear`) once the proposals are dispositioned.
 
 CLI:
-  spec_amendments.py load <spec>   → prints the amendments JSON, or nothing if none
-  spec_amendments.py clear <spec>  → removes the amendments file (idempotent)
+  spec_amendments.py load <spec>            → prints the amendments JSON, or nothing if none
+  spec_amendments.py clear <spec>           → removes the amendments file (idempotent)
+  spec_amendments.py write <spec> <ledger>  → materialize the handoff from a saved
+      verify-spec ledger file, emitting the IDENTICAL artifact the Stop hook's
+      ``write_spec_amendments`` helper would (used by orchestrate-spec, which persists
+      the workflow's returned ledger and can't rely on the verify hook firing).
 """
 
 import json
@@ -98,6 +102,29 @@ def findings_from_ledger(marker):
     return out
 
 
+def write_from_ledger(spec_path, ledger_path):
+    """Materialize the verify→refine amendment handoff from a saved verify-spec
+    ledger file, reusing the SAME module functions the Stop hook's
+    ``write_spec_amendments`` uses (``findings_from_ledger`` → ``write_amendments``) so
+    it emits the IDENTICAL artifact — no logic is duplicated. The ledger is the one
+    orchestrate-spec persists from the build⇄verify workflow's returned result.
+    Idempotent: empty findings CLEAR any prior handoff (per ``write_amendments``).
+    Returns (code, detail):
+      0 wrote findings · 1 cleared (no findings) · 3 ledger unreadable."""
+    try:
+        with open(ledger_path) as f:
+            marker = json.load(f)
+    except (OSError, json.JSONDecodeError, ValueError) as e:
+        return 3, f"ledger not readable JSON: {e}"
+    if not isinstance(marker, dict):
+        return 3, "ledger is not a JSON object"
+    findings = findings_from_ledger(marker)
+    path = write_amendments(spec_path, findings)
+    if path:
+        return 0, path
+    return 1, "cleared (backward sweep came back clean — no amendment findings)"
+
+
 def main(argv):
     if len(argv) >= 3 and argv[1] == "load":
         a = load_amendments(argv[2])
@@ -107,7 +134,13 @@ def main(argv):
         clear_amendments(argv[2])
         print("cleared")
         return 0
-    sys.stderr.write("usage: spec_amendments.py {load <path> | clear <path>}\n")
+    if len(argv) >= 4 and argv[1] == "write":
+        code, detail = write_from_ledger(argv[2], argv[3])
+        print(detail)
+        return code
+    sys.stderr.write(
+        "usage: spec_amendments.py {load <spec> | clear <spec> | write <spec> <ledger>}\n"
+    )
     return 2
 
 

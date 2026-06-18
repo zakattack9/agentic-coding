@@ -22,8 +22,12 @@ This module is the single source of truth for that path and its IO, used by both
     (``python3 drift_baseline.py load <spec>``) to drive drift mode.
 
 CLI:
-  ``drift_baseline.py path <spec>``  → prints the baseline file path.
-  ``drift_baseline.py load <spec>``  → prints the baseline JSON, or nothing if none.
+  ``drift_baseline.py path <spec>``           → prints the baseline file path.
+  ``drift_baseline.py load <spec>``           → prints the baseline JSON, or nothing if none.
+  ``drift_baseline.py write <spec> <ledger>`` → materialize the baseline from a saved
+      verify-spec ledger file, emitting the IDENTICAL artifact the Stop hook's
+      ``write_drift_baseline`` helper would (used by orchestrate-spec, which persists
+      the workflow's returned ledger and can't rely on the verify hook firing).
 """
 
 import json
@@ -109,6 +113,29 @@ def load_baseline(spec_path):
         return None
 
 
+def write_from_ledger(spec_path, ledger_path):
+    """Materialize the drift baseline from a saved verify-spec ledger file, reusing
+    the SAME module functions the Stop hook's ``write_drift_baseline`` uses
+    (``criteria_from_claims`` + ``current_head_sha`` → ``write_baseline``) so it emits
+    the IDENTICAL artifact — no logic is duplicated. The ledger is the one
+    orchestrate-spec persists from the build⇄verify workflow's returned result.
+    Returns (code, detail):
+      0 written · 1 nothing-to-write (no HEAD / no grounded criteria) · 3 ledger unreadable."""
+    try:
+        with open(ledger_path) as f:
+            marker = json.load(f)
+    except (OSError, json.JSONDecodeError, ValueError) as e:
+        return 3, f"ledger not readable JSON: {e}"
+    if not isinstance(marker, dict):
+        return 3, "ledger is not a JSON object"
+    criteria = criteria_from_claims(marker.get("claims") or [])
+    head = current_head_sha()
+    path = write_baseline(spec_path, head, criteria)
+    if path:
+        return 0, path
+    return 1, "no baseline written (not a git repo, or no grounded confirmed/contradicted criteria)"
+
+
 def main(argv):
     if len(argv) >= 3 and argv[1] == "path":
         print(baseline_path(argv[2]))
@@ -117,7 +144,11 @@ def main(argv):
         b = load_baseline(argv[2])
         print(json.dumps(b, indent=2) if b is not None else "")
         return 0
-    sys.stderr.write("usage: drift_baseline.py {path|load} <spec-path>\n")
+    if len(argv) >= 4 and argv[1] == "write":
+        code, detail = write_from_ledger(argv[2], argv[3])
+        print(detail)
+        return code
+    sys.stderr.write("usage: drift_baseline.py {path <spec> | load <spec> | write <spec> <ledger>}\n")
     return 2
 
 
