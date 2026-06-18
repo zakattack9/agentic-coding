@@ -13,6 +13,14 @@ so normal sessions (and other skills, including refine-spec) are never affected.
 The ledger is written by the skill at the start of, and during, a run, and
 removed here once the verification gate passes.
 
+On a clean pass, before clearing the ledger, the hook also writes/refreshes a
+*drift baseline* — a separate, spec-keyed file at
+  /tmp/claude-verify-baseline-<abs-spec-path>.json
+recording each AC's verdict/method/evidence and the verified-at HEAD sha (see
+drift_baseline.py), so a later run can flag stale or regressed criteria. It is
+written ONLY when the ledger carries a `specPath`, is best-effort (never blocks
+the stop), and lives only in /tmp — verify-spec still writes nothing into the repo.
+
 The ledger is authored by the model, so it is treated as UNTRUSTED input and
 validated strictly. The guardrail must never be silently disabled by an AI
 mistake (malformed JSON, wrong types):
@@ -57,6 +65,16 @@ import json
 import os
 import sys
 import time
+from pathlib import Path
+
+# The drift baseline (a separate, spec-keyed /tmp file, NOT the session ledger) is
+# the only state verify-spec keeps between runs. Writing it is best-effort and must
+# never brick the gate, so the helper import is guarded.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    import drift_baseline
+except Exception:  # noqa: BLE001 — a missing helper must never disable the gate
+    drift_baseline = None
 
 # Ledger is considered abandoned/stuck if not rewritten within this window.
 # Long enough for a heavy pass (parallel grounding subagents + user Q&A),
@@ -70,6 +88,7 @@ VERDICTS = {"unchecked", "confirmed", "contradicted", "unverifiable"}
 SCHEMA_HINT = (
     '{\n'
     '  "target": "<what you are verifying — a path, feature, or commit range>",\n'
+    '  "specPath": "<absolute path of the spec under verification — enables the drift baseline; omit for non-spec targets>",\n'
     '  "claims": [\n'
     '    {\n'
     '      "claim": "short text of one checkable claim",\n'
@@ -150,6 +169,11 @@ def validate_ledger(m):
     if not isinstance(target, str) or not target.strip():
         problems.append("'target' must be a non-empty string (what is being verified)")
 
+    # specPath: OPTIONAL — when verifying a spec, its absolute path. Used only to
+    # key the drift baseline; shape-validated when present, never gates the stop.
+    if "specPath" in m and not isinstance(m.get("specPath"), str):
+        problems.append("'specPath' must be a string (absolute path of the spec under verification)")
+
     # claims: required, non-empty list of {claim, verdict, evidence?, disposition?}.
     claims = m.get("claims")
     if not isinstance(claims, list) or not claims:
@@ -222,6 +246,26 @@ def validate_ledger(m):
                             problems.append(f"backwardSweep.findings[{i}].{key} must be a string")
 
     return problems
+
+
+def write_drift_baseline(marker: dict, claims: list):
+    """On a clean pass, persist the drift baseline for the spec under verification.
+    Entirely best-effort: a missing helper, non-spec target, non-git tree, or write
+    error simply means no baseline is written — it must NEVER block the allowed stop
+    or raise. The baseline is the only state verify-spec keeps between runs, and it
+    lives only in /tmp (never the repo)."""
+    if drift_baseline is None:
+        return
+    try:
+        spec_path = str(marker.get("specPath", "")).strip()
+        if not spec_path:
+            return  # non-spec target: nothing to drift against
+        head = drift_baseline.current_head_sha()
+        criteria = drift_baseline.criteria_from_claims(claims)
+        if head and criteria:
+            drift_baseline.write_baseline(spec_path, head, criteria)
+    except Exception:  # noqa: BLE001 — baseline is best-effort; never break the stop
+        pass
 
 
 def evaluate(marker_path: str, marker: dict):
@@ -318,8 +362,12 @@ def evaluate(marker_path: str, marker: dict):
                 f"evidence — re-ground them against real source: {preview}{more}"
             )
 
-    # Ready: tear down the ledger and let Claude stop.
+    # Ready: write the drift baseline (best-effort), tear down the ledger, and let
+    # Claude stop. The baseline records this clean verification so a later run can
+    # detect stale/regressed criteria; it is only written for a spec target (one
+    # that set `specPath`) and never blocks the allowed stop.
     if not failures:
+        write_drift_baseline(marker, claims)
         remove(marker_path)
         allow()
         return

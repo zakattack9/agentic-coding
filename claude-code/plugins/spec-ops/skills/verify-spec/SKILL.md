@@ -25,6 +25,32 @@ Arguments: $ARGUMENTS
 
 **The thing under review is the hypothesis, not the evidence.** A spec, audit, checklist, or prior summary is exactly what you are CHECKING — never what you check against. Ground every claim against the **actual codebase at branch HEAD, the git history, and (for infra/ops) live read-only system state.** Read the target in full first; if you are verifying a spec's implementation, read the spec to extract its claims, but treat it as a list of things to prove, not a source of truth.
 
+## Drift re-check — reuse the last verification
+
+When the target is a **spec**, a prior clean verification may be on record as a *drift baseline* — a `/tmp` snapshot of each AC's last verdict + method + evidence and the **HEAD sha it was verified at** — so a re-run re-grounds only what actually moved and surfaces regressions. The baseline is written automatically by the `Stop` hook on a clean pass (you never write it); you only **read** it at the start of a run. It is single-machine and ephemeral (it lives in `/tmp`, not git) — by design, since implementation and verification run on the same machine.
+
+**At the start of a spec verification:**
+
+1. Set `specPath` (the spec's absolute path) in the ledger, so this run's result is recorded as the next baseline.
+2. Load any existing baseline:
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/skills/verify-spec/drift_baseline.py" load <abs-spec-path>
+   ```
+   - **Empty output → no baseline.** Announce it plainly — *"No drift baseline for this spec (never recorded, or cleaned from /tmp) → running a full verification"* — and verify normally (every AC grounded from scratch). **Never** silently skip the regression check.
+   - **Baseline present → drift mode** (below).
+
+**Drift mode — classify each baseline criterion before grounding it.** Scale the staleness check to the AC's recorded **`method`**:
+
+- **`cli-observation`** → **always STALE.** Live infra/system state drifts with no commit, so a git diff can't vouch for it — re-ground it.
+- **`static-read` / `measurement` / `exhaustive-check` / `test-run`** → run `git diff <verifiedAtSHA>..HEAD -- <evidence file>` (the file(s) the recorded `evidence` cites):
+  - **empty diff → FRESH.** Carry the baseline verdict forward into the ledger, citing its still-valid `evidence` + `method` and noting *"unchanged since `<verifiedAtSHA>`"* — the empty diff **is** the fresh proof the old evidence still holds.
+  - **non-empty diff → STALE.** Re-ground it this pass like any other claim.
+- **Safe default:** if `<verifiedAtSHA>` is unreachable (history was rewritten) or you cannot cleanly identify the evidence file from the recorded `evidence`, treat the AC as **STALE** and re-ground it. Never carry a verdict you cannot prove still holds.
+
+Then run the normal loop for the STALE criteria **and for any AC in the spec that is not in the baseline** (the spec may have gained criteria — ground those fresh). FRESH-carried criteria still appear in the ledger with their evidence + method, so the completion gate and the judge treat them like any grounded claim — the gate is satisfied honestly, not bypassed.
+
+**Report drift.** After grounding, any criterion whose new verdict differs from its baseline verdict has **DRIFTED** — most importantly `confirmed → contradicted`, a **regression**. These are the headline of a drift run; surface them prominently in the handoff.
+
 ## The loop
 
 Run the pass below repeatedly until every enumerated claim has a definitive, evidence-cited verdict and the independent judge attests the verification is complete. Then stop. Announce each pass (e.g. "Pass 2").
@@ -44,6 +70,7 @@ A **`Stop` hook blocks you from ending your turn** until the ledger shows a stru
 ```json
 {
   "target": "<what you are verifying — a path, feature, or commit range>",
+  "specPath": "<absolute path of the spec under verification — set it for a spec target so the drift baseline is keyed and written; omit otherwise>",
   "claims": [
     {
       "claim": "short text of one checkable claim",
@@ -75,6 +102,7 @@ A **`Stop` hook blocks you from ending your turn** until the ledger shows a stru
 }
 ```
 
+- `specPath` is the **absolute path of the spec** when the target is a spec — set it so the hook can write the **drift baseline** for this verification on a clean pass (see [Drift re-check](#drift-re-check--reuse-the-last-verification)). Omit it for a non-spec target (a PR range, a bare claim). It is shape-validated only and never gates.
 - `verdict` is one of: `unchecked` (not yet verified) · `confirmed` (true — `evidence` must cite the source) · `contradicted` (false — `evidence` must cite the source and state the actual value) · `unverifiable` (cannot be grounded — `disposition` must record the user's call).
 - `evidence` must be **concrete ground truth**: a `file:line`, a `git show <sha>` hunk, or read-only CLI output. **Never** the spec, an audit, a checklist, or your own prior output.
 - `method` records **how** the claim was grounded (step 2's evidence standard): `static-read`, `measurement`, `exhaustive-check`, `cli-observation`, or `test-run`. Required for every `confirmed`/`contradicted` claim; it is what makes the evidence standard auditable (a measurable-threshold claim whose `method` is `static-read` is under-verified by construction — the judge flags it). Leave empty for `unverifiable`.
@@ -146,14 +174,14 @@ Finish only when **all** of these hold (the first four + the judge sign-off are 
 
 ## Handoff
 
-When the gate passes, report a **per-claim verdict table** — `claim | verdict | method | evidence (file:line / sha / CLI)` — plus a short discrepancy summary for every `contradicted` claim (expected vs actual). State plainly how many claims were confirmed vs contradicted vs unverifiable. When the target is a spec, render it as a compact **coverage matrix** keyed on `AC-id` — `AC-id | verdict | method | evidence | checklist-item` (the implementing Checklist task, from the spec's `AC-id` citations) — where an **empty cell is itself the finding**: an `AC-id` with no evidence is a forward gap, and one no Checklist item cites is a criterion nobody implemented. Keep the matrix *generated* from the ledger — never an author-maintained document. If the backward sweep ran, add a short **backward-coverage** section listing every unmapped substantive hunk with its proposed AC and triage (`intended` / `unintended` / `unsure`), or state "every change maps to an AC" when it found nothing (and note it if the sweep was skipped, with the reason). **Stop there — do not fix the discrepancies** unless the user asks; surfacing them is the deliverable (enumerate, then let the user decide). The `Stop` hook clears the ledger automatically once the gate passes.
+When the gate passes, report a **per-claim verdict table** — `claim | verdict | method | evidence (file:line / sha / CLI)` — plus a short discrepancy summary for every `contradicted` claim (expected vs actual). State plainly how many claims were confirmed vs contradicted vs unverifiable. When the target is a spec, render it as a compact **coverage matrix** keyed on `AC-id` — `AC-id | verdict | method | evidence | checklist-item` (the implementing Checklist task, from the spec's `AC-id` citations) — where an **empty cell is itself the finding**: an `AC-id` with no evidence is a forward gap, and one no Checklist item cites is a criterion nobody implemented. Keep the matrix *generated* from the ledger — never an author-maintained document. If the backward sweep ran, add a short **backward-coverage** section listing every unmapped substantive hunk with its proposed AC and triage (`intended` / `unintended` / `unsure`), or state "every change maps to an AC" when it found nothing (and note it if the sweep was skipped, with the reason). **If this was a drift run**, lead the report with a **Drift** line — counts of FRESH (carried) vs re-grounded vs **DRIFTED** — and list every DRIFTED criterion as `AC-id → baseline verdict → new verdict → evidence`, calling out any `confirmed → contradicted` **regression** first; if there was no baseline, say so plainly (a full verification ran). **Stop there — do not fix the discrepancies** unless the user asks; surfacing them is the deliverable (enumerate, then let the user decide). The `Stop` hook clears the ledger automatically once the gate passes.
 
 ## Guardrails
 
 - **Evidence is always real source.** Never cite the spec, an audit, a checklist, or your own earlier claim as proof — only the codebase, git, or live read-only state. Docs are what you check, not what you check against.
 - **Observe, never change — the tool grants are broader than the contract.** This skill holds `Bash` and `Write`, but its contract is strictly read-only:
   - **Bash:** only non-mutating commands — `git log/diff/show`, `aws … describe/list/get`, `gh api` GETs, `grep`, `cat`. **Never** run anything that writes, creates, deletes, applies, deploys, commits, pushes, or redirects (`>` / `>>`, `sed -i`, `rm`, `mv`, `terraform apply`, `aws … create/put/delete`, `git commit/push/checkout`).
-  - **Write:** the **only** legal target is the `/tmp` ledger. Never write or edit a repo file, the spec, or code.
+  - **Write:** the **only** legal target is the `/tmp` ledger. Never write or edit a repo file, the spec, or code. (The drift baseline — also in `/tmp`, never the repo — is written by the `Stop` hook, never by you; you only *read* it at run start.)
   - Treat any mutating action as out-of-contract even though the tool would permit it.
 - **Deterministic.** The same claim checked against the same source must yield the same verdict; if a re-check flips a verdict without the source having changed, that's a grounding error to resolve, not new information.
 - **Enumerate, don't assume.** A claim you didn't list is a claim you didn't verify.
