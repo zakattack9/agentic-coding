@@ -731,6 +731,206 @@ def set_repo_merge_method(repo: str, *, allow_squash_merge: bool = False) -> dic
 
 
 # --------------------------------------------------------------------------- #
+# PR open/update — NON-CLOSING reference only (AC-1, AC-16, AC-30)
+# --------------------------------------------------------------------------- #
+# `Closes/Fixes/Resolves` would auto-close the issue on merge; closure stays the
+# prod-time board-status job's responsibility. We carry ONLY `Relates to #N`.
+_CLOSING_KEYWORDS = ("close", "closes", "closed", "fix", "fixes", "fixed",
+                     "resolve", "resolves", "resolved")
+
+
+def _relates_body(issue_number, extra: str | None = None) -> str:
+    """Build a PR body with a NON-CLOSING `Relates to #N` reference.
+
+    Never emits a closing keyword (Closes/Fixes/Resolves) — auto-close is the
+    board-status job's job, not the PR's (AC-30).
+    """
+    rel = f"Relates to #{int(issue_number)}"
+    body = (str(extra).rstrip() + "\n\n" + rel) if extra else rel
+    # Defensive: a caller-supplied `extra` must never smuggle in a closer.
+    low = body.lower()
+    for kw in _CLOSING_KEYWORDS:
+        if re.search(rf"\b{kw}\b\s+#\d", low):
+            raise GhError(
+                f"PR body carries a closing keyword '{kw} #N'; only non-closing "
+                "'Relates to #N' is allowed (AC-30)",
+                code=2,
+            )
+    return body
+
+
+def _find_pr_for_branch(repo: str, head: str):
+    """Return the existing PR {number,url} for `head`, or None.
+
+    Uses `gh pr list --head <head> --json number,url` — a read, no mutation.
+    """
+    raw = RUN(["pr", "list", "--repo", repo, "--head", head,
+               "--state", "open", "--json", "number,url"])
+    prs = json.loads(raw) if raw.strip() else []
+    if isinstance(prs, list) and prs:
+        return {"number": prs[0].get("number"), "url": prs[0].get("url")}
+    return None
+
+
+def open_or_update_pr(repo: str, head: str, base: str, issue_number,
+                      *, title: str | None = None, body_extra: str | None = None,
+                      draft: bool = False) -> dict:
+    """Open an issue-linked PR, or EDIT the existing one for the branch (AC-1).
+
+    Body carries a NON-CLOSING `Relates to #N` (never Closes/Fixes/Resolves —
+    AC-30). Idempotent: if a PR already exists for `head` we `gh pr edit` it in
+    place rather than `gh pr create` (which would 422 on a duplicate). A no-diff
+    re-run is therefore a clean no-op, never a duplicate-PR error (AC-16).
+    Returns {"action": "created"|"updated", "number", "url"}.
+    """
+    body = _relates_body(issue_number, body_extra)
+    existing = _find_pr_for_branch(repo, head)
+    pr_title = title or f"{head}"
+    if existing:
+        num = existing["number"]
+        args = ["pr", "edit", str(num), "--repo", repo, "--body", body]
+        if title:
+            args += ["--title", title]
+        RUN(args)
+        return {"action": "updated", "number": num, "url": existing.get("url")}
+    args = ["pr", "create", "--repo", repo, "--head", head, "--base", base,
+            "--title", pr_title, "--body", body]
+    if draft:
+        args.append("--draft")
+    out = RUN(args)
+    # `gh pr create` prints the PR url on stdout.
+    url = (out or "").strip().splitlines()[-1] if (out or "").strip() else None
+    return {"action": "created", "number": None, "url": url}
+
+
+# --------------------------------------------------------------------------- #
+# PR aggregate check state (AC-2, AC-18) -> green / red / pending
+# --------------------------------------------------------------------------- #
+def pr_check_state(repo: str, pr_number) -> str:
+    """Read a PR's aggregate check state and return 'green'/'red'/'pending'.
+
+    Uses `gh pr checks <n> --json state` (one bucket per check). Any failing
+    check -> 'red'; any still-running/queued -> 'pending'; all complete and
+    passing -> 'green'. An empty check set is treated as 'green' (nothing to
+    gate on). Read-only — never mutates.
+    """
+    raw = RUN(["pr", "checks", str(pr_number), "--repo", repo, "--json", "state"])
+    rows = json.loads(raw) if raw.strip() else []
+    states = [str(r.get("state", "")).upper() for r in rows] if isinstance(rows, list) else []
+    fail = {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE"}
+    pend = {"PENDING", "QUEUED", "IN_PROGRESS", "WAITING", "REQUESTED", "EXPECTED"}
+    if any(s in fail for s in states):
+        return "red"
+    if any(s in pend for s in states):
+        return "pending"
+    return "green"
+
+
+# --------------------------------------------------------------------------- #
+# Non-squash merge (AC-19) — NEVER --squash; the guard hard-blocks it too.
+# --------------------------------------------------------------------------- #
+def merge_pr(repo: str, pr_number, method: str = "merge") -> dict:
+    """Merge a PR via `gh pr merge --merge`/`--rebase` only — NEVER `--squash`.
+
+    `method` must be 'merge' or 'rebase' (GhError code=2 otherwise). The caller
+    gates on green checks; this verb's invariant is simply that it never issues
+    `--squash` (no-squash is also enforced by hooks/guard.sh, AC-25).
+    """
+    m = str(method).lower()
+    if m not in ("merge", "rebase"):
+        raise GhError(
+            f"merge method must be 'merge' or 'rebase', never 'squash' (got {method!r})",
+            code=2,
+        )
+    RUN(["pr", "merge", str(pr_number), "--repo", repo, f"--{m}"])
+    return {"merged": True, "pr": pr_number, "method": m}
+
+
+# --------------------------------------------------------------------------- #
+# Milestone assign (AC-3, AC-12) — REST PATCH, idempotent (read current first)
+# --------------------------------------------------------------------------- #
+def set_milestone(repo: str, issue_number, milestone) -> dict:
+    """Assign a repo Milestone NUMBER to an issue via REST, idempotently (AC-3).
+
+    Reads the issue's current milestone first; if it already points at the same
+    milestone number, makes NO write (returns {"changed": False}). So a
+    re-assign to the same milestone is one effective write across two calls.
+    """
+    target = int(milestone)
+    current = rest("GET", f"/repos/{repo}/issues/{int(issue_number)}") or {}
+    cur_ms = current.get("milestone") or {}
+    cur_num = cur_ms.get("number")
+    if cur_num is not None and int(cur_num) == target:
+        return {"changed": False, "issue": int(issue_number), "milestone": target}
+    rest("PATCH", f"/repos/{repo}/issues/{int(issue_number)}", {"milestone": target})
+    return {"changed": True, "issue": int(issue_number), "milestone": target}
+
+
+# --------------------------------------------------------------------------- #
+# Board-item manual-rank reorder (AC-4, AC-14) — App-token write.
+# --------------------------------------------------------------------------- #
+_REORDER_ITEM = """
+mutation($project:ID!, $item:ID!, $after:ID){
+  updateProjectV2ItemPosition(input:{projectId:$project, itemId:$item, afterId:$after}){
+    items { totalCount }
+  }
+}
+"""
+
+_REORDER_ITEM_TOP = """
+mutation($project:ID!, $item:ID!){
+  updateProjectV2ItemPosition(input:{projectId:$project, itemId:$item}){
+    items { totalCount }
+  }
+}
+"""
+
+
+def reorder_item(project_id: str, item_id: str, after_item_id: str | None = None) -> dict:
+    """Reorder a board item's manual rank via updateProjectV2ItemPosition (AC-4).
+
+    `after_item_id=None` OMITS afterId entirely and moves the item to the TOP of
+    the manual order. App-token write (Projects v2, never GITHUB_TOKEN — AC-28).
+    """
+    if after_item_id is None:
+        data = graphql(_REORDER_ITEM_TOP, {"project": project_id, "item": item_id})
+    else:
+        data = graphql(_REORDER_ITEM,
+                       {"project": project_id, "item": item_id, "after": after_item_id})
+    return {"reordered": item_id, "after": after_item_id,
+            "result": data.get("updateProjectV2ItemPosition")}
+
+
+# --------------------------------------------------------------------------- #
+# Issue Assignee add/remove (AC-5) — idempotent.
+# --------------------------------------------------------------------------- #
+def _current_assignees(repo: str, issue_number) -> set:
+    issue = rest("GET", f"/repos/{repo}/issues/{int(issue_number)}") or {}
+    return {a.get("login") for a in (issue.get("assignees") or []) if a.get("login")}
+
+
+def set_assignee(repo: str, issue_number, login: str, remove: bool = False) -> dict:
+    """Add or remove an issue Assignee via `gh issue edit`, idempotently (AC-5).
+
+    Adding an already-present assignee — or removing an absent one — makes NO
+    write (returns {"changed": False}). Mirrors the lib's diff-before-mutate
+    idempotency style (AC-33).
+    """
+    present = login in _current_assignees(repo, issue_number)
+    if remove:
+        if not present:
+            return {"changed": False, "issue": int(issue_number), "login": login, "removed": True}
+        RUN(["issue", "edit", str(int(issue_number)), "--repo", repo,
+             "--remove-assignee", login])
+        return {"changed": True, "issue": int(issue_number), "login": login, "removed": True}
+    if present:
+        return {"changed": False, "issue": int(issue_number), "login": login, "removed": False}
+    RUN(["issue", "edit", str(int(issue_number)), "--repo", repo,
+         "--add-assignee", login])
+    return {"changed": True, "issue": int(issue_number), "login": login, "removed": False}
+
+
+# --------------------------------------------------------------------------- #
 # CLI — documented exit codes 0/2/3/1; prints no token/secret (AC-3)
 # --------------------------------------------------------------------------- #
 def _print_json(obj) -> None:
@@ -759,6 +959,38 @@ def _cmd_token(_args) -> int:
     return 0
 
 
+def _cmd_open_pr(args) -> int:
+    res = open_or_update_pr(args.repo, args.head, args.base, args.number,
+                            title=args.title, body_extra=args.body, draft=args.draft)
+    _print_json(res)
+    return 0
+
+
+def _cmd_pr_checks(args) -> int:
+    _print_json({"state": pr_check_state(args.repo, args.pr)})
+    return 0
+
+
+def _cmd_merge_pr(args) -> int:
+    _print_json(merge_pr(args.repo, args.pr, args.method))
+    return 0
+
+
+def _cmd_set_milestone(args) -> int:
+    _print_json(set_milestone(args.repo, args.number, args.milestone))
+    return 0
+
+
+def _cmd_reorder_item(args) -> int:
+    _print_json(reorder_item(args.project_id, args.item, args.after))
+    return 0
+
+
+def _cmd_set_assignee(args) -> int:
+    _print_json(set_assignee(args.repo, args.number, args.login, remove=args.remove))
+    return 0
+
+
 def build_parser():
     import argparse
 
@@ -775,6 +1007,47 @@ def build_parser():
 
     sp = sub.add_parser("token", help="mint an App installation token (redacted output)")
     sp.set_defaults(func=_cmd_token)
+
+    # -- write verbs (gated by engine.sh's --force rail) --------------------- #
+    sp = sub.add_parser("open-pr", help="open/update an issue-linked PR (non-closing)")
+    sp.add_argument("--repo", required=True, help="owner/repo")
+    sp.add_argument("--head", required=True, help="head branch")
+    sp.add_argument("--base", required=True, help="base branch")
+    sp.add_argument("--number", type=int, required=True, help="related issue number")
+    sp.add_argument("--title", default=None)
+    sp.add_argument("--body", default=None, help="extra body text (a Relates-to is appended)")
+    sp.add_argument("--draft", action="store_true")
+    sp.set_defaults(func=_cmd_open_pr)
+
+    sp = sub.add_parser("pr-checks", help="read a PR's aggregate check state (green/red/pending)")
+    sp.add_argument("--repo", required=True)
+    sp.add_argument("--pr", type=int, required=True)
+    sp.set_defaults(func=_cmd_pr_checks)
+
+    sp = sub.add_parser("merge-pr", help="non-squash merge a PR (--merge/--rebase only)")
+    sp.add_argument("--repo", required=True)
+    sp.add_argument("--pr", type=int, required=True)
+    sp.add_argument("--method", default="merge", choices=["merge", "rebase"])
+    sp.set_defaults(func=_cmd_merge_pr)
+
+    sp = sub.add_parser("set-milestone", help="assign a repo milestone number to an issue (idempotent)")
+    sp.add_argument("--repo", required=True)
+    sp.add_argument("--number", type=int, required=True, help="issue number")
+    sp.add_argument("--milestone", type=int, required=True, help="repo-scoped milestone number")
+    sp.set_defaults(func=_cmd_set_milestone)
+
+    sp = sub.add_parser("reorder-item", help="reorder a board item's manual rank (omit --after for top)")
+    sp.add_argument("--project-id", required=True, dest="project_id")
+    sp.add_argument("--item", required=True, help="board item id")
+    sp.add_argument("--after", default=None, help="item id to place after; omit for top")
+    sp.set_defaults(func=_cmd_reorder_item)
+
+    sp = sub.add_parser("set-assignee", help="add/remove an issue assignee (idempotent)")
+    sp.add_argument("--repo", required=True)
+    sp.add_argument("--number", type=int, required=True, help="issue number")
+    sp.add_argument("--login", required=True)
+    sp.add_argument("--remove", action="store_true")
+    sp.set_defaults(func=_cmd_set_assignee)
 
     return p
 

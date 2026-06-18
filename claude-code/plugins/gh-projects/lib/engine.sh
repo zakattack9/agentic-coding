@@ -9,7 +9,11 @@
 # installation token, never GITHUB_TOKEN (constraint #2).
 #
 # Usage:  engine.sh <gh.py-subcommand> [args...] [--force]
-# Verbs:  resolve | capabilities | token | <future write verbs>
+# Read verbs (run even in dry mode — gh.py is read-only/idempotent for these):
+#   resolve | capabilities | token
+# Write verbs (gated by --force via the "*)" branch below — they mutate GitHub):
+#   open-pr | pr-checks | merge-pr | set-milestone | reorder-item | set-assignee
+# Anything not in the read whitelist falls to "*)" and requires --force (AC-31).
 #
 # Exit:   0 ok · 2 usage · 3 not found · 1 unexpected (mirrors gh.py).
 set -euo pipefail
