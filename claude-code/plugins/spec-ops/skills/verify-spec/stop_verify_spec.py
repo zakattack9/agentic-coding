@@ -58,9 +58,10 @@ Readiness (all required) once the ledger is valid:
   4. The independent judge ran (`judge.ran`), returned `verdict: "complete"`, and
      reported no `missed` claims and no `weakEvidence`.
   `contradicted` claims are findings, not blockers — they do NOT hold the stop.
-  `backwardSweep` (R1 backward-coverage pass) is OPTIONAL and shape-validated when
-  present, but NEVER gates the stop — its `findings` are reports like `contradicted`
-  claims, and the judge (not this hook) attests the sweep actually ran.
+  `backwardSweep` (backward-coverage pass) and `specLinkageSweep` (spec-linkage hygiene
+  pass) are both OPTIONAL and shape-validated when present, but NEVER gate the stop —
+  their `findings` are reports like `contradicted` claims, and the judge (not this hook)
+  attests each sweep actually ran.
 
 Input:  JSON on stdin (hook payload; uses `session_id`).
 Output: nothing to allow the stop; {"decision":"block","reason":...} to force
@@ -129,6 +130,17 @@ SCHEMA_HINT = (
     '        "evidence": "git sha / file:line",\n'
     '        "disposition": "intended | unintended | unsure",\n'
     '        "proposedAC": "candidate AC text"\n'
+    '      }\n'
+    '    ]\n'
+    '  },\n'
+    '  "specLinkageSweep": {\n'
+    '    "ran": false,\n'
+    '    "findings": [\n'
+    '      {\n'
+    '        "file": "file:line of delivered text referencing the build spec",\n'
+    '        "patternType": "ac-id | build-phase | spec-ref | provenance | temporal",\n'
+    '        "snippet": "the offending text",\n'
+    '        "suggested": "the line with the linkage stripped (or empty)"\n'
     '      }\n'
     '    ]\n'
     '  }\n'
@@ -259,6 +271,33 @@ def validate_ledger(m):
                     for key in ("evidence", "disposition", "proposedAC"):
                         if key in f and not isinstance(f.get(key), str):
                             problems.append(f"backwardSweep.findings[{i}].{key} must be a string")
+
+    # specLinkageSweep: OPTIONAL, report-only (the spec-linkage hygiene pass — artifact
+    # text that references the build spec). Shape-validated when present so a malformed
+    # sweep self-corrects, but it NEVER gates the stop — its findings are reports, exactly
+    # like backwardSweep. Omitted entirely for non-spec targets.
+    linkage = m.get("specLinkageSweep")
+    if linkage is not None:
+        if not isinstance(linkage, dict):
+            problems.append(
+                "'specLinkageSweep' must be a JSON object {ran, findings} when present"
+            )
+        else:
+            if not isinstance(linkage.get("ran"), bool):
+                problems.append("'specLinkageSweep.ran' must be a JSON boolean (true/false)")
+            lfindings = linkage.get("findings")
+            if lfindings is not None and not isinstance(lfindings, list):
+                problems.append("'specLinkageSweep.findings' must be a JSON array")
+            elif isinstance(lfindings, list):
+                for i, f in enumerate(lfindings):
+                    if not isinstance(f, dict):
+                        problems.append(f"specLinkageSweep.findings[{i}] must be an object")
+                        continue
+                    if not isinstance(f.get("file"), str) or not f.get("file").strip():
+                        problems.append(f"specLinkageSweep.findings[{i}].file must be a non-empty string")
+                    for key in ("patternType", "snippet", "suggested"):
+                        if key in f and not isinstance(f.get(key), str):
+                            problems.append(f"specLinkageSweep.findings[{i}].{key} must be a string")
 
     return problems
 
