@@ -1,4 +1,0 @@
-{
-  "name": "pm-ops",
-  "description": "PM intake-to-implementation workflow by Zak Sakata that feeds spec-ops: consolidate-backlog turns an unstructured list of features/fixes into deduped, classified, sized candidate items; draft-spec scopes one candidate into a single-format spec at the right rigor (writes light specs inline, hands heavy ones to spec-ops:write-spec/refine-spec); route-task projects a spec onto a board via a pluggable, board-agnostic engine (GitHub engine ships first); promote-spec moves a verified spec from the central spec repo into the implementation repo and leaves a forwarding stub. Markdown-in-git is the source of truth; boards are a projection."
-}

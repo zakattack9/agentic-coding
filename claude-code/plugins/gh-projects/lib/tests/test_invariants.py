@@ -8,7 +8,7 @@ acceptance criterion that must hold ACROSS §1–§6:
   AC-27  Every Projects field write uses the App installation token; none use
          GITHUB_TOKEN.
   AC-29  Manifest carries only name+description (no version); root marketplace
-         pins gh-projects 0.2.0 and marks pm-ops deprecated.
+         pins gh-projects 0.2.1 and no longer lists pm-ops (deleted; tag pm-ops-archive).
   AC-30  No schema mutation re-PUTs a single-select option list or
          iterationConfiguration without a prior diff (diff-gated, ID-stable).
   AC-31  Status writes from the three layers are idempotent + monotonic — a
@@ -201,19 +201,18 @@ class AC29_Manifest(unittest.TestCase):
         plugins = {p["name"]: p for p in mk["plugins"]}
         self.assertIn("gh-projects", plugins, "gh-projects must be registered in marketplace.json")
         gp = plugins["gh-projects"]
-        self.assertEqual(gp["version"], "0.2.0")
+        self.assertEqual(gp["version"], "0.2.1")
         self.assertEqual(gp["source"], "./claude-code/plugins/gh-projects")
         self.assertTrue(gp.get("description"))
 
-    def test_marketplace_marks_pm_ops_deprecated(self):
+    def test_marketplace_no_longer_lists_pm_ops(self):
+        # pm-ops was deprecated then DELETED (superseded by gh-projects); it must
+        # no longer be registered in the marketplace. The code is recoverable from
+        # the `pm-ops-archive` git tag if ever needed.
         with open(MARKETPLACE, encoding="utf-8") as fh:
             mk = json.load(fh)
-        plugins = {p["name"]: p for p in mk["plugins"]}
-        self.assertIn("pm-ops", plugins)
-        self.assertTrue(
-            plugins["pm-ops"]["description"].startswith("DEPRECATED:"),
-            "pm-ops description must be prefixed 'DEPRECATED:'",
-        )
+        plugins = {p["name"] for p in mk["plugins"]}
+        self.assertNotIn("pm-ops", plugins, "pm-ops was deleted; it must not be in the marketplace")
 
 
 class AC31_MonotonicStatus(unittest.TestCase):
