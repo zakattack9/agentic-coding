@@ -1,7 +1,7 @@
 ---
 name: write-spec
-description: Write concise, scannable feature specs that contain everything needed to implement a change — and nothing more. Use this skill when the user asks to write or update a spec, PRD, feature specification, requirements doc, or wants to document what a feature should do. Also use it when the user describes a change they want to build and needs it written up or updated in a spec, even if they don't use the word "spec."
-argument-hint: [what to build] [@path/to/spec.md to create or update] [rigor: light|standard|full]
+description: The entrypoint to the spec workflow — turn an idea, even a rough one-liner, into a concise, scannable feature spec that contains everything needed to implement the change and nothing more. At full rigor it first runs a short discovery pass (eliciting and distilling requirements via questions) before drafting; refine-spec hardens the draft afterward. Use this skill when the user asks to write or update a spec, PRD, feature specification, or requirements doc, when they want to document what a feature should do, or when they describe a change they want to build — even a half-formed idea, and even if they don't use the word "spec."
+argument-hint: [what to build / a rough idea] [@path/to/spec.md — optional; can be named after drafting] [rigor: light|standard|full]
 model: opus
 effort: xhigh
 allowed-tools: Read, Grep, Glob, Edit, Write
@@ -17,17 +17,35 @@ allowed-tools: Read, Grep, Glob, Edit, Write
 |---|---|---|---|
 | **`light`** | a trivial, self-contained task | The `## Acceptance Criteria` table **only** (plus a one-line goal if it isn't obvious from the title). No TL;DR, Boundaries, body sections, or Checklist. A few lines total. | **Markers only.** Draft from what's given; flag a genuine unknown with one `[NEEDS CLARIFICATION: …]` and move on. Do **not** open an `AskUserQuestion` loop. |
 | **`standard`** | a routine, bounded feature | TL;DR (lead with any "breaks if missed") + the AC table (grouped only if ≥2 obvious clusters) + **Boundaries** + a *lean* body **only** for behavioral rules the AC don't already make obvious. | **Markers only**, as above. |
-| **`full`** | a complex change, or any infra / config-as-contract spec | The complete structure below — exhaustive AC, self-contained body, every relevant section. | **Interactive.** Use `AskUserQuestion` before guessing; better to ask one too many. Then hand the result to **`refine-spec`** to ground and harden. |
+| **`full`** | a complex change, or any infra / config-as-contract spec | The complete structure below — exhaustive AC, self-contained body, every relevant section. | **Interactive.** Run **[Discovery](#discovery--turn-a-bare-idea-into-requirements)** to elicit requirements from the idea, using `AskUserQuestion` before guessing — better to ask one too many. Then draft, and hand the result to **`refine-spec`** to ground and harden. |
 
 **Constant across all three:** the **Acceptance Criteria are enumerated exhaustively, never condensed** — "cut to the bone" is for *prose*, never for coverage. A `light` spec is *all* criteria and almost no prose; it still lists every one. And `light`/`standard` stay strictly **behavior-level — the implementer chooses the HOW**; only a `full` infra/config-as-contract spec pins implementation, because there the config *is* the contract.
 
 ## Inputs
 
-Ask the user what the change is and where to save the spec file. How you then handle ambiguity depends on the **rigor** (see [Rigor](#rigor--how-deep-to-go)): at **`full`**, clarify with `AskUserQuestion` before writing — don't guess at behavior; it is better to ask one too many questions than to produce an inaccurate spec. At **`light`/`standard`** (and whenever a caller is delegating in batch), do **not** open a question loop — draft from what's given and leave a `[NEEDS CLARIFICATION: …]` marker on any genuine unknown for later resolution.
+Start from whatever the user has — a rough idea, loose requirements, or a fully-formed change. You do **not** need a destination file to begin: at **`full`** rigor, run **[Discovery](#discovery--turn-a-bare-idea-into-requirements)** first and **name the spec file at the end**, once there's a draft worth saving (ask where to save it then, or propose a path the user confirms). Only take a save path up front when the user already gave one, or is updating an existing spec.
+
+How you then handle ambiguity depends on the **rigor** (see [Rigor](#rigor--how-deep-to-go)): at **`full`**, elicit and clarify with `AskUserQuestion` before writing — don't guess at behavior; it is better to ask one too many questions than to produce an inaccurate spec. At **`light`/`standard`** (and whenever a caller is delegating in batch), do **not** open a question loop — draft from what's given and leave a `[NEEDS CLARIFICATION: …]` marker on any genuine unknown for later resolution.
 
 **Don't assert ungrounded facts.** When the spec states a concrete detail — a file path, table or column name, route, or config key — confirm it cheaply against the codebase before writing it. If you can't confirm it cheaply, write it as an explicit open question or ask via `AskUserQuestion` rather than asserting a "currently X" claim that might be wrong. Keep this light: a quick check or a question, not a full verification pass — fact-checking the finished spec is `refine-spec`'s job.
 
 **If a detail truly can't be resolved** — not by a cheap check and not by asking — leave a single inline `[NEEDS CLARIFICATION: <what's unknown>]` marker rather than guessing. Prefer `AskUserQuestion` first **at `full`** rigor; at `light`/`standard` the marker *is* the primary tool (no question loop). `refine-spec` blocks on any that remain, so a marker can't survive into a finished `full` spec.
+
+## Discovery — turn a bare idea into requirements
+
+`write-spec` is the **entrypoint to the spec workflow**: it should be able to start from *nothing but an idea* and end with a structured draft. When the input is a fuzzy idea rather than settled requirements **and rigor is `full`**, run a short **discovery pass before drafting** — don't jump to the AC table off an under-specified ask.
+
+Discovery is **convergent**: diverge just enough to surface what matters, then converge on the requirements. It is a *product / requirements* conversation, not a technical one — you are deciding **what should be true**, never checking what the code currently does (that grounding is `refine-spec`'s job; do not do it here). Draw out, via `AskUserQuestion` (batch related questions; take as many rounds as it needs):
+
+- **The core goal** — the one outcome this must achieve, in the user's words.
+- **The must-have behaviors** — what a user / admin should be able to do, and what must always or never happen.
+- **The decisions only the user can make** — the genuine product forks (e.g. "notifications batch hourly vs. send immediately", "soft-delete vs. hard-delete"). Offer concrete options; don't silently pick for them.
+- **Scope boundaries** — what is explicitly *out*, and anything the implementer must not touch.
+- **The non-obvious edge cases** — the empty / limit / conflict / permission cases the happy path skips.
+
+Discovery may legitimately conclude that the idea **isn't ready to spec** (it's blocked on a decision only the user can make) or is **actually several specs** — surface that rather than forcing a draft. Otherwise, distill the answers into the AC-first draft below.
+
+The line that keeps this from overlapping `refine-spec`: write-spec asks **requirements** questions sourced from the *idea* ("should it batch or send immediately?"); `refine-spec` asks **grounding** questions sourced from the *codebase* ("there's no `users.email` column — did you mean `contact_email`?"). Different questions, different stage. At `light` / `standard` rigor (and any batch / delegated call) there is **no discovery loop** — draft from what's given and leave `[NEEDS CLARIFICATION]` markers.
 
 ## Writing Philosophy
 
