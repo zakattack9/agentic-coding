@@ -1,0 +1,14 @@
+{
+  "_comment": "Operational + release-category labels installed per-repo by scaffold-repo (idempotent: ensure-by-name, never delete). Type/Size/Tier/Priority are NOT labels here — they are Issue Type, Project fields, and an org Issue Field respectively (field-homes rule). These labels cover (a) deferred metered-AI opt-in gates (created disabled-until-Phase-2) and (b) the release-note categories release.yml groups by.",
+  "labels": [
+    {"name": "blocked", "color": "B60205", "description": "Has an open blocked-by dependency (mirrors the derived Blocked field for the issue list)."},
+    {"name": "needs-triage", "color": "FBCA04", "description": "Captured but not yet tiered/sized."},
+    {"name": "ready", "color": "0E8A16", "description": "AC-complete and gated by the lead."},
+    {"name": "good-first-issue", "color": "7057FF", "description": "Approachable starter task."},
+    {"name": "ac-review", "color": "5319E7", "description": "(Phase 2, deferred) Opt-in metered AI PR review vs AC; inert in Phase 1."},
+    {"name": "auto-implement", "color": "5319E7", "description": "(Phase 2, deferred) Opt-in metered AI auto-implementation; inert in Phase 1."},
+    {"name": "release:feature", "color": "1D76DB", "description": "Release-note category -> Features (mirrors Type=Feature for the changelog)."},
+    {"name": "release:fix", "color": "1D76DB", "description": "Release-note category -> Fixes (mirrors Type=Bug)."},
+    {"name": "release:other", "color": "1D76DB", "description": "Release-note category -> Other (mirrors Type=Infra/Chore)."}
+  ]
+}

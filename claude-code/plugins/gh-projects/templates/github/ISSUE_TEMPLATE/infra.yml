@@ -1,0 +1,56 @@
+name: Infra
+description: Infrastructure / config-as-contract change. T3 uses the infra-spec class.
+labels: ["needs-triage"]
+type: Infra
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Infra work is **config-as-contract**: the AC are observable end-states of
+        the live system/config, not implementation steps. A T3 infra item carries a
+        linked deep spec authored at `full` rigor (infra spec class).
+  - type: input
+    id: goal
+    attributes:
+      label: Goal (1 line)
+    validations:
+      required: true
+  - type: dropdown
+    id: size
+    attributes:
+      label: Size
+      options: ["S", "M", "L"]
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options: ["P0", "P1", "P2", "P3"]
+    validations:
+      required: true
+  - type: dropdown
+    id: tier
+    attributes:
+      label: Tier
+      options: ["T1", "T2", "T3"]
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: A markdown table, one row per atomic observable end-state of the live config.
+      value: |
+        | AC | Criterion |
+        |----|-----------|
+        | 1  |  |
+    validations:
+      required: true
+  - type: input
+    id: spec
+    attributes:
+      label: Spec link (T3 only)
+      placeholder: specs/<slug>.md
+    validations:
+      required: false

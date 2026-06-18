@@ -1,0 +1,96 @@
+name: board-status
+description: >-
+  Deploy-accurate GitHub Projects v2 Status reporter. Add ONE step in your
+  existing deploy job to report a deploy-accurate Status for the issues tied to
+  the deployed SHA — `On Staging` on staging success, `Done` + close + cut the
+  Release on prod success. SELF-CONTAINED: vendors its own GraphQL/resolution
+  logic (board_status.py) and imports NOTHING from the gh-projects plugin, so it
+  runs from `./.github/actions/board-status` in a repo WITHOUT the plugin
+  installed (AC-22). Deterministic and free — no AI, no metered model call.
+
+# ---------------------------------------------------------------------------
+# Status-target contract (load-bearing — keep greppable for the verifier):
+#
+#   * Staging success     -> Status = `On Staging`. The issue STAYS OPEN.
+#   * Prod success         -> Status = `Done`, the issue is CLOSED, the tag's
+#                             Release is published.
+#
+# This deploy-side `On Staging` is the SAME target as the native built-in
+# "PR merged -> set Status": that built-in is configured to `On Staging`
+# (NOT `Done`) and the item STAYS OPEN after merge (AC-20). The item is moved
+# to `Done` and CLOSED only here, at prod, never by `Closes #N` and never by
+# board-sync. Status writes are idempotent + MONOTONIC: a replayed/stale deploy
+# event never regresses an item to an earlier stage (AC-31).
+#
+# Token: every Projects v2 field write uses a GitHub App INSTALLATION token
+# (minted below from the App id + private-key secrets), NEVER GITHUB_TOKEN
+# (AC-27 / constraint #2).
+# ---------------------------------------------------------------------------
+
+inputs:
+  project:
+    description: Org Project number that holds the board.
+    required: true
+  status:
+    description: "Deploy stage that just succeeded: `staging` or `prod`."
+    required: true
+  repo:
+    description: "owner/name of this repo (defaults to the current repo)."
+    required: false
+    default: ${{ github.repository }}
+  sha:
+    description: Deployed commit SHA (used to resolve shipped issues via SHA->PRs->issues).
+    required: false
+    default: ${{ github.sha }}
+  issues:
+    description: Explicit issue refs (space/comma separated) — overrides SHA resolution.
+    required: false
+    default: ""
+  tag:
+    description: Release tag to publish on prod success (e.g. the deployed tag).
+    required: false
+    default: ${{ github.ref_name }}
+  app-id:
+    description: GitHub App id (org App with Projects + Issues + Contents write).
+    required: true
+  app-private-key:
+    description: GitHub App private key (PEM). NEVER a GITHUB_TOKEN.
+    required: true
+  app-installation-id:
+    description: Optional explicit App installation id (auto-resolved if omitted).
+    required: false
+    default: ""
+  project-owner:
+    description: Org login that OWNS the Project (defaults to the repo owner).
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    # 1) Mint a GitHub App INSTALLATION token (org-scoped, `project` scope).
+    #    This is the ONLY token that can write Projects v2 fields — GITHUB_TOKEN
+    #    cannot, and is never used for a Project write (AC-27 / constraint #2).
+    - id: app-token
+      uses: actions/create-github-app-token@v1
+      with:
+        app-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.app-private-key }}
+        owner: ${{ inputs.project-owner || github.repository_owner }}
+
+    # 2) Run the SELF-CONTAINED vendored resolver. No plugin install needed —
+    #    board_status.py lives beside this action and imports nothing external.
+    - id: report
+      shell: bash
+      env:
+        # Token enters via env, never argv, so it is never logged.
+        GH_APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        PROJECT_OWNER: ${{ inputs.project-owner || github.repository_owner }}
+      run: |
+        python3 "${{ github.action_path }}/board_status.py" \
+          --repo "${{ inputs.repo }}" \
+          --project "${{ inputs.project }}" \
+          --status "${{ inputs.status }}" \
+          --sha "${{ inputs.sha }}" \
+          --issues "${{ inputs.issues }}" \
+          --tag "${{ inputs.tag }}"

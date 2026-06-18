@@ -1,0 +1,20 @@
+# .github/release.yml — auto-generated release-notes categories. The Release is
+# the free stakeholder changelog, cut by board-status at prod deploy. Categories
+# map from Issue Type (mirrored as release:* labels for PRs that carry them):
+#   Feature -> Features · Bug -> Fixes · Infra/Chore -> Other.
+changelog:
+  categories:
+    - title: Features
+      labels:
+        - "release:feature"
+        - "Feature"
+    - title: Fixes
+      labels:
+        - "release:fix"
+        - "Bug"
+    - title: Other
+      labels:
+        - "release:other"
+        - "Infra"
+        - "Chore"
+        - "*"

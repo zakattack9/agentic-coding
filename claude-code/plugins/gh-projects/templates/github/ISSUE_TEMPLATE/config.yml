@@ -1,0 +1,10 @@
+# Issue-form chooser config. Blank issues are DISABLED so every issue enters the
+# board field-complete (Type/Size/Priority required) — the intake contract.
+blank_issues_enabled: false
+contact_links:
+  - name: Unstructured dump → intake
+    url: https://github.com
+    about: >-
+      Have a raw, unstructured idea? Don't open a blank issue. Run
+      gh-projects:intake-issues on the dump — it turns it into tiered,
+      AC-bearing issues with Type/Size/Tier/PM-ID set.

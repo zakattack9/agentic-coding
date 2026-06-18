@@ -1,0 +1,15 @@
+{
+  "_comment": "Golden-template Sprint (Iteration field) cadence for gh-projects. The Iteration field itself is created by hand on the golden-template Project (Phase 0) and replicated via copyProjectV2; this file is the DESIRED iteration set scaffold-repo diffs the COPY against. iterationConfiguration is REPLACE-ALL (constraint #3): scaffold matches by (title, startDate, duration) and SKIPS when the set is unchanged, NEVER blindly re-PUTting it (AC-9, AC-30). `anchor` seeds the first iteration when a fresh copy carries none; `count` lets scaffold project the cadence forward without mutating completed iterations.",
+  "field": "Sprint",
+  "cadence_days": 14,
+  "anchor": "2026-01-05",
+  "count": 6,
+  "iterations": [
+    {"title": "Sprint 1", "startDate": "2026-01-05", "duration": 14},
+    {"title": "Sprint 2", "startDate": "2026-01-19", "duration": 14},
+    {"title": "Sprint 3", "startDate": "2026-02-02", "duration": 14},
+    {"title": "Sprint 4", "startDate": "2026-02-16", "duration": 14},
+    {"title": "Sprint 5", "startDate": "2026-03-02", "duration": 14},
+    {"title": "Sprint 6", "startDate": "2026-03-16", "duration": 14}
+  ]
+}

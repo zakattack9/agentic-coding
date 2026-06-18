@@ -1,0 +1,212 @@
+{
+  "_comment": "Golden-template Project field schema (gh-projects, Phase 1). Hand-built once on the golden-template Project (Phase 0), then replicated to every scaffolded project via copyProjectV2. scaffold-repo uses this as the EXPECTED schema to diff the COPY against (AC-7) — it never re-PUTs an option list or iterationConfiguration without a prior diff (AC-30). Every signal single-select carries an option `description` documenting its derivation. Org Issue Fields (Priority/Start date/Target date) and Issue Types (Type) live OUTSIDE the project copy (see fields with home != project) and are ensured by scaffold against the org.",
+  "status_order": ["Backlog", "Ready", "In Progress", "In Review", "On Staging", "Done"],
+  "fields": [
+    {
+      "name": "Status",
+      "type": "single_select",
+      "home": "project",
+      "builtin": true,
+      "set_by": "automation+human",
+      "purpose": "Lifecycle column & automation key",
+      "options": [
+        {"name": "Backlog", "description": "Captured, not yet committed."},
+        {"name": "Ready", "description": "AC-complete and gated by the lead; pull from here."},
+        {"name": "In Progress", "description": "A linked branch has been pushed; WIP."},
+        {"name": "In Review", "description": "A non-draft PR is open against the issue."},
+        {"name": "On Staging", "description": "Merged to main and deployed to staging; item stays open."},
+        {"name": "Done", "description": "Deployed to prod; closed by board-status, Release cut."}
+      ]
+    },
+    {
+      "name": "Type",
+      "type": "issue_type",
+      "home": "issue_type",
+      "set_by": "intake",
+      "purpose": "Work taxonomy (org-wide Issue Type, not a project field)",
+      "options": [
+        {"name": "Feature", "description": "New user-facing capability."},
+        {"name": "Bug", "description": "A defect in existing behavior."},
+        {"name": "Chore", "description": "Maintenance / housekeeping with no user-facing change."},
+        {"name": "Infra", "description": "Infrastructure / config-as-contract change."},
+        {"name": "Epic", "description": "A parent that splits into per-AC-group sub-issues."}
+      ]
+    },
+    {
+      "name": "Size",
+      "type": "single_select",
+      "home": "project",
+      "set_by": "intake (suggest) + human",
+      "purpose": "S/M/L appetite (not points); suggested from AC-group count",
+      "options": [
+        {"name": "S", "description": "1 AC group; trivial appetite."},
+        {"name": "M", "description": "2-3 AC groups; standard appetite."},
+        {"name": "L", "description": "4+ AC groups; large appetite (recommends an Epic split)."}
+      ]
+    },
+    {
+      "name": "Tier",
+      "type": "single_select",
+      "home": "project",
+      "set_by": "intake",
+      "purpose": "Drives write-spec rigor (T1->light, T2->standard, T3->full+refine); T3 requires a linked deep spec",
+      "options": [
+        {"name": "T1", "description": "Trivial; light rigor; AC table only."},
+        {"name": "T2", "description": "Standard; standard rigor; TL;DR + AC + boundaries."},
+        {"name": "T3", "description": "Complex; full rigor + refine-spec; linked deep spec required."}
+      ]
+    },
+    {
+      "name": "Sprint",
+      "type": "iteration",
+      "home": "project",
+      "set_by": "plan-sprint",
+      "purpose": "2-week cadence; filter @current/@next/@previous",
+      "iterations_ref": "iterations.json"
+    },
+    {
+      "name": "Parent issue",
+      "type": "parent",
+      "home": "project",
+      "builtin": true,
+      "set_by": "intake (Epic-split)",
+      "purpose": "Epic grouping; feeds the sub-issue % rollup"
+    },
+    {
+      "name": "PM-ID",
+      "type": "text",
+      "home": "project",
+      "set_by": "intake",
+      "purpose": "Stable PM-#### threading spec->issue->PR"
+    },
+    {
+      "name": "Spec",
+      "type": "text",
+      "home": "project",
+      "set_by": "intake",
+      "purpose": "Link to T3 deep spec; empty for T1/T2"
+    },
+    {
+      "name": "Blocked",
+      "type": "single_select",
+      "home": "project",
+      "set_by": "auto (signals-sync from blocked-by DAG)",
+      "purpose": "yes/no flag-state derived from native dependencies, not hand-set",
+      "options": [
+        {"name": "no", "description": "No unresolved blocked-by dependency."},
+        {"name": "yes", "description": "At least one open blocked-by dependency (derived by lib/dag from native blocked-by edges)."}
+      ]
+    },
+    {
+      "name": "Priority",
+      "type": "single_select",
+      "home": "issue_field",
+      "set_by": "PM/lead",
+      "purpose": "P0-P3; orders Ready (org Issue Field, surfaced as a project column on private projects)",
+      "options": [
+        {"name": "P0", "description": "Drop everything."},
+        {"name": "P1", "description": "Next up."},
+        {"name": "P2", "description": "Soon."},
+        {"name": "P3", "description": "Eventually."}
+      ]
+    },
+    {
+      "name": "Start date",
+      "type": "date",
+      "home": "issue_field",
+      "set_by": "plan-sprint",
+      "purpose": "Roadmap bar start (org Issue Field)"
+    },
+    {
+      "name": "Target date",
+      "type": "date",
+      "home": "issue_field",
+      "set_by": "plan-sprint/lead",
+      "purpose": "Roadmap target / deadline; feeds Schedule health & Slippage (org Issue Field)"
+    },
+    {
+      "name": "Schedule health",
+      "type": "single_select",
+      "home": "project",
+      "set_by": "auto",
+      "purpose": "Rolled-up schedule status",
+      "options": [
+        {"name": "On track", "description": "Not past Target and not blocking a release."},
+        {"name": "At risk", "description": "Target within the warning window or a soft slip."},
+        {"name": "Blocked", "description": "An open blocked-by dependency holds it."},
+        {"name": "Overdue", "description": "Past Target date and still open."},
+        {"name": "Done", "description": "Shipped to prod."}
+      ]
+    },
+    {
+      "name": "Slippage",
+      "type": "single_select",
+      "home": "project",
+      "set_by": "auto",
+      "purpose": "Bucketed lateness past Target",
+      "options": [
+        {"name": "Not late", "description": "At or before Target date."},
+        {"name": "1-2d", "description": "1 to 2 days past Target."},
+        {"name": "3-5d", "description": "3 to 5 days past Target."},
+        {"name": "1+wk", "description": "6 to 13 days past Target."},
+        {"name": "2+wk", "description": "14 or more days past Target."}
+      ]
+    },
+    {
+      "name": "Slippage-days",
+      "type": "number",
+      "home": "project",
+      "set_by": "auto",
+      "purpose": "Days past Target (unlocks Insights sum/avg, numeric sort/range)"
+    },
+    {
+      "name": "Blast radius",
+      "type": "single_select",
+      "home": "project",
+      "set_by": "auto (lib/dag)",
+      "purpose": "How much this item blocks downstream",
+      "options": [
+        {"name": "None", "description": "Blocks nothing downstream."},
+        {"name": "Blocks 1", "description": "Blocks exactly one downstream item."},
+        {"name": "Blocks many", "description": "Blocks two or more downstream items."},
+        {"name": "Blocks release", "description": "On the critical path to a release milestone."}
+      ]
+    },
+    {
+      "name": "Blast-count",
+      "type": "number",
+      "home": "project",
+      "set_by": "auto (lib/dag)",
+      "purpose": "# downstream items blocked (Insights sum/sort)"
+    },
+    {
+      "name": "Impact level",
+      "type": "single_select",
+      "home": "project",
+      "set_by": "human",
+      "purpose": "Deliberate PM/lead impact call",
+      "options": [
+        {"name": "Low", "description": "Minor; little consequence if late."},
+        {"name": "Medium", "description": "Noticeable consequence if late."},
+        {"name": "High", "description": "Significant consequence if late."},
+        {"name": "Release blocker", "description": "A release cannot ship without it."}
+      ]
+    },
+    {
+      "name": "Decision needed",
+      "type": "single_select",
+      "home": "project",
+      "set_by": "human",
+      "purpose": "Deliberate PM/lead decision call",
+      "options": [
+        {"name": "No", "description": "No decision pending."},
+        {"name": "Move date", "description": "Push the Target date."},
+        {"name": "Reduce scope", "description": "Cut scope to hold the date."},
+        {"name": "Reassign", "description": "Move to another owner."},
+        {"name": "Split", "description": "Break into smaller items."},
+        {"name": "Unblock", "description": "Resolve a dependency."},
+        {"name": "Defer", "description": "Drop from the current plan."}
+      ]
+    }
+  ]
+}

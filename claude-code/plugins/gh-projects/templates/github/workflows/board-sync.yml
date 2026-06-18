@@ -1,0 +1,79 @@
+# board-sync — event-driven GitHub Projects v2 Status writer (Phase 1).
+#
+# We INVERT the trigger (constraint #1): a board column move fires an ORG-level
+# `projects_v2_item` webhook that CANNOT trigger a repo workflow, so there is NO
+# `on: projects_v2_item:` here. Instead we drive Status INTO the Project FROM
+# repo `push` / `pull_request` events via an App-token GraphQL write.
+#
+# SELF-CONTAINED: this workflow calls the VENDORED `board_sync.py` that sits
+# beside it under `.github/workflows/`. It imports NOTHING from the gh-projects
+# plugin — the consuming repo has no plugin installed.
+#
+# Status transitions written here (idempotent + MONOTONIC, AC-31):
+#   * push to an issue-linked branch        -> In Progress (AC-17)
+#   * pull_request opened/reopened (ready)  -> In Review   (AC-18)
+#   * pull_request opened/reopened (draft)  -> In Progress (draft honesty)
+#   * pull_request ready_for_review         -> In Review   (AC-18)
+#   * pull_request converted_to_draft       -> (held — monotonic, no regress)
+# The PR<->issue link is resolved LINKED-BRANCH-FIRST, branch-name fallback, and
+# NEVER from `Closes #N` (AC-19). Items are never CLOSED here (closed at prod by
+# board-status).
+#
+# Every Projects v2 field write uses a GitHub App INSTALLATION token minted from
+# the App id + private-key secrets — NEVER GITHUB_TOKEN (AC-27 / constraint #2).
+
+name: board-sync
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    types:
+      - opened
+      - ready_for_review
+      - converted_to_draft
+      - reopened
+
+# Read-only repo scope — Project writes go through the App token, not this one.
+permissions:
+  contents: read
+
+concurrency:
+  # Serialize per head-ref so a replayed/overlapping event can't race the
+  # monotonic Status write (the resolver still no-ops a stale event regardless).
+  group: board-sync-${{ github.event.pull_request.head.ref || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    # Skip pushes to the default branch (merges) — those advance via the native
+    # "PR merged -> On Staging" built-in + board-status, not this In-Progress
+    # writer, so a post-merge push never drags a deployed item backward.
+    if: github.ref != format('refs/heads/{0}', github.event.repository.default_branch)
+    steps:
+      - name: Check out (for the vendored board_sync.py)
+        uses: actions/checkout@v4
+
+      # Mint a GitHub App INSTALLATION token — the ONLY token that can write
+      # Projects v2 fields (GITHUB_TOKEN cannot, and is never used here).
+      - id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.PROJECTS_APP_ID }}
+          private-key: ${{ secrets.PROJECTS_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Sync board Status
+        env:
+          # Token enters via env, never argv, so it is never logged.
+          GH_APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          PROJECT_OWNER: ${{ github.repository_owner }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+          GITHUB_REF: ${{ github.ref }}
+        run: |
+          python3 "${{ github.workspace }}/.github/workflows/board_sync.py" \
+            --repo "${{ github.repository }}" \
+            --project "${{ vars.BOARD_PROJECT_NUMBER }}"

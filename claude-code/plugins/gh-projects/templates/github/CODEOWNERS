@@ -1,0 +1,17 @@
+# gh-projects governance paths. Installed per-repo by scaffold-repo. Replace
+# @org/pm-leads with the org's PM/lead team before (or at) scaffold time — these
+# paths are the contract surface that must not change without a review.
+#
+# Note: review enforcement is convention + guard.sh on our plan (server-side
+# rulesets that would HARD-require these reviews are GHEC/paid-only). CODEOWNERS
+# still routes review requests automatically.
+
+# Requirement specs — the co-owned AC contract.
+specs/**                  @org/pm-leads
+
+# Board automation + deploy bridge — changing these changes the lifecycle wiring.
+.github/workflows/**      @org/pm-leads
+.github/actions/board-status/**  @org/pm-leads
+
+# Project schema mirrored from the golden template — IDs must stay stable.
+project/*.json            @org/pm-leads

@@ -1,0 +1,67 @@
+name: Feature
+description: A new user-facing capability. Enters the board field-complete.
+labels: ["needs-triage"]
+type: Feature
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Every field below is part of the intake contract. Acceptance Criteria
+        must be **atomic, observable end-states** in a markdown table — prose-only
+        AC is refused `Ready`.
+  - type: input
+    id: goal
+    attributes:
+      label: Goal (1 line)
+      placeholder: One sentence — the outcome, not the task.
+    validations:
+      required: true
+  - type: dropdown
+    id: size
+    attributes:
+      label: Size
+      description: S/M/L appetite (suggested from the AC-group count). Not points.
+      options: ["S", "M", "L"]
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options: ["P0", "P1", "P2", "P3"]
+    validations:
+      required: true
+  - type: dropdown
+    id: tier
+    attributes:
+      label: Tier
+      description: T1 light · T2 standard · T3 full+refine (T3 needs a linked deep spec).
+      options: ["T1", "T2", "T3"]
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: >-
+        A markdown table, one row per atomic observable end-state. Split into
+        ordered named groups when there's more than one capability cluster.
+      value: |
+        | AC | Criterion |
+        |----|-----------|
+        | 1  |  |
+    validations:
+      required: true
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Boundaries (out of scope / do NOT touch)
+    validations:
+      required: false
+  - type: input
+    id: spec
+    attributes:
+      label: Spec link (T3 only)
+      placeholder: specs/<slug>.md
+    validations:
+      required: false
