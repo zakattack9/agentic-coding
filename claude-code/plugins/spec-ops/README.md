@@ -5,14 +5,18 @@ A four-skill spec workflow — **write → refine → launch → verify** — th
 ```mermaid
 flowchart LR
     W["write-spec<br/>idea → elicit → draft"] --> R["refine-spec<br/>harden + ground"]
-    R --> L["launch-spec<br/>compile /goal driver"]
-    L -->|emits driver| G(["/goal<br/>native implement"])
-    G --> V["verify-spec<br/>ground claims vs reality"]
-    V -. discrepancies → fix .-> G
-    V -. proposed AC → amend .-> R
+    R --> L["launch-spec<br/>compile driver · emit-only"]
+    L -->|default| G(["/goal"])
+    L -->|wide / deep| U(["ultracode<br/>workflow"])
+    L -->|repeated edit| B(["/batch"])
+    G -->|done-gate| V["verify-spec<br/>ground vs reality"]
+    U -->|final / per-phase stage| V
+    B -->|explicit run after| V
+    V -. "discrepancies → fix" .-> G
+    V -. "proposed AC → amend" .-> R
 ```
 
-`launch-spec` is **emit-only**: it compiles the driver and stops; the native `/goal` does the implementing, and the driver's done-gate runs `verify-spec` so completion is confirmed against real code, not the worker's say-so.
+`launch-spec` is **emit-only**: it compiles **one of three drivers** — `/goal` (default), `ultracode` (wide or deep work), or `/batch` (a repeated mechanical edit) — and stops; the implementer runs it. **Completion is always confirmed by `verify-spec` grounding every `AC-id` against real code** — baked into the `/goal` done-gate, the final (and per-phase) stage of an `ultracode` workflow, or an explicit run after a `/batch` — never the worker's say-so.
 
 ## Skills
 
@@ -48,6 +52,8 @@ flowchart LR
 | **`/batch`** | The **same mechanical edit repeated across ≥5 files** with no per-file decision. |
 
 When a step-up fires and the spec carries named **AC groups**, the emitted driver is **phased by group** in `needs §X` order — each phase front-loads only its own `AC-id`s and its exit gate is "these criteria verify clean" — so no single context must hold every criterion at once. A one-group or flat spec stays a single context.
+
+**Whichever driver is chosen, completion runs through `verify-spec`** — the `/goal` done-gate, the workflow's final / per-phase stage, or an explicit `verify-spec` run after a `/batch` — so "done" is always grounded against real code, never assumed. `/goal` self-gates; `ultracode` runs verify as its final (and per-phase) stage; a `/batch` is mechanical per-file, so its brief ends with a single whole-spec `verify-spec` run.
 
 ## Stop-hook enforcement
 

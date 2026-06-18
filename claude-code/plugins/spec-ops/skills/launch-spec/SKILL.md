@@ -26,12 +26,14 @@ Arguments: $ARGUMENTS
 
 Default to **`/goal`**. Step up only when a **structural** trigger below fires — evaluate them **top-down, first match wins**. The triggers are about *how the work is shaped*, never *how big it is*: a broad-but-shallow change (a mechanical tweak across many files, each edit self-contained) stays in `/goal` no matter how many files it spans, because nothing must be held across edits. Surface the result with `AskUserQuestion` (matched driver pre-selected) so the user can override.
 
-**1. `/batch`** — the spec is the **same mechanical edit repeated across ≥5 files** with no per-file decision (rename a symbol, bump a version string everywhere). Emit a `/batch` brief: the one edit + the file list (isolated agent + worktree per file).
+**1. `/batch`** — the spec is the **same mechanical edit repeated across ≥5 files** with no per-file decision (rename a symbol, bump a version string everywhere). Emit a `/batch` brief: the one edit + the file list (isolated agent + worktree per file). A `/batch` can't self-gate per file, so the brief ends with an explicit completion step — **after the batch lands, run `verify-spec` on the spec once; zero contradicted = done.**
 
 **2. `ultracode` (dynamic workflow)** — step up on any of these structural signals; each implies its shape:
   - **Independent workstreams** — the Checklist splits into **≥2 streams** with **disjoint file sets** and **no ordering** between them → a **parallel fan-out** with per-leaf boundaries ("touch ONLY these files") so concurrent agents can't collide.
   - **Carried interdependence** — implementing the change means threading a **shared, evolving contract** (a data model, protocol, or invariant) through **dependent steps that must stay mutually consistent**, so a fresh-but-uninformed session would break later work → a **`pipeline()`** of fresh-context stages that carry that contract forward in dependency order.
   - **Unbounded scope** — the affected set can't be enumerated up front ("every / all callers of `X` / across the codebase"), forcing search-then-edit over an open-ended surface → `ultracode` (parallel if the discovered sites turn out independent, else a pipeline).
+
+  Whatever its shape, the workflow's **final stage is `verify-spec`** (and, when phased, each phase's exit gate is `verify-spec` scoped to that phase) — it isn't done until verify returns zero contradicted, mirroring the `/goal` done-gate.
 
 **3. `/goal`** (default) — none of the above: one coherent change that decomposes into bounded, mostly-independent or shallowly-coupled edits, **regardless of file count**. The rest of this skill compiles it.
 
@@ -55,6 +57,8 @@ The parts:
 
 Write `tasks.md` beside the spec only when it adds decomposition the Checklist lacked. To bound a long run, the user can append a turn/time guard to the condition (e.g. `or stop after N turns`); by default it runs until the done-gate holds. Show the driver prompt in chat for the user to run; **do not run it**.
 
+**The done-gate is the completion contract for *every* driver, not just `/goal`.** `verify-spec` grounds every `AC-id` and returns zero contradicted — wired as the `/goal` condition above, the final (and per-phase) stage of an `ultracode` workflow, or an explicit `verify-spec` run after a `/batch`. The mechanism differs by driver; the contract is identical, so "done" is always grounded against real code, never assumed.
+
 ## Context bounding — phase by AC group only when escalated
 
 **Default: one context holds every `AC-1..N` — no phasing.** This is the common case; emit a single driver gated on all acceptance criteria at once.
@@ -69,7 +73,7 @@ Step up to a **phased driver** only when the structural triggers above already e
 
 ## Handoff
 
-Emit the driver, tell the user how to run it (paste into a fresh `/goal` session — pair with **auto mode** so each goal turn runs unattended), and **stop**. Then the native flow continues: `/goal` implements → `verify-spec` grounds every claim against HEAD → zero contradicted claims = done.
+Emit the driver, tell the user how to run it (for `/goal`: paste into a fresh `/goal` session — pair with **auto mode** so each goal turn runs unattended), and **stop**. Then the flow continues — the worker implements and **completion is confirmed by `verify-spec` grounding every claim against HEAD (zero contradicted = done)**, whether that's baked into the `/goal` condition, the final stage of the `ultracode` workflow, or an explicit `verify-spec` run after the `/batch`. Never treat the work as done without that grounded check.
 
 **Copy the driver to the clipboard** so the handoff is a single ⌘V. After showing the prompt in chat, pipe the *exact same text* to the system clipboard via a portable wrapper, then confirm. Copying is not running — it stays emit-only. Use a quoted heredoc so the driver is never written to disk and no escaping is needed (`$`, backticks, and quotes pass through literally). Pick the first clipboard tool that exists and fall back to chat-only if none do:
 
@@ -91,5 +95,5 @@ If the copy succeeds, print `📋 Copied to clipboard — open a fresh session a
 - **`Bash` is for the clipboard copy only.** The single thing this skill may shell out for is piping the driver to a clipboard tool (see Handoff). Never use `Bash` to run the driver, invoke `/goal`, execute the spec, or touch git/the project — that would break emit-only.
 - **Write only `tasks.md`.** The single file this skill may write is a `tasks.md` beside the spec (and only when the Checklist lacks ordering). Show the driver prompt in chat — never write it to disk; never edit the spec or code.
 - **Don't re-implement `/goal`.** This skill compiles the spec into `/goal`'s input; `/goal` does the work.
-- **The done-condition is `verify-spec`, by composition.** Wire it into the emitted prompt; never restate or rebuild its logic here.
+- **The done-condition is `verify-spec`, by composition — for *every* driver.** Wire it into whatever you emit: the `/goal` condition, the `ultracode` workflow's final / per-phase stage, or an explicit `verify-spec` follow-up in the `/batch` brief. Never restate or rebuild its logic here, and never emit a driver whose completion isn't grounded by `verify-spec`.
 - **Boundaries are load-bearing.** If the spec lacks them, flag it — an unbounded `/goal` run is where drift happens.
