@@ -138,7 +138,7 @@ SCHEMA_HINT = (
     '    "findings": [\n'
     '      {\n'
     '        "file": "file:line of delivered text referencing the build spec",\n'
-    '        "patternType": "ac-id | build-phase | spec-ref | provenance | temporal",\n'
+    '        "patternType": "ac-id | build-phase | spec-ref | provenance | temporal | identifier | background",\n'
     '        "snippet": "the offending text",\n'
     '        "suggested": "the line with the linkage stripped (or empty)"\n'
     '      }\n'

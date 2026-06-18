@@ -32,6 +32,19 @@ KEEPs the guards protect (never flagged):
   - a setup runbook's own `Phase 0.x` section structure (GOLDEN-TEMPLATE-SETUP / README);
   - the live regression-guard assertion that a deleted predecessor stays out of a manifest.
 
+Scope & limits — this is the deterministic *first* pass, tuned for precision (no false
+positives) over recall. It finds the greppable patterns above; it deliberately does NOT
+judge two classes that need reading comprehension — verify-spec's hygiene sweep covers
+those as a judgment pass:
+  - identifier: a function / variable / class / test *named after* the spec, a build
+    phase, or a predecessor rather than after what it does. Only the obvious `AC<digits>_`
+    and `Phase<digit>` forms are caught here; an arbitrary one (`pm0002_fields`,
+    `legacy_dispatch`) is project-specific and not greppable in general.
+  - background: a comment/docstring carrying inert historical context (what the code used
+    to be, alternatives considered and rejected) as opposed to the load-bearing rationale
+    that should stay — a distinction only judgment can draw.
+So a clean exit means "no greppable linkage", not "no leakage" — pair it with the sweep.
+
 Output (stdout):
   --json : {"findings": [{file,line,patternType,severity,snippet,autostrip,suggested}],
             "counts": {...}, "scanned": N}
