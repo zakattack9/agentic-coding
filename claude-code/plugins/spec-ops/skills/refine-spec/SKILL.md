@@ -62,7 +62,7 @@ A **`Stop` hook blocks you from ending your turn** until the spec is genuinely r
 - Set each `gate` flag to `true` only when that dimension genuinely holds. The five flags map 1:1 to the **Readiness gate** below.
 - The hook also scans the spec for leftover `TODO` / `TBD` / `FIXME` / `???` / "to be decided" / "open question" / `[NEEDS CLARIFICATION: …]` — those block the stop too, so don't leave them in the spec.
 
-When every flag is `true`, every question is `resolved`, and the spec is clean, the hook removes the ledger and lets you stop. **If the user redirects to unrelated work, delete the ledger file and stop** instead of continuing to refine.
+When every flag is `true`, every question is `resolved`, the spec is clean, **and the ready spec is committed** (the hook enforces the commit — scoped to the spec file — see [Handoff](#handoff)), the hook removes the ledger and lets you stop. **If the user redirects to unrelated work, delete the ledger file and stop** instead of continuing to refine.
 
 ### 1. Verify — ground every claim against reality
 
@@ -127,7 +127,13 @@ Finish only when **all** of these hold. Report the gate's status at the end of e
 
 ## Handoff
 
-When the gate passes, give a short summary: what you corrected, what you cut, and which open questions you resolved (with the user's answers). State plainly that the spec is ready to implement. The `Stop` hook clears the ledger automatically once the gate passes. **Stop there — do not begin implementation.** To build it, hand the ready spec to **`launch-spec`**, which compiles it into a `/goal` driver; run that, then gate with **`verify-spec`**.
+When the gate passes, give a short summary: what you corrected, what you cut, and which open questions you resolved (with the user's answers). State plainly that the spec is ready to implement. **Then commit the ready spec** — scoped to that one file:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/spec_git.py" commit <abs-spec-path> "docs(spec): {spec name} ready for implementation"
+```
+
+The helper commits **only the spec file** (never `git add -A`, never other staged changes, never a push) and no-ops if it isn't a git repo. The **`Stop` hook enforces this**: while the spec file has uncommitted changes in a git repo it will not let the turn end — so commit *after* your final edit. The hook clears the ledger and releases the stop once the gate passes **and** the spec is committed. **Stop there — do not begin implementation.** To build it, hand the ready spec to **`launch-spec`**, which compiles it into a `/goal` driver; run that, then gate with **`verify-spec`**.
 
 ## Guardrails
 

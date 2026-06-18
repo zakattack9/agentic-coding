@@ -32,6 +32,9 @@ Readiness (all required) once the ledger is valid:
   1. Every gate flag is true        (agent attestation per dimension)
   2. Every open question is resolved (agent ledger)
   3. The spec file has no leftover not-finalized markers (mechanical scan)
+  4. The ready spec is committed     (scoped to the spec file via spec_git.py;
+                                      fail-OPEN if it isn't a git repo / git errors,
+                                      so an unenforceable commit never traps a user)
 
 Input:  JSON on stdin (hook payload; uses `session_id`).
 Output: nothing to allow the stop; {"decision":"block","reason":...} to force
@@ -43,6 +46,16 @@ import os
 import re
 import sys
 import time
+from pathlib import Path
+
+# The spec-commit helper lives in the plugin's shared scripts/ dir. The Stop hook
+# enforces the READY spec is committed (scoped to the spec file) before releasing
+# the stop; the import is guarded so a missing helper never disables the gate.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
+try:
+    import spec_git
+except Exception:  # noqa: BLE001 — a missing helper must never disable the gate
+    spec_git = None
 
 # Ledger is considered abandoned/stuck if not rewritten within this window.
 # Long enough for a heavy pass (parallel verification subagents + user Q&A),
@@ -157,6 +170,20 @@ def validate_ledger(m):
     return problems
 
 
+def commit_pending(spec_path: str) -> bool:
+    """True if the ready spec still has uncommitted changes in a git repo.
+    Fail-OPEN: a missing helper, a non-repo path, or any git error returns False,
+    so an unenforceable commit never traps the user (unlike the readiness gate,
+    which fails SAFE). The spec is committed via the visible helper in the skill's
+    Handoff; this hook only *guarantees it happened*."""
+    if spec_git is None:
+        return False
+    try:
+        return bool(spec_git.spec_needs_commit(spec_path))
+    except Exception:  # noqa: BLE001 — never trap a user over a git hiccup
+        return False
+
+
 def evaluate(marker_path: str, marker: dict):
     """Validated-ledger path: enforce readiness or block with specifics."""
     problems = validate_ledger(marker)
@@ -205,8 +232,23 @@ def evaluate(marker_path: str, marker: dict):
             + "\n  ".join(hits)
         )
 
-    # Ready: tear down the ledger and let Claude stop.
+    # Ready on the verification gate — but also require the ready spec be
+    # committed (scoped to the spec file) before releasing the stop. The model
+    # commits via the helper in Handoff; here we only enforce it happened. Keep
+    # the ledger if it hasn't, so the loop continues for one more (commit) step.
     if not failures:
+        if commit_pending(spec_path):
+            block(
+                "refine-spec: the spec is implementation-ready but not yet committed. "
+                "Commit it — scoped to the spec file only — then stop:\n\n"
+                '  python3 "${CLAUDE_PLUGIN_ROOT}/scripts/spec_git.py" commit '
+                + spec_path
+                + ' "docs(spec): ready for implementation"\n\n'
+                "This commits ONLY the spec file — never `git add -A`, never other staged "
+                "changes, never a push. If the user redirected to unrelated work, delete the "
+                "ledger and stop instead."
+            )
+            return
         remove(marker_path)
         allow()
         return

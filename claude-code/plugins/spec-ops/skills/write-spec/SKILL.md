@@ -4,7 +4,7 @@ description: The entrypoint to the spec workflow — turn an idea, even a rough 
 argument-hint: [what to build / a rough idea] [@path/to/spec.md — optional; can be named after drafting] [rigor: light|standard|full]
 model: opus
 effort: xhigh
-allowed-tools: Read, Grep, Glob, Edit, Write
+allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 
 # Write Spec
@@ -172,3 +172,15 @@ The skeleton below is the **`full`**-rigor shape; `light` is the Acceptance Crit
 - [ ] {the area's work in a few words} — AC-1, AC-3, AC-8
 - [ ] {…} — AC-5
 ```
+
+## Commit the draft
+
+Once the spec is written **to a file**, commit it — scoped to that one file — so the draft is captured in git:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/spec_git.py" commit <abs-spec-path> "docs(spec): draft {spec name}"
+```
+
+The helper stages and commits **only the spec file** — never `git add -A`, never other staged changes, never a push — and no-ops cleanly if the path isn't in a git repo or hasn't changed. Use a conventional message naming the spec.
+
+**Skip the commit when there is no spec file** — when a caller delegates in batch (e.g. authoring an issue *body* inline, or `light` rigor with no destination file), you produced text, not a file the user owns; commit nothing. Only ever commit the spec file itself, and never run any other git mutation.
