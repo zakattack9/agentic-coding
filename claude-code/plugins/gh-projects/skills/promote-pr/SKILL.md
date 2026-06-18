@@ -25,32 +25,32 @@ checked-in verb in `${CLAUDE_PLUGIN_ROOT}/lib/gh.py`, dispatched through
 no decision logic in this prose; orchestrate the verbs and render their output.
 
 Let `ENGINE=${CLAUDE_PLUGIN_ROOT}/lib/engine.sh`. The `PreToolUse` guard above
-(`hooks/guard.sh`) is active **only while this skill runs** (AC-25): it
+(`hooks/guard.sh`) is active **only while this skill runs**: it
 hard-blocks any `--squash` and any prod deploy/release without provably-green
 checks, and fails open on everything else. Never work around it.
 
 ## Hard rails (the engine + guard enforce these — never work around them)
 
 - **Dry-by-default.** Without `--force`, the engine prints the intended write
-  command and mutates **nothing** — PR, Status, and merge all stay previews
-  (AC-20). Only `--force` after the user confirms.
+  command and mutates **nothing** — PR, Status, and merge all stay previews.
+  Only `--force` after the user confirms.
 - **Non-closing PR link only.** The PR body carries `Relates to #N` — **never**
   `Closes/Fixes/Resolves` (auto-close stays the prod-time `board-status` job's
-  job, AC-30). The `open_or_update_pr` verb rejects a smuggled-in closer (exit 2).
+  job). The `open_or_update_pr` verb rejects a smuggled-in closer (exit 2).
 - **Status is monotonic and Status-only.** This skill touches **only** the Status
   field and only forward along `Backlog < Ready < In Progress < In Review <
   On Staging < Done` (`advance_status`); it never sets intake fields (route-issue)
-  or scheduling fields (plan-sprint), and never regresses Status (AC-17).
+  or scheduling fields (plan-sprint), and never regresses Status.
 - **No merge while checks are red/pending.** The merge step is **withheld** until
-  `pr_check_state` reads `green`, with the reason stated (AC-18).
+  `pr_check_state` reads `green`, with the reason stated.
 - **Non-squash merge only.** Merge is `--merge` or `--rebase` (`merge_pr`), never
-  `--squash` (AC-19) — and the guard hard-blocks `--squash` even if attempted.
+  `--squash` — and the guard hard-blocks `--squash` even if attempted.
 - **App installation token only.** Every Projects v2 (Status) write uses the
   GitHub App installation token (`GH_APP_TOKEN`, or `APP_ID`+`APP_PRIVATE_KEY`),
-  **never** `GITHUB_TOKEN` (AC-28). The token is never printed.
+  **never** `GITHUB_TOKEN`. The token is never printed.
 - **Idempotent.** A no-diff re-run is a clean no-op: an existing PR is edited in
   place (never a duplicate-PR 422), Status past the target is not rewritten, an
-  already-merged PR is not re-merged (AC-33).
+  already-merged PR is not re-merged.
 
 ## 1. Gather inputs
 
@@ -88,13 +88,13 @@ preview:
 Show the user the full preview verbatim: the PR action (`created`/`updated`) +
 its `Relates to #N` body, the `green`/`red`/`pending` check verdict, the Status
 target, and the merge intent. If checks are **not green**, state plainly that the
-merge step is **withheld** and why (AC-18) — do not offer merge.
+merge step is **withheld** and why — do not offer merge.
 
 ## 3. Confirm, then apply
 
 Use `AskUserQuestion` to confirm (this mutates the repo + board). Run each verb
 **without `--force` first** (dry preview), then re-run the **identical command with
-`--force` appended** to execute. A no-diff re-run is a clean no-op (AC-33).
+`--force` appended** to execute. A no-diff re-run is a clean no-op.
 
 **(a) Open/update the non-closing PR** (`open-pr` — edits in place if a PR for the
 branch already exists, never a duplicate-PR 422):
@@ -106,8 +106,8 @@ bash "$ENGINE" open-pr --repo <owner/name> --head <linked-branch> \
 
 **(b) Advance board Status monotonically** to the PR-lifecycle target
 (`advance-status` — `advance_status` writes only a forward move; an item already
-at/past the target is a no-op, no write — AC-17). Use the target from the §2
-lifecycle table — `In Review` on a ready PR; hold `In Progress` while draft:
+at/past the target is a no-op, no write). Use the target from the lifecycle
+table above — `In Review` on a ready PR; hold `In Progress` while draft:
 
 ```bash
 # ready (non-draft) PR -> In Review
@@ -148,11 +148,11 @@ in place, no Status rewrite, no re-merge).
 - Never call `gh` to mutate the PR/board directly for a Project write — go through
   `engine.sh` so the `--force` rail and App-token path hold. (`gh pr checks` is a
   read; the engine runs it even in dry mode.)
-- **Non-closing link only** — `Relates to #N`, never Closes/Fixes/Resolves
-  (AC-30). Closure stays the prod-time `board-status` job.
+- **Non-closing link only** — `Relates to #N`, never Closes/Fixes/Resolves.
+  Closure stays the prod-time `board-status` job.
 - **Status only, monotonic** — never set intake/scheduling fields, never regress
-  Status (AC-17). Intake fields are route-issue's; scheduling is plan-sprint's.
-- **No merge unless green** (AC-18); **never `--squash`** (AC-19) — the guard
+  Status. Intake fields are route-issue's; scheduling is plan-sprint's.
+- **No merge unless green**; **never `--squash`** — the guard
   enforces both.
 - Never print the App token; the engine scrubs secrets from all output.
 - Exit codes: `0` ok · `2` usage / no App token · `3` PR or project not found ·

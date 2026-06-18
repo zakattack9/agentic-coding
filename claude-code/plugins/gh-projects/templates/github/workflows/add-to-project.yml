@@ -1,5 +1,5 @@
 # add-to-project — auto-add newly-opened issues / PRs in this repo to the org
-# board (Phase 1). Installed per-repo by `scaffold-repo` (AC-22).
+# board. Installed per-repo by `scaffold-repo`.
 #
 # Why this instead of GitHub's built-in "Auto-add" workflow: the built-in is
 # UI-only and has NO API to create it — so scaffold installs this first-party
@@ -11,11 +11,11 @@
 # Boundaries enforced HERE (break the system if missed):
 #   * Every Projects v2 write uses a GitHub App INSTALLATION token, passed to the
 #     add-to-project action as `github-token` — NEVER GITHUB_TOKEN (which cannot
-#     write org Projects v2; AC-28 / constraint #2). The job's default
+#     write org Projects v2; constraint #2). The job's default
 #     GITHUB_TOKEN is read-only and is never used for the project write.
-#   * DETERMINISTIC & FREE — there is NO metered-AI/model step here (AC-27).
+#   * DETERMINISTIC & FREE — there is NO metered-AI/model step here.
 #   * Idempotent: actions/add-to-project no-ops an item already on the board, so
-#     a replayed `opened` event never duplicates the card (AC-33).
+#     a replayed `opened` event never duplicates the card.
 #
 # Required org/repo config:
 #   vars.GH_PROJECT_OWNER  — the org login that owns the board Project
@@ -55,7 +55,7 @@ jobs:
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
           owner: ${{ vars.GH_PROJECT_OWNER }}
 
-      # Auto-add the opened issue / PR to the org board. SHA-PINNED (AC-22). The
+      # Auto-add the opened issue / PR to the org board. SHA-PINNED. The
       # project write authenticates with the App token via `github-token`, never
       # the default GITHUB_TOKEN.
       - name: Add to org board

@@ -27,7 +27,7 @@ observable end-state true.)
 ## Staging
 
 - Staging URL: <!-- where this was exercised after the staging deploy -->
-- [ ] Exercised the change on staging (AC-in-staging) before promoting to prod.
+- [ ] Exercised the change on staging before promoting to prod.
 
 ## Checklist
 

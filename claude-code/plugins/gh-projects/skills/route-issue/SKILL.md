@@ -29,25 +29,25 @@ even in dry mode; write verbs mutate nothing without `--force`.
 ## Hard rails (the engine enforces these — never work around them)
 
 - **Dry-by-default.** Without `--force`, the engine previews the projection +
-  branch plan and mutates **nothing** (AC-11). Only `--force` after the user
+  branch plan and mutates **nothing**. Only `--force` after the user
   confirms.
 - **App installation token only.** Every Projects v2 write uses the GitHub App
   installation token (`GH_APP_TOKEN`, or `APP_ID`+`APP_PRIVATE_KEY`), **never**
-  `GITHUB_TOKEN` — it cannot write org Projects v2 (AC-28). The token is never
+  `GITHUB_TOKEN` — it cannot write org Projects v2. The token is never
   printed.
 - **Field-home split.** route-issue sets **only** the intake-time fields —
   `Type / Size / Tier / PM-ID / Spec / Priority / Status`. It does **not** touch
   `Sprint / Milestone / Start / Target` (that is `plan-sprint`).
 - **Monotonic Status.** Status advances only along
   `Backlog < Ready < In Progress < In Review < On Staging < Done`; a re-route
-  never regresses an item already at/past the target (AC-10).
+  never regresses an item already at/past the target.
 - **Non-closing links only.** route-issue never writes `Closes/Fixes/Resolves`
-  — closure stays the prod-time `board-status` job (AC-30).
+  — closure stays the prod-time `board-status` job.
 - **Idempotent.** A re-run is a clean no-op: the existing board item is reused
   (same item id), the existing linked branch is detected and skipped (exit 0),
-  an already-set field/assignee is left alone — never a 409/422 (AC-33). The
+  an already-set field/assignee is left alone — never a 409/422. The
   guard (`hooks/guard.sh`, scoped to this skill) hard-blocks a `--squash` merge
-  and a prod deploy without provably-green checks (AC-25).
+  and a prod deploy without provably-green checks.
 
 ## 1. Gather inputs
 
@@ -70,16 +70,16 @@ This caches the project + every field/option id route-issue will write to.
 Preview the **full projection + branch plan** without `--force`. Show the user:
 
 - the **board item** the issue projects to (reusing the existing item if the
-  issue is already on the board — same item id, AC-8),
+  issue is already on the board — same item id),
 - the **intake-time field** values to set — `Type / Size / Tier / PM-ID / Spec /
-  Priority / Status` — each read back identical by the engine (AC-8),
+  Priority / Status` — each read back identical by the engine,
 - the **Status** transition, computed monotonically (no write if the item is
-  already at/past the target — AC-10),
+  already at/past the target),
 - the **linked branch** plan — native `gh issue develop` when the installed `gh`
   supports it, else the `createLinkedBranch` GraphQL fallback (probed via
   `bash "$ENGINE" capabilities`); a re-run on an existing linked branch is a
-  no-op (AC-9),
-- the optional **self-assign** when `--assignee` is given (AC-8).
+  no-op,
+- the optional **self-assign** when `--assignee` is given.
 
 Every write verb run without `--force` prints its resolved command to stderr and
 mutates nothing. Show the user this plan verbatim.
@@ -89,10 +89,10 @@ mutates nothing. Show the user this plan verbatim.
 Use `AskUserQuestion` to confirm (this mutates the board + repo). Every step
 below is a concrete engine verb: run it **without `--force` first** (dry preview),
 then re-run the **identical command with `--force` appended** to execute. A
-re-run with the same inputs is a clean no-op (AC-33).
+re-run with the same inputs is a clean no-op.
 
 **(a) Project the issue onto the board** (`add-item` — a re-add returns the same
-item id, AC-8):
+item id):
 
 ```bash
 bash "$ENGINE" add-item --owner <org> --number <project#> --repo owner/name --issue <n> --force
@@ -115,7 +115,7 @@ bash "$ENGINE" write-field --owner <org> --number <project#> --repo owner/name -
 
 **(c) Advance Status monotonically** (`advance-status` — reads the current Status
 and writes only a forward move; an item already at/past the target is a no-op, no
-write — AC-10):
+write):
 
 ```bash
 bash "$ENGINE" advance-status --owner <org> --number <project#> --repo owner/name --issue <n> --to "<Status>" --force
@@ -123,14 +123,14 @@ bash "$ENGINE" advance-status --owner <org> --number <project#> --repo owner/nam
 
 **(d) Create the authoritative linked branch** (`create-linked-branch` — native
 `gh issue develop` when supported, else GraphQL; an existing linked branch is
-detected and is a no-op, exit 0 — AC-9). `--name` is optional:
+detected and is a no-op, exit 0). `--name` is optional:
 
 ```bash
 bash "$ENGINE" create-linked-branch --repo owner/name --issue <n> [--name <branch>] --force
 ```
 
 **(e) Self-assign the actor** (optional, only when `--assignee` was given —
-`set-assignee`; adding an already-present assignee is a no-op, AC-33):
+`set-assignee`; adding an already-present assignee is a no-op):
 
 ```bash
 bash "$ENGINE" set-assignee --repo owner/name --number <n> --login <login> --force
@@ -152,10 +152,10 @@ detected, no field/assignee/Status write).
 - route-issue sets **only** intake-time fields — never `Sprint/Milestone/Start/
   Target` (that is `plan-sprint`), never the PR (that is `promote-pr`).
 - Status is **monotonic** — never regress an item already past the target.
-- **Non-closing links only** — never `Closes/Fixes/Resolves` (AC-30); closure is
+- **Non-closing links only** — never `Closes/Fixes/Resolves`; closure is
   the prod-time `board-status` job's responsibility.
 - The skill-scoped guard (`hooks/guard.sh`) hard-blocks a `--squash` merge and a
-  prod deploy without provably-green checks while this skill runs (AC-25).
+  prod deploy without provably-green checks while this skill runs.
 - Never print the App token; the engine scrubs secrets from all output.
 - Exit codes: `0` ok · `2` usage / no App token · `3` project/field/issue not
   found · `1` unexpected.

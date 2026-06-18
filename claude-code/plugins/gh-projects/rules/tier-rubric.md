@@ -19,7 +19,7 @@
   "ready" / `ac_complete` + grounded `needs §X` groups → flip `Ready`, set the
   sub-issue blocked-by edges. When `Type=Infra`, the spec is the
   **infra/config-as-contract** class.
-- **Verify impl vs AC (future)** → `spec-ops:verify-spec`.
+- **Verify impl vs AC** → `spec-ops:verify-spec`.
 
 ## Boundaries of the delegation
 

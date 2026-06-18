@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-"""gh-projects GraphQL/REST core (Phase 1 — deterministic, free, GitHub-native).
+"""gh-projects GraphQL/REST core (deterministic, free, GitHub-native).
 
-This is the shared contract every later phase calls. It speaks to GitHub only
+This is the shared contract every command calls. It speaks to GitHub only
 through an INJECTABLE command runner (the module-level `RUN` callable) so the
 whole surface can be exercised OFFLINE: tests replace `RUN` with a fake that
 returns canned JSON and counts round-trips. No network, no live org, ever.
 
-Hard rules baked into this file (Phase-1 boundaries):
-  * Deterministic & free — NO metered AI/model call anywhere (AC-26).
+Hard rules baked into this file:
+  * Deterministic & free — NO metered AI/model call anywhere.
   * Every Projects v2 field write uses a GitHub App INSTALLATION token, NEVER
-    GITHUB_TOKEN (AC-27 / constraint #2). `get_app_token()` mints one.
+    GITHUB_TOKEN (constraint #2). `get_app_token()` mints one.
   * No blind re-PUT of a single-select option list or `iterationConfiguration`
-    — diff before mutate; IDs stay stable (AC-30 / constraint #3).
+    — diff before mutate; IDs stay stable (constraint #3).
   * Capability detection PROBES the installed `gh` (`--help` text), never a
     pinned version; falls back to GraphQL when a flag is absent. There is NO
-    label-based dependency fallback anywhere in this file (AC-4).
+    label-based dependency fallback anywhere in this file.
   * Resolve + CACHE project/field/option/iteration IDs — one resolve serves
-    repeated lookups in a run (AC-1).
+    repeated lookups in a run.
   * Two-phase field write: addProjectV2ItemById -> read item id ->
-    updateProjectV2ItemFieldValue, then read back identical (AC-2).
-  * Print no token/secret, ever (AC-3).
+    updateProjectV2ItemFieldValue, then read back identical.
+  * Print no token/secret, ever.
 
 Exit codes (every CLI entrypoint): 0 ok · 2 usage/validation · 3 not found ·
 1 unexpected.
@@ -137,7 +137,7 @@ def rest(method: str, path: str, fields: dict | None = None) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# App installation token (AC-27 / constraint #2)
+# App installation token (constraint #2)
 # --------------------------------------------------------------------------- #
 def get_app_token() -> str:
     """Return a GitHub App INSTALLATION token for Projects writes.
@@ -263,7 +263,7 @@ def _pem_then(pem: str, message: bytes) -> bytes:
 
 
 # --------------------------------------------------------------------------- #
-# Capability detection — PROBE the installed gh, never pin a version (AC-4)
+# Capability detection — PROBE the installed gh, never pin a version
 # --------------------------------------------------------------------------- #
 class Capabilities:
     """Feature-detected `gh` capabilities, probed once and cached.
@@ -302,7 +302,7 @@ class Capabilities:
 
 
 # --------------------------------------------------------------------------- #
-# Resolver — resolve + CACHE project / field / option / iteration IDs (AC-1)
+# Resolver — resolve + CACHE project / field / option / iteration IDs
 # --------------------------------------------------------------------------- #
 _FIELDS_QUERY = """
 query($owner:String!, $number:Int!){
@@ -343,12 +343,12 @@ class Project:
         self.title = None
         self._fields_by_name: dict[str, dict] = {}
 
-    # -- resolution + cache (AC-1) ------------------------------------------ #
+    # -- resolution + cache ------------------------------------------------- #
     def resolve(self) -> "Project":
         """Resolve & cache the project + all field/option/iteration IDs.
 
         Idempotent: a second call is a no-op (no second round-trip). This is the
-        AC-1 cache — every `field()/option_id()/iteration_id()` afterward reads
+        resolve cache — every `field()/option_id()/iteration_id()` afterward reads
         the cached structure and issues NO further GraphQL.
         """
         if self._resolved:
@@ -397,7 +397,7 @@ class Project:
 
 
 # --------------------------------------------------------------------------- #
-# Two-phase field write (AC-2): add item -> read item id -> update -> read back
+# Two-phase field write: add item -> read item id -> update -> read back
 # --------------------------------------------------------------------------- #
 _ADD_ITEM = """
 mutation($project:ID!, $content:ID!){
@@ -441,9 +441,9 @@ def add_item(project_id: str, content_id: str) -> str:
 def _value_payload(field_node: dict, value):
     """Build the ProjectV2FieldValue payload + the expected read-back tuple.
 
-    Reuses the single-select / number / text shape from the pm-ops engine's
-    set_field, adapted to the GraphQL `value:` input. Extended to also cover the
-    iteration (Sprint) and date (Start/Target) field kinds that plan-sprint sets.
+    Handles the single-select / number / text shapes plus the iteration (Sprint)
+    and date (Start/Target) field kinds that plan-sprint sets, mapping each to
+    the GraphQL `value:` input.
     Returns (variables_value_json, expected_kind, expected_value).
     """
     dtype = (field_node.get("dataType") or "").upper()
@@ -462,7 +462,7 @@ def _value_payload(field_node: dict, value):
 
 
 def set_field(project: "Project", item_id: str, field_name: str, value) -> dict:
-    """Phase 2: updateProjectV2ItemFieldValue, then READ BACK identical (AC-2).
+    """Phase 2: updateProjectV2ItemFieldValue, then READ BACK identical.
 
     `value` is the resolved id (single-select option id) / number / text. Raises
     GhError if the read-back does not match what we wrote.
@@ -560,7 +560,7 @@ def write_field(project: "Project", content_id: str, field_name: str, raw_value)
 
 
 # --------------------------------------------------------------------------- #
-# Monotonic Status advance (AC-31) — never regress except explicit reopen.
+# Monotonic Status advance — never regress except explicit reopen.
 # --------------------------------------------------------------------------- #
 STATUS_ORDER = ["Backlog", "Ready", "In Progress", "In Review", "On Staging", "Done"]
 
@@ -573,7 +573,7 @@ def status_rank(status: str) -> int:
 
 
 def advance_status(current: str | None, target: str, *, reopen: bool = False) -> str | None:
-    """Return the Status to write, honoring monotonicity (AC-31).
+    """Return the Status to write, honoring monotonicity.
 
     Only advances along Backlog<Ready<In Progress<In Review<On Staging<Done. A
     stale/late event whose target is at or behind `current` is a no-op (returns
@@ -589,7 +589,7 @@ def advance_status(current: str | None, target: str, *, reopen: bool = False) ->
 
 
 # --------------------------------------------------------------------------- #
-# Schema mutations — DIFF before mutate; never blind re-PUT (AC-30)
+# Schema mutations — DIFF before mutate; never blind re-PUT
 # --------------------------------------------------------------------------- #
 def iterations_need_update(existing: list[dict], desired: list[dict]) -> bool:
     """Return True only if the iteration set actually changed.
@@ -744,7 +744,7 @@ def ensure_issue_type(org: str, name: str, *, description: str = "", color: str 
 
 
 def set_repo_merge_method(repo: str, *, allow_squash_merge: bool = False) -> dict:
-    """Set the repo merge-method setting (free no-squash enforcement, AC-10).
+    """Set the repo merge-method setting (free no-squash enforcement).
 
     Idempotent PATCH of the single boolean — does not touch other repo settings.
     """
@@ -753,7 +753,7 @@ def set_repo_merge_method(repo: str, *, allow_squash_merge: bool = False) -> dic
 
 
 # --------------------------------------------------------------------------- #
-# PR open/update — NON-CLOSING reference only (AC-1, AC-16, AC-30)
+# PR open/update — NON-CLOSING reference only
 # --------------------------------------------------------------------------- #
 # `Closes/Fixes/Resolves` would auto-close the issue on merge; closure stays the
 # prod-time board-status job's responsibility. We carry ONLY `Relates to #N`.
@@ -765,7 +765,7 @@ def _relates_body(issue_number, extra: str | None = None) -> str:
     """Build a PR body with a NON-CLOSING `Relates to #N` reference.
 
     Never emits a closing keyword (Closes/Fixes/Resolves) — auto-close is the
-    board-status job's job, not the PR's (AC-30).
+    board-status job's job, not the PR's.
     """
     rel = f"Relates to #{int(issue_number)}"
     body = (str(extra).rstrip() + "\n\n" + rel) if extra else rel
@@ -775,7 +775,7 @@ def _relates_body(issue_number, extra: str | None = None) -> str:
         if re.search(rf"\b{kw}\b\s+#\d", low):
             raise GhError(
                 f"PR body carries a closing keyword '{kw} #N'; only non-closing "
-                "'Relates to #N' is allowed (AC-30)",
+                "'Relates to #N' is allowed",
                 code=2,
             )
     return body
@@ -797,12 +797,12 @@ def _find_pr_for_branch(repo: str, head: str):
 def open_or_update_pr(repo: str, head: str, base: str, issue_number,
                       *, title: str | None = None, body_extra: str | None = None,
                       draft: bool = False) -> dict:
-    """Open an issue-linked PR, or EDIT the existing one for the branch (AC-1).
+    """Open an issue-linked PR, or EDIT the existing one for the branch.
 
-    Body carries a NON-CLOSING `Relates to #N` (never Closes/Fixes/Resolves —
-    AC-30). Idempotent: if a PR already exists for `head` we `gh pr edit` it in
+    Body carries a NON-CLOSING `Relates to #N` (never Closes/Fixes/Resolves).
+    Idempotent: if a PR already exists for `head` we `gh pr edit` it in
     place rather than `gh pr create` (which would 422 on a duplicate). A no-diff
-    re-run is therefore a clean no-op, never a duplicate-PR error (AC-16).
+    re-run is therefore a clean no-op, never a duplicate-PR error.
     Returns {"action": "created"|"updated", "number", "url"}.
     """
     body = _relates_body(issue_number, body_extra)
@@ -826,7 +826,7 @@ def open_or_update_pr(repo: str, head: str, base: str, issue_number,
 
 
 # --------------------------------------------------------------------------- #
-# PR aggregate check state (AC-2, AC-18) -> green / red / pending
+# PR aggregate check state -> green / red / pending
 # --------------------------------------------------------------------------- #
 def pr_check_state(repo: str, pr_number) -> str:
     """Read a PR's aggregate check state and return 'green'/'red'/'pending'.
@@ -849,14 +849,14 @@ def pr_check_state(repo: str, pr_number) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Non-squash merge (AC-19) — NEVER --squash; the guard hard-blocks it too.
+# Non-squash merge — NEVER --squash; the guard hard-blocks it too.
 # --------------------------------------------------------------------------- #
 def merge_pr(repo: str, pr_number, method: str = "merge") -> dict:
     """Merge a PR via `gh pr merge --merge`/`--rebase` only — NEVER `--squash`.
 
     `method` must be 'merge' or 'rebase' (GhError code=2 otherwise). The caller
     gates on green checks; this verb's invariant is simply that it never issues
-    `--squash` (no-squash is also enforced by hooks/guard.sh, AC-25).
+    `--squash` (no-squash is also enforced by hooks/guard.sh).
     """
     m = str(method).lower()
     if m not in ("merge", "rebase"):
@@ -869,10 +869,10 @@ def merge_pr(repo: str, pr_number, method: str = "merge") -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# Milestone assign (AC-3, AC-12) — REST PATCH, idempotent (read current first)
+# Milestone assign — REST PATCH, idempotent (read current first)
 # --------------------------------------------------------------------------- #
 def set_milestone(repo: str, issue_number, milestone) -> dict:
-    """Assign a repo Milestone NUMBER to an issue via REST, idempotently (AC-3).
+    """Assign a repo Milestone NUMBER to an issue via REST, idempotently.
 
     Reads the issue's current milestone first; if it already points at the same
     milestone number, makes NO write (returns {"changed": False}). So a
@@ -889,7 +889,7 @@ def set_milestone(repo: str, issue_number, milestone) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# Board-item manual-rank reorder (AC-4, AC-14) — App-token write.
+# Board-item manual-rank reorder — App-token write.
 # --------------------------------------------------------------------------- #
 _REORDER_ITEM = """
 mutation($project:ID!, $item:ID!, $after:ID){
@@ -909,10 +909,10 @@ mutation($project:ID!, $item:ID!){
 
 
 def reorder_item(project_id: str, item_id: str, after_item_id: str | None = None) -> dict:
-    """Reorder a board item's manual rank via updateProjectV2ItemPosition (AC-4).
+    """Reorder a board item's manual rank via updateProjectV2ItemPosition.
 
     `after_item_id=None` OMITS afterId entirely and moves the item to the TOP of
-    the manual order. App-token write (Projects v2, never GITHUB_TOKEN — AC-28).
+    the manual order. App-token write (Projects v2, never GITHUB_TOKEN).
     """
     if after_item_id is None:
         data = graphql(_REORDER_ITEM_TOP, {"project": project_id, "item": item_id})
@@ -924,7 +924,7 @@ def reorder_item(project_id: str, item_id: str, after_item_id: str | None = None
 
 
 # --------------------------------------------------------------------------- #
-# Issue Assignee add/remove (AC-5) — idempotent.
+# Issue Assignee add/remove — idempotent.
 # --------------------------------------------------------------------------- #
 def _current_assignees(repo: str, issue_number) -> set:
     issue = rest("GET", f"/repos/{repo}/issues/{int(issue_number)}") or {}
@@ -932,11 +932,11 @@ def _current_assignees(repo: str, issue_number) -> set:
 
 
 def set_assignee(repo: str, issue_number, login: str, remove: bool = False) -> dict:
-    """Add or remove an issue Assignee via `gh issue edit`, idempotently (AC-5).
+    """Add or remove an issue Assignee via `gh issue edit`, idempotently.
 
     Adding an already-present assignee — or removing an absent one — makes NO
     write (returns {"changed": False}). Mirrors the lib's diff-before-mutate
-    idempotency style (AC-33).
+    idempotency style.
     """
     present = login in _current_assignees(repo, issue_number)
     if remove:
@@ -953,7 +953,7 @@ def set_assignee(repo: str, issue_number, login: str, remove: bool = False) -> d
 
 
 # --------------------------------------------------------------------------- #
-# Link a repo to the Project (AC-21) — real linkProjectV2ToRepository, App-token,
+# Link a repo to the Project — real linkProjectV2ToRepository, App-token,
 # idempotent (read the project's linked repositories; skip if already linked).
 # --------------------------------------------------------------------------- #
 _PROJECT_LINKED_REPOS = """
@@ -984,11 +984,11 @@ def _project_linked_repo_ids(project_id: str) -> set:
 
 
 def link_repo(project_id: str, repo_id: str) -> dict:
-    """Link a repository to a Project via linkProjectV2ToRepository (AC-21).
+    """Link a repository to a Project via linkProjectV2ToRepository.
 
     Idempotent: reads the project's already-linked repositories first and makes
     NO write when `repo_id` is already linked (returns {"changed": False}). The
-    write is an App-token Projects v2 mutation — never GITHUB_TOKEN (AC-28).
+    write is an App-token Projects v2 mutation — never GITHUB_TOKEN.
     """
     if repo_id in _project_linked_repo_ids(project_id):
         return {"changed": False, "project": project_id, "repo": repo_id, "linked": True}
@@ -998,10 +998,10 @@ def link_repo(project_id: str, repo_id: str) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# Link a Project to a team (AC-23) — a REAL linkProjectV2ToTeam(projectId,teamId)
+# Link a Project to a team — a REAL linkProjectV2ToTeam(projectId,teamId)
 # write-to-team mutation. NOT the scaffold _LINK_PROJECT_APP confirmation no-op.
 # Idempotent the same way link_repo is: read the project's linked teams; skip if
-# already linked (detected and skipped, never a 4xx re-link — AC-33).
+# already linked (detected and skipped, never a 4xx re-link).
 # --------------------------------------------------------------------------- #
 _PROJECT_LINKED_TEAMS = """
 query($project:ID!){
@@ -1031,14 +1031,14 @@ def _project_linked_team_ids(project_id: str) -> set:
 
 
 def link_team(project_id: str, team_id: str) -> dict:
-    """Link a Project to a team via linkProjectV2ToTeam (AC-23) — write-to-team.
+    """Link a Project to a team via linkProjectV2ToTeam — write-to-team.
 
     A real `linkProjectV2ToTeam(projectId, teamId)` mutation (the `teamId` is
     actually sent), distinct from scaffold's grant_app_access confirmation touch.
-    App-token Projects v2 write — never GITHUB_TOKEN (AC-28). Idempotent like
+    App-token Projects v2 write — never GITHUB_TOKEN. Idempotent like
     `link_repo`: reads the project's already-linked teams first and makes NO write
     when `team_id` is already linked (returns {"changed": False}) — detected and
-    skipped, never a 409/422 re-link (AC-33).
+    skipped, never a 409/422 re-link.
     """
     if team_id in _project_linked_team_ids(project_id):
         return {"changed": False, "project": project_id, "team": team_id, "linked": True}
@@ -1050,7 +1050,7 @@ def link_team(project_id: str, team_id: str) -> dict:
 # --------------------------------------------------------------------------- #
 # Issue node-id / linked-branch / default-branch resolution (read-only) — these
 # back the route-issue projection verbs (add-item / write-field / advance-status /
-# create-linked-branch). No new mutation here; they reuse the §1 lib functions.
+# create-linked-branch). No new mutation here; they reuse the core lib functions.
 # --------------------------------------------------------------------------- #
 def _split_repo(repo: str):
     """Split an `owner/name` string into (owner, name). GhError(2) if malformed."""
@@ -1124,7 +1124,7 @@ def issue_linked_branch_state(repo: str, issue_number) -> dict:
     """Read an issue's existing linked branches + the repo default-branch oid.
 
     Read-only. Returns {"issue_id", "default_oid", "branches": [names]} so the
-    create-linked-branch verb can no-op when a linked branch already exists (AC-9).
+    create-linked-branch verb can no-op when a linked branch already exists.
     """
     owner, name = _split_repo(repo)
     data = graphql(_ISSUE_LINKED_BRANCHES,
@@ -1143,7 +1143,7 @@ def issue_linked_branch_state(repo: str, issue_number) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# CLI — documented exit codes 0/2/3/1; prints no token/secret (AC-3)
+# CLI — documented exit codes 0/2/3/1; prints no token/secret
 # --------------------------------------------------------------------------- #
 def _print_json(obj) -> None:
     sys.stdout.write(_scrub(json.dumps(obj)) + "\n")
@@ -1165,7 +1165,7 @@ def _cmd_capabilities(_args) -> int:
 
 def _cmd_token(_args) -> int:
     """Mint an App installation token — prints ONLY a redacted confirmation,
-    never the token itself (AC-3)."""
+    never the token itself."""
     token = get_app_token()
     _print_json({"app_token": "[REDACTED]", "len": len(token), "ok": True})
     return 0
@@ -1213,10 +1213,10 @@ def _cmd_link_team(args) -> int:
     return 0
 
 
-# -- route-issue / plan-sprint projection verbs (reuse §1 lib, idempotent) ---- #
+# -- route-issue / plan-sprint projection verbs (reuse core lib, idempotent) -- #
 def _cmd_add_item(args) -> int:
     """Project an issue onto the board (add_item). Idempotent: a re-add returns
-    the SAME item id (addProjectV2ItemById is server-side idempotent — AC-8)."""
+    the SAME item id (addProjectV2ItemById is server-side idempotent)."""
     proj = Project(args.owner, args.number).resolve()
     content_id = issue_node_id(args.repo, args.issue)
     item_id = add_item(proj.id, content_id)
@@ -1238,7 +1238,7 @@ def _cmd_write_field(args) -> int:
 def _cmd_advance_status(args) -> int:
     """Advance the issue's board Status MONOTONICALLY (advance_status). Ensures the
     item exists (add_item idempotent), reads the current Status, and writes only a
-    forward move; an at/past-target re-run is a no-op (no write — AC-10/AC-17)."""
+    forward move; an at/past-target re-run is a no-op (no write)."""
     proj = Project(args.owner, args.number).resolve()
     content_id = issue_node_id(args.repo, args.issue)
     add_item(proj.id, content_id)  # idempotent: reuse existing item if present
@@ -1256,7 +1256,7 @@ def _cmd_advance_status(args) -> int:
 
 def _cmd_create_linked_branch(args) -> int:
     """Create the issue's authoritative linked branch — IDEMPOTENT: if a linked
-    branch already exists, NO-OP exit 0 (AC-9). Otherwise resolve the issue node id
+    branch already exists, NO-OP exit 0. Otherwise resolve the issue node id
     + default-branch head oid and create it (native `gh issue develop` when
     supported, else GraphQL createLinkedBranch)."""
     state = issue_linked_branch_state(args.repo, args.issue)

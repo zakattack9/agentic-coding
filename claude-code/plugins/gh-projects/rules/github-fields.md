@@ -25,11 +25,11 @@ trigger that never fires). They hold for every skill and every workflow.
    assignment and all chart history. Treat schema edits as **rare, idempotent,
    ID-stable**: resolve & cache IDs, **diff before mutate** (`lib/gh.py`
    `iterations_need_update` / `options_need_update`), **never blind re-PUT**.
-4. **Metered Claude can silently stop.** Any future AI Action draws the separate
-   Agent-SDK credit pool that drains first and stops without erroring. Phase 1 is
-   **deterministic and free — no metered AI anywhere.** When AI ships (a later
-   phase), every metered step uses a dedicated spend-capped Console key, fails
-   loud, and is gated behind an explicit label.
+4. **Metered Claude can silently stop.** Any AI Action draws the separate
+   Agent-SDK credit pool that drains first and stops without erroring. The system
+   is **deterministic and free — no metered AI anywhere.** Any metered step added
+   later must use a dedicated spend-capped Console key, fail loud, and be gated
+   behind an explicit label.
 
 ## Field homes (three — pick the right one)
 

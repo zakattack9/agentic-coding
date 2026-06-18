@@ -6,7 +6,7 @@ description: >-
   Release on prod success. SELF-CONTAINED: vendors its own GraphQL/resolution
   logic (board_status.py) and imports NOTHING from the gh-projects plugin, so it
   runs from `./.github/actions/board-status` in a repo WITHOUT the plugin
-  installed (AC-22). Deterministic and free — no AI, no metered model call.
+  installed. Deterministic and free — no AI, no metered model call.
 
 # ---------------------------------------------------------------------------
 # Status-target contract (load-bearing — keep greppable for the verifier):
@@ -17,14 +17,14 @@ description: >-
 #
 # This deploy-side `On Staging` is the SAME target as the native built-in
 # "PR merged -> set Status": that built-in is configured to `On Staging`
-# (NOT `Done`) and the item STAYS OPEN after merge (AC-20). The item is moved
+# (NOT `Done`) and the item STAYS OPEN after merge. The item is moved
 # to `Done` and CLOSED only here, at prod, never by `Closes #N` and never by
 # board-sync. Status writes are idempotent + MONOTONIC: a replayed/stale deploy
-# event never regresses an item to an earlier stage (AC-31).
+# event never regresses an item to an earlier stage.
 #
 # Token: every Projects v2 field write uses a GitHub App INSTALLATION token
 # (minted below from the App id + private-key secrets), NEVER GITHUB_TOKEN
-# (AC-27 / constraint #2).
+# (constraint #2).
 # ---------------------------------------------------------------------------
 
 inputs:
@@ -70,7 +70,7 @@ runs:
   steps:
     # 1) Mint a GitHub App INSTALLATION token (org-scoped, `project` scope).
     #    This is the ONLY token that can write Projects v2 fields — GITHUB_TOKEN
-    #    cannot, and is never used for a Project write (AC-27 / constraint #2).
+    #    cannot, and is never used for a Project write (constraint #2).
     - id: app-token
       uses: actions/create-github-app-token@v1
       with:

@@ -4,15 +4,15 @@
 Exercises the DETERMINISTIC intake core that backs skills/intake-issues. The
 skill delegates AC authoring to spec-ops; here we test only the decision logic:
 
-  AC-12  every planned item carries Type/Size/Tier/PM-ID + grouped AC.
-  AC-13  prose-only / non-atomic AC are refused `Ready`, with a stated reason.
-  AC-14  tier -> spec-ops rigor (T1 light · T2 standard · T3 full + refine-spec);
-         the delegation names the spec-ops skill — no body authored inline.
-  AC-15  AC-group count drives size (1->S / 2-3->M / 4+->L); 4+ groups -> Epic
-         split (one sub-issue per group) with `needs §X` -> blocked-by edges.
-  AC-16  dry-by-default: planning + the gh.add_sub_issue / add_blocked_by writes
-         are only invoked under --force; a dry run calls `gh issue create` zero
-         times (asserted against an injected RUN that counts mutations).
+  * every planned item carries Type/Size/Tier/PM-ID + grouped AC.
+  * prose-only / non-atomic AC are refused `Ready`, with a stated reason.
+  * tier -> spec-ops rigor (T1 light · T2 standard · T3 full + refine-spec);
+    the delegation names the spec-ops skill — no body authored inline.
+  * AC-group count drives size (1->S / 2-3->M / 4+->L); 4+ groups -> Epic
+    split (one sub-issue per group) with `needs §X` -> blocked-by edges.
+  * dry-by-default: planning + the gh.add_sub_issue / add_blocked_by writes
+    are only invoked under --force; a dry run calls `gh issue create` zero
+    times (asserted against an injected RUN that counts mutations).
 """
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ DAG_GROUPS = [
 
 
 # --------------------------------------------------------------------------- #
-# AC-14: tier -> rigor + spec-ops delegation path
+# tier -> rigor + spec-ops delegation path
 # --------------------------------------------------------------------------- #
 class TierRigorTest(unittest.TestCase):
     def test_t1_light_no_refine(self):
@@ -89,7 +89,7 @@ class TierRigorTest(unittest.TestCase):
             intake.tier_rigor("T9")
 
     def test_plan_delegation_names_spec_ops_at_rigor(self):
-        # AC-14: the plan's delegation block carries the spec-ops skill + the
+        # the plan's delegation block carries the spec-ops skill + the
         # tier's rigor arg, and authors NO body itself (there is no body field).
         plan = intake.plan_item({
             "type": "Feature", "tier": "T3", "pm_id": "PM-0007",
@@ -102,7 +102,7 @@ class TierRigorTest(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-15: size from group count + Epic-split + blocked-by edges
+# size from group count + Epic-split + blocked-by edges
 # --------------------------------------------------------------------------- #
 class SizeAndSplitTest(unittest.TestCase):
     def test_size_one_group_is_S(self):
@@ -156,7 +156,7 @@ class SizeAndSplitTest(unittest.TestCase):
         self.assertEqual(split["edges"], [(2, 1)])  # self (1->1) + unknown (1->99) dropped
 
     def test_size_in_full_plan(self):
-        # AC-12 + AC-15: size derives from group count inside the merged plan.
+        # size derives from group count inside the merged plan.
         plan1 = intake.plan_item({"type": "Bug", "tier": "T1", "pm_id": "PM-0001",
                                   "groups": _atomic_groups(1)})
         plan3 = intake.plan_item({"type": "Feature", "tier": "T2", "pm_id": "PM-0002",
@@ -170,7 +170,7 @@ class SizeAndSplitTest(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-12: every item carries Type/Size/Tier/PM-ID + grouped AC
+# every item carries Type/Size/Tier/PM-ID + grouped AC
 # --------------------------------------------------------------------------- #
 class IssueFieldsTest(unittest.TestCase):
     def test_required_fields_populated(self):
@@ -199,7 +199,7 @@ class IssueFieldsTest(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-13: prose-only / non-atomic AC are REFUSED Ready, with a reason
+# prose-only / non-atomic AC are REFUSED Ready, with a reason
 # --------------------------------------------------------------------------- #
 class ReadyGateTest(unittest.TestCase):
     def test_prose_ac_stays_out_of_ready(self):
@@ -245,7 +245,7 @@ class ReadyGateTest(unittest.TestCase):
         self.assertIn("task", res["rejections"][0]["reason"].lower())
 
     def test_prose_plan_is_not_ready(self):
-        # AC-13 end to end: an item with prose AC plans as ready=False + reason.
+        # end to end: an item with prose AC plans as ready=False + reason.
         plan = intake.plan_item({
             "type": "Feature", "tier": "T1", "pm_id": "PM-0009", "title": "vague",
             "groups": [{"index": 1, "name": "g", "needs": [],
@@ -265,7 +265,7 @@ class ReadyGateTest(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-16: dry-by-default — a dry run creates no issue and mutates nothing.
+# dry-by-default — a dry run creates no issue and mutates nothing.
 #
 # We model the skill's create/split path through an injected gh.RUN that counts
 # any MUTATING gh call (issue create, addSubIssue, blocked-by). The deterministic
@@ -295,7 +295,7 @@ def _create_issues(items, *, force, run):
 
     Without `force` it ONLY computes the deterministic plan (no RUN call); with
     `force` it would invoke `gh issue create` per item + the sub-issue/blocked-by
-    writes. Proves AC-16: the preview path issues zero mutations.
+    writes. Proves the preview path issues zero mutations.
     """
     plans = [intake.plan_item(it) for it in items]
     if not force:
@@ -323,7 +323,7 @@ class DryByDefaultTest(unittest.TestCase):
         ]
         res = _create_issues(items, force=False, run=gh.RUN)
         self.assertFalse(res["applied"])
-        # AC-16: NOT ONE mutating gh call in the dry path.
+        # NOT ONE mutating gh call in the dry path.
         self.assertEqual(self.counter.mutations, [])
         self.assertEqual(self.counter.calls, [])
         # ...but the plan was still fully computed (preview is real).

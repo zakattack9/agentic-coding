@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""Offline tests for the §5 scaffold-COMPLETION duties — NO network, NO live org,
+"""Offline tests for the scaffold-COMPLETION duties — NO network, NO live org,
 NO live mutation. Reuses the scaffold.py fake-RUN pattern (a canned-JSON runner
 that records write round-trips). Covers:
 
-  AC-21 : link_repo / scaffold repo→Project link — a REAL
-          linkProjectV2ToRepository(projectId, repositoryId) mutation, idempotent
-          (reads the project's linked repositories; a re-run is a SKIP / no-op).
-  AC-22 : the per-repo add-to-project.yml is REGISTERED in INSTALL_FILES, installed
-          by plan_file_install, SHA-PINNED (a 40-hex sha on actions/add-to-project),
-          App-token auth (no GITHUB_TOKEN for the project write), NO metered AI.
-  AC-23 : team link planned when --team given via a REAL linkProjectV2ToTeam
-          (the teamId is actually sent — distinguishing it from _LINK_PROJECT_APP),
-          + base-role emitted as a MANUAL step in the manifest, + grant_app_access
-          stays a confirmation (not a base-role grant, no base-role mutation).
-  AC-24 : the completions are dry-by-default, idempotent (a re-run manifest is
-          empty for these duties), and diff-before-mutate (no blind re-PUT).
+  * link_repo / scaffold repo→Project link — a REAL
+    linkProjectV2ToRepository(projectId, repositoryId) mutation, idempotent
+    (reads the project's linked repositories; a re-run is a SKIP / no-op).
+  * the per-repo add-to-project.yml is REGISTERED in INSTALL_FILES, installed
+    by plan_file_install, SHA-PINNED (a 40-hex sha on actions/add-to-project),
+    App-token auth (no GITHUB_TOKEN for the project write), NO metered AI.
+  * team link planned when --team given via a REAL linkProjectV2ToTeam
+    (the teamId is actually sent — distinguishing it from _LINK_PROJECT_APP),
+    + base-role emitted as a MANUAL step in the manifest, + grant_app_access
+    stays a confirmation (not a base-role grant, no base-role mutation).
+  * the completions are dry-by-default, idempotent (a re-run manifest is
+    empty for these duties), and diff-before-mutate (no blind re-PUT).
 """
 from __future__ import annotations
 
@@ -58,7 +58,7 @@ SHA40 = re.compile(r"\b[0-9a-f]{40}\b")
 class CompletionRunner(ScaffoldRunner):
     """Extends the scaffold runner with repo-node, team-node, and linked-repo
     reads + the two link mutations. `linked_repo_ids` lets a test pre-link a repo
-    so the idempotent SKIP path (AC-21/AC-24) is observable."""
+    so the idempotent SKIP path is observable."""
 
     def __init__(self, *, linked_repo_ids=None, linked_team_ids=None, **kw):
         super().__init__(**kw)
@@ -80,7 +80,7 @@ class CompletionRunner(ScaffoldRunner):
             self.calls.append(list(args))
             return json.dumps({"data": {"node": {"repositories": {
                 "nodes": [{"id": r} for r in sorted(self.linked_repo_ids)]}}}})
-        # the project's currently-linked teams (idempotency read — AC-33)
+        # the project's currently-linked teams (idempotency read)
         if "teams(first:100)" in body and "ProjectV2" in body:
             self.calls.append(list(args))
             return json.dumps({"data": {"node": {"teams": {
@@ -110,7 +110,7 @@ class CompletionBase(ScaffoldTestBase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-21 — link_repo: real mutation + idempotency
+# link_repo: real mutation + idempotency
 # --------------------------------------------------------------------------- #
 class TestLinkRepo(CompletionBase):
     def test_link_repo_is_real_linkprojectv2torepository(self):
@@ -128,7 +128,7 @@ class TestLinkRepo(CompletionBase):
         runner = CompletionRunner(linked_repo_ids={REPO_NODE_ID})
         gh.RUN = runner
         res = gh.link_repo(COPY_PROJECT_ID, REPO_NODE_ID)
-        self.assertFalse(res["changed"], "already-linked repo -> no write (AC-21/AC-24)")
+        self.assertFalse(res["changed"], "already-linked repo -> no write")
         self.assertNotIn(("graphql", "linkProjectV2ToRepository"), runner.writes)
 
     def test_link_repo_second_call_is_noop(self):
@@ -166,7 +166,7 @@ class TestLinkRepo(CompletionBase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-22 — add-to-project.yml: registered, installed, SHA-pinned, App-token, no AI
+# add-to-project.yml: registered, installed, SHA-pinned, App-token, no AI
 # --------------------------------------------------------------------------- #
 class TestAddToProjectWorkflow(CompletionBase):
     DEST = ".github/workflows/add-to-project.yml"
@@ -203,7 +203,7 @@ class TestAddToProjectWorkflow(CompletionBase):
                          f"actions/add-to-project must be pinned to a 40-hex SHA, got {ref!r}")
 
     def test_every_third_party_action_is_sha_pinned(self):
-        # AC-22: pin ANY other third-party action by SHA too — no bare @vN tags.
+        # Pin ANY other third-party action by SHA too — no bare @vN tags.
         text = self._template_text()
         for m in re.finditer(r"uses:\s*(\S+)", text):
             ref = m.group(1)
@@ -214,7 +214,7 @@ class TestAddToProjectWorkflow(CompletionBase):
 
     def test_app_token_auth_not_github_token(self):
         # The project write must authenticate with the App installation token,
-        # NEVER GITHUB_TOKEN (which cannot write org Projects v2, AC-28).
+        # NEVER GITHUB_TOKEN (which cannot write org Projects v2).
         text = self._template_text()
         self.assertIn("create-github-app-token", text)
         self.assertIn("app-token.outputs.token", text)
@@ -223,7 +223,7 @@ class TestAddToProjectWorkflow(CompletionBase):
         self.assertNotIn("github-token: ${{ github.token }}", text)
 
     def test_no_metered_ai_in_template(self):
-        # AC-27/AC-22: no metered AI/model call anywhere in the workflow.
+        # No metered AI/model call anywhere in the workflow.
         low = self._template_text().lower()
         for needle in ("anthropic", "openai", "claude", "gpt-", "inference",
                        "model:", "api.openai", "x-api-key"):
@@ -231,7 +231,7 @@ class TestAddToProjectWorkflow(CompletionBase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-23 — team link (real linkProjectV2ToTeam) + base-role manual + app-access
+# Team link (real linkProjectV2ToTeam) + base-role manual + app-access
 #         stays a confirmation.
 # --------------------------------------------------------------------------- #
 class TestTeamLinkAndBaseRole(CompletionBase):
@@ -255,16 +255,16 @@ class TestTeamLinkAndBaseRole(CompletionBase):
         self.assertIn("teamId:$team", gh._LINK_TEAM)
 
     def test_link_team_skips_when_already_linked(self):
-        # AC-33: a team already linked to the Project is detected and SKIPPED — no
+        # A team already linked to the Project is detected and SKIPPED — no
         # write, never a 409/422 re-link (parity with link_repo).
         runner = CompletionRunner(linked_team_ids={TEAM_NODE_ID})
         gh.RUN = runner
         res = gh.link_team(COPY_PROJECT_ID, TEAM_NODE_ID)
-        self.assertFalse(res["changed"], "already-linked team -> no write (AC-23/AC-33)")
+        self.assertFalse(res["changed"], "already-linked team -> no write")
         self.assertNotIn(("graphql", "linkProjectV2ToTeam"), runner.writes)
 
     def test_link_team_second_call_is_noop(self):
-        # AC-33: call 1 (not linked) writes; call 2 (now linked) makes no further
+        # Call 1 (not linked) writes; call 2 (now linked) makes no further
         # write — one effective write total across two calls.
         runner = CompletionRunner(linked_team_ids=set())
         gh.RUN = runner
@@ -341,7 +341,7 @@ class TestTeamLinkAndBaseRole(CompletionBase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-24 — dry-by-default, idempotent, diff-before-mutate; re-run manifest empty.
+# Dry-by-default, idempotent, diff-before-mutate; re-run manifest empty.
 # --------------------------------------------------------------------------- #
 class TestCompletionsDryAndIdempotent(CompletionBase):
     def test_dry_run_makes_no_link_writes(self):
@@ -351,7 +351,7 @@ class TestCompletionsDryAndIdempotent(CompletionBase):
             writes_after_plan = list(runner.writes)
             actions = scaffold.apply_plan(plan, repo_dir=d, force=False)
         self.assertEqual(runner.writes, writes_after_plan,
-                         "dry apply must add no link writes (AC-24)")
+                         "dry apply must add no link writes")
         self.assertIsNone(actions["repo_link"])
         self.assertIsNone(actions["team_link"])
         self.assertNotIn(("graphql", "linkProjectV2ToRepository"), runner.writes)
@@ -369,7 +369,7 @@ class TestCompletionsDryAndIdempotent(CompletionBase):
 
     def test_rerun_repo_link_is_empty_no_blind_relink(self):
         # On a re-run where the repo is already linked, the plan's repo_link is a
-        # SKIP and apply issues NO link mutation (diff-before-mutate, AC-24).
+        # SKIP and apply issues NO link mutation (diff-before-mutate).
         runner = CompletionRunner(linked_repo_ids={REPO_NODE_ID})
         with tempfile.TemporaryDirectory() as d:
             plan = self._plan(runner, d, repo="acme/web")
@@ -380,7 +380,7 @@ class TestCompletionsDryAndIdempotent(CompletionBase):
 
     def test_rerun_team_link_is_empty_no_blind_relink(self):
         # On a re-run where the team is already linked, the plan's team_link is a
-        # SKIP and apply issues NO link mutation (diff-before-mutate, AC-23/AC-33).
+        # SKIP and apply issues NO link mutation (diff-before-mutate).
         runner = CompletionRunner(linked_repo_ids={REPO_NODE_ID}, linked_team_ids={TEAM_NODE_ID})
         with tempfile.TemporaryDirectory() as d:
             plan = self._plan(runner, d, repo="acme/web", team="dev")
@@ -391,7 +391,7 @@ class TestCompletionsDryAndIdempotent(CompletionBase):
 
     def test_rerun_install_manifest_empty_for_add_to_project(self):
         # After a first --force install, the add-to-project.yml is identical ->
-        # the second run's install manifest SKIPs it (re-run no-op, AC-24).
+        # the second run's install manifest SKIPs it (re-run no-op).
         runner = CompletionRunner()
         with tempfile.TemporaryDirectory() as d:
             plan1 = self._plan(runner, d, repo="acme/web")

@@ -1,10 +1,8 @@
 # gh-projects
 
 Runs a small team's whole software lifecycle on GitHub Projects v2 — deterministic,
-free, no metered AI. Setup + usage: `README.md` (this directory). Historical build
-contract + acceptance criteria: the PM-0001 / PM-0002 specs under
-`research/pm-task-management/` (the offline test suite is the *live* source of truth;
-the specs have drifted on some wording).
+free, no metered AI. Setup + usage: `README.md` (this directory). The offline test
+suite (`lib/tests/`) is the source of truth for behavior.
 
 ## Test (do this after every change)
 
@@ -54,7 +52,14 @@ creds — every round-trip goes through the injectable `gh.RUN` seam). Keep it g
   Priority/Status); `plan-sprint` owns scheduling (Sprint/Milestone/Start/Target) +
   Ready order; `promote-pr` touches only Status, monotonically.
 - `intake-issues` delegates issue body + acceptance criteria to the **spec-ops**
-  plugin (a dependency) — never author bodies inline.
+  plugin (a dependency) — never author bodies inline. The interface is **narrow and
+  pinned**: the two skill ids (`WRITE_SPEC_SKILL` / `REFINE_SPEC_SKILL`) and three
+  rigor names (`TIER_RIGOR`: `light`/`standard`/`full`) in `lib/intake.py`. spec-ops's
+  own *spec format* may churn freely — `templates/{issue-body,deep-spec}.md` are
+  gh-projects' target shape that spec-ops *fills*, not a mirror of its output. But a
+  spec-ops **skill or rigor rename** breaks delegation at runtime, and the offline
+  suite **won't catch it** (spec-ops is stubbed) → if spec-ops renames a skill or
+  rigor level, update that map here.
 
 ## Versioning
 
@@ -65,7 +70,9 @@ both together or the suite fails.
 ## Platform constraints (don't fight these)
 
 - Saved views + Insights charts are **not API-creatable** → golden template +
-  `copyProjectV2`; scaffold verifies presence only.
+  `copyProjectV2`. Copy is documented to carry **fields + views only** (not charts) →
+  scaffold verifies field/view presence; **charts may not survive the copy** and can
+  need rebuilding per project (Insights has no API to create *or* read a chart).
 - A Project's org **base role is UI-only** (no API) → emit it as a manual step.
 - There is **no built-in Auto-add API** → install `actions/add-to-project`, SHA-pinned.
 - `projects_v2_item` has **no repo-workflow trigger** → drive Status from

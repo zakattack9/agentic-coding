@@ -1,8 +1,8 @@
 # Acceptance Criteria rubric
 
 The `AC-id` set is the **co-owned contract** across the issue, the deep spec (T3),
-`verify-spec`, and the future AI PR review. spec-ops authors it; gh-projects
-mirrors and gates on it. These rules decide whether an issue may enter `Ready`.
+and `verify-spec`. spec-ops authors it; gh-projects mirrors and gates on it. These
+rules decide whether an issue may enter `Ready`.
 
 ## Shape
 

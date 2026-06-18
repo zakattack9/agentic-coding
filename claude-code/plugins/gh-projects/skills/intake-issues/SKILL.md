@@ -24,7 +24,7 @@ Compile a raw dump into tiered, AC-bearing GitHub issues on the board. Two hard
 rails define this skill:
 
 1. **You author NO issue body or AC list yourself.** All spec/AC authoring is
-   DELEGATED to **spec-ops** at the tier's rigor (AC-14). You only split the dump
+   DELEGATED to **spec-ops** at the tier's rigor. You only split the dump
    into atomic items, run the deterministic core for every non-AI decision, and
    create issues on confirm.
 2. **Every non-AI decision comes from `lib/intake.py`** — size, tier→rigor, the
@@ -36,7 +36,7 @@ Let `INTAKE=${CLAUDE_PLUGIN_ROOT}/lib/intake.py`,
 `GH=${CLAUDE_PLUGIN_ROOT}/lib/gh.py`. All GitHub writes go through `gh` / `lib/gh.py`
 with a **GitHub App installation token** (never `GITHUB_TOKEN`). **No model/metered
 call happens in any workflow this skill installs** — the AI work is your own
-reasoning here, at intake time only (AC-26).
+reasoning here, at intake time only.
 
 ## 1. Split the dump into atomic items
 
@@ -57,7 +57,7 @@ python3 "$PM" new-id --repo "<pm-repo-or-.>"     # prints e.g. PM-0042, monotoni
 
 One id per item. These become the issue's `PM-ID` field.
 
-## 3. Delegate body + AC to spec-ops AT THE TIER'S RIGOR (AC-14)
+## 3. Delegate body + AC to spec-ops AT THE TIER'S RIGOR
 
 For each item, invoke spec-ops via the **Skill** tool — you author nothing inline.
 The tier→rigor mapping is deterministic; confirm it from the script, never guess:
@@ -83,7 +83,7 @@ DAG you'll project onto blocked-by edges in step 5.
 > Never substitute your own body for spec-ops's output. If spec-ops is
 > unavailable, STOP and tell the user — do not hand-author AC.
 
-## 4. Run the deterministic plan + ready-gate (AC-12, AC-13, AC-15)
+## 4. Run the deterministic plan + ready-gate
 
 Feed each item (with spec-ops's AC groups) to the core. It computes the issue
 fields, the size + Epic-split, the blocked-by edges, AND the AC ready decision:
@@ -100,17 +100,17 @@ echo '{
 
 The result carries:
 
-- `fields` — **Type / Size / Tier / PM-ID** the issue must set (AC-12). Size is
+- `fields` — **Type / Size / Tier / PM-ID** the issue must set. Size is
   **derived from the AC-group count** (`1→S · 2–3→M · 4+→L`) — not free-chosen.
-- `ready` + `ready_reason` + `rejections` — the **`Ready` gate** (AC-13). If
+- `ready` + `ready_reason` + `rejections` — the **`Ready` gate**. If
   `ready` is **false**, the AC are prose-only / not atomic; **do NOT set Status
   `Ready`** and surface `ready_reason` + each rejection's reason to the user. Ask
   spec-ops to rewrite the offending AC as observable end-states, then re-plan.
-- `epic_split` + `sub_issues` + `blocked_by_edges` — the Epic decision (AC-15).
+- `epic_split` + `sub_issues` + `blocked_by_edges` — the Epic decision.
 
 The body itself stays spec-ops's; this script only decides fields/size/split/ready.
 
-## 5. Preview every draft — DRY BY DEFAULT (AC-16)
+## 5. Preview every draft — DRY BY DEFAULT
 
 Build the full preview WITHOUT touching GitHub. For each item show: title, the
 `fields` block, the grouped AC table (from spec-ops), the `Ready` verdict (+
@@ -148,14 +148,14 @@ plus the sub-issue/blocked-by DAG. Name anything left in `Backlog` and why.
 ## Guardrails
 
 - **Dry-by-default.** Preview first, every time; `gh issue create` only after the
-  user confirms (AC-16).
+  user confirms.
 - **Never author a body/AC inline.** Delegate to `spec-ops:write-spec` at the
-  tier's rigor; T3 also runs `spec-ops:refine-spec` (AC-14).
+  tier's rigor; T3 also runs `spec-ops:refine-spec`.
 - **Never mark prose-only/non-atomic AC `Ready`** — honor `lib/intake.py`'s
-  `ready_gate`; state the refusal reason (AC-13).
+  `ready_gate`; state the refusal reason.
 - **Size/split are the script's, not yours.** Size = AC-group count; Epic-split +
-  blocked-by edges come from `lib/intake.py plan` (AC-12, AC-15).
+  blocked-by edges come from `lib/intake.py plan`.
 - **App installation token for every Projects write** — never `GITHUB_TOKEN`.
   Native sub-issue/blocked-by only; no label-based dependency fallback.
-- **No metered AI in any installed workflow** (AC-26). Issues are never
+- **No metered AI in any installed workflow.** Issues are never
   auto-closed by "Closes #N" (closed at prod by `board-status`).

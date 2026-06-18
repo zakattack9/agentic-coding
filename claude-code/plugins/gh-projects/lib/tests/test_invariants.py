@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-"""Cross-cutting Phase-1 invariants — offline, NO network, NO live org.
+"""Cross-cutting invariants — offline, NO network, NO live org.
 
-Owned by the §7 (invariants) phase. Each test is a runnable assertion behind an
-acceptance criterion that must hold ACROSS §1–§6:
+Each test is a runnable assertion behind an invariant that must hold across the plugin:
 
-  AC-26  No Phase-1 workflow or skill makes a metered AI/model call.
-  AC-27  Every Projects field write uses the App installation token; none use
-         GITHUB_TOKEN.
-  AC-29  Manifest carries only name+description (no version); root marketplace
-         pins gh-projects 0.2.1 and no longer lists pm-ops (deleted; tag pm-ops-archive).
-  AC-30  No schema mutation re-PUTs a single-select option list or
-         iterationConfiguration without a prior diff (diff-gated, ID-stable).
-  AC-31  Status writes from the three layers are idempotent + monotonic — a
-         stale/replayed event never regresses Status; only reopen moves it back.
+  - No workflow or skill makes a metered AI/model call.
+  - Every Projects field write uses the App installation token; none use
+    GITHUB_TOKEN.
+  - Manifest carries only name+description (no version); root marketplace
+    pins the gh-projects version and does not list pm-ops.
+  - No schema mutation re-PUTs a single-select option list or
+    iterationConfiguration without a prior diff (diff-gated, ID-stable).
+  - Status writes from the three layers are idempotent + monotonic — a
+    stale/replayed event never regresses Status; only reopen moves it back.
 
-AC-26/27/30 are demonstrated by source greps across templates + skills + lib.
-AC-31 is demonstrated by a behavioral fixture exercising the real advance_status
-from all three layers (lib/gh, board_sync, board_status).
+The metered-AI / App-token / diff-gate invariants are demonstrated by source greps
+across templates + skills + lib. The monotonic-Status invariant is demonstrated by a
+behavioral fixture exercising the real advance_status from all three layers (lib/gh,
+board_sync, board_status).
 """
 from __future__ import annotations
 
@@ -69,7 +69,7 @@ ALL_EXTS = CODE_EXTS + (".md", ".json")
 
 
 class AC26_NoMeteredAI(unittest.TestCase):
-    """No Phase-1 workflow/skill makes a metered AI/model API call."""
+    """No workflow/skill makes a metered AI/model API call."""
 
     # Patterns that would indicate an actual metered model call wired in.
     FORBIDDEN = [
@@ -96,7 +96,7 @@ class AC26_NoMeteredAI(unittest.TestCase):
                 for pat in self.FORBIDDEN:
                     if pat.search(text):
                         hits.append(f"{path}: matched {pat.pattern}")
-        self.assertEqual([], hits, "metered AI call found in Phase-1 code:\n" + "\n".join(hits))
+        self.assertEqual([], hits, "metered AI call found in plugin code:\n" + "\n".join(hits))
 
 
 class AC27_AppTokenOnly(unittest.TestCase):
@@ -201,18 +201,16 @@ class AC29_Manifest(unittest.TestCase):
         plugins = {p["name"]: p for p in mk["plugins"]}
         self.assertIn("gh-projects", plugins, "gh-projects must be registered in marketplace.json")
         gp = plugins["gh-projects"]
-        self.assertEqual(gp["version"], "0.2.4")
+        self.assertEqual(gp["version"], "0.2.5")
         self.assertEqual(gp["source"], "./claude-code/plugins/gh-projects")
         self.assertTrue(gp.get("description"))
 
     def test_marketplace_no_longer_lists_pm_ops(self):
-        # pm-ops was deprecated then DELETED (superseded by gh-projects); it must
-        # no longer be registered in the marketplace. The code is recoverable from
-        # the `pm-ops-archive` git tag if ever needed.
+        # pm-ops must not be registered in the marketplace.
         with open(MARKETPLACE, encoding="utf-8") as fh:
             mk = json.load(fh)
         plugins = {p["name"] for p in mk["plugins"]}
-        self.assertNotIn("pm-ops", plugins, "pm-ops was deleted; it must not be in the marketplace")
+        self.assertNotIn("pm-ops", plugins, "pm-ops must not be in the marketplace")
 
 
 class AC31_MonotonicStatus(unittest.TestCase):

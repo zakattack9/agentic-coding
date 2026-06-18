@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Offline tests for lib/dag.py — Blocked / Blast radius / Blast-count derived
-from native blocked-by edges, matched against a HAND-CHECKED fixture (AC-6).
+from native blocked-by edges, matched against a HAND-CHECKED fixture.
 
 Fixture graph (edge `blocked_by[A]=[B]` means "B blocks A"):
 
@@ -112,7 +112,7 @@ class TestDagFixture(unittest.TestCase):
                          {"blocked": False, "blast_radius": "None", "blast_count": 0})
 
     def test_no_ai_in_source(self):
-        # Deterministic: no model call, no network import (AC-26).
+        # Deterministic: no model call, no network import.
         with open(os.path.join(LIB, "dag.py"), "r", encoding="utf-8") as fh:
             src = fh.read().lower()
         for needle in ("anthropic", "openai", "claude", "import requests", "urllib.request"):

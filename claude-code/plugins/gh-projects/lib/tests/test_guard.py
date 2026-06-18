@@ -6,7 +6,7 @@ stdin to the bash guard and asserts its exit code + stderr. Convention:
   exit 0 -> ALLOW (fail-open or green-gated)
   exit 2 -> BLOCK (explicit policy violation, message on stderr)
 
-Coverage (AC-28):
+Coverage:
   * blocks `gh pr merge --squash`
   * blocks a PROD deploy / release action without provably-green checks
   * fails OPEN (allow) on unrelated, malformed, empty, or non-matching input

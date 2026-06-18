@@ -24,18 +24,18 @@ Let `SCAFFOLD=${CLAUDE_PLUGIN_ROOT}/lib/scaffold.py`. Read-only checks (e.g.
 ## Hard rails (the engine enforces these — never work around them)
 
 - **Dry-by-default.** Without `--force`, the engine prints the full change
-  manifest and mutates **nothing** (AC-11). Only `--force` after the user
+  manifest and mutates **nothing**. Only `--force` after the user
   confirms.
 - **App installation token only.** Every Projects v2 write uses the GitHub App
   installation token (`GH_APP_TOKEN`, or `APP_ID`+`APP_PRIVATE_KEY`), **never**
-  `GITHUB_TOKEN` (AC-27). The token is never printed.
+  `GITHUB_TOKEN`. The token is never printed.
 - **`copyProjectV2` from the NAMED template, then re-resolve against the COPY.**
-  Field/option/iteration ids are re-resolved from the copy, never the template
-  (AC-7, AC-8). Views + Insights charts ride along in the copy — they are **not**
+  Field/option/iteration ids are re-resolved from the copy, never the template.
+  Views + Insights charts ride along in the copy — they are **not**
   API-creatable. The engine verifies **field presence** (by re-resolve), the
   **view-catalog presence** (a read-only `projectV2.views` diff against the 8 in
-  `project/views.json`) — both halves of AC-7 — **and** that each of the 8 views
-  **resolves its documented filter / group / slice** (`verify_views`, AC-25): a
+  `project/views.json`) — **and** that each of the 8 views
+  **resolves its documented filter / group / slice** (`verify_views`): a
   read-only pass that confirms every filter qualifier maps to a native qualifier
   or a field present on the copy and each documented group/slice is reflected by
   a non-empty live `groupByFields` / `verticalGroupByFields`. A missing view **or**
@@ -44,14 +44,14 @@ Let `SCAFFOLD=${CLAUDE_PLUGIN_ROOT}/lib/scaffold.py`. Read-only checks (e.g.
   re-copy* (views aren't API-mutable). Insights charts have **no API** at all, so
   they stay a human checklist item.
 - **Never blind re-PUT** a single-select option list or `iterationConfiguration`
-  — the engine diffs and SKIPs unchanged iterations (AC-9, AC-30).
+  — the engine diffs and SKIPs unchanged iterations.
 - **Idempotent.** A second run is a no-op: empty file-install manifest + zero
   iteration mutations.
 
 ## 1. Gather inputs
 
 You need the **org login**, the **golden-template Project title** (exact, marked
-an org template in Phase 0), a **title for the new project**, optionally the
+an org template), a **title for the new project**, optionally the
 **`owner/name` repo** to install templates into + link to the Project, and
 optionally an org **`--team` slug** to link the Project to. If any required input
 is missing, ask with `AskUserQuestion`. Confirm the App token is available in the
@@ -72,7 +72,7 @@ The engine prints the full **change manifest** to stderr:
 - **views present vs missing** — the 8-view catalog diff (read-only) against
   `project/views.json` (a missing view ⇒ same remedy: fix the template + re-copy),
 - **view filter/group/slice resolution** — `ALL RESOLVE` or the per-view
-  `UNRESOLVED:` lines (AC-25); any defect blocks the `--force` apply (exit 3),
+  `UNRESOLVED:` lines; any defect blocks the `--force` apply (exit 3),
 - the iteration plan (**SKIP** when unchanged, with a mutation count),
 - every **file to install** with `install`/`skip` per destination path,
 - org **Issue Types** + **Issue Fields** to ensure,
@@ -80,12 +80,12 @@ The engine prints the full **change manifest** to stderr:
   (the App already has org Projects-write via its installation — this is a
   confirmation, **not** a base-role grant),
 - the **repo→Project link** (`linkProjectV2ToRepository`, idempotent — `skip`
-  when the repo is already linked) when `--repo` is given (AC-21), and the
+  when the repo is already linked) when `--repo` is given, and the
   installed per-repo **`add-to-project.yml`** auto-add workflow (SHA-pinned
-  `actions/add-to-project`, App-token auth, no metered AI — AC-22),
+  `actions/add-to-project`, App-token auth, no metered AI),
 - the **Project→team link** (`linkProjectV2ToTeam`, write-to-team) when `--team`
   is given, plus the **base-role manual step** — setting the org base role to
-  *Read* is **UI-only with no API** (AC-23), so the engine emits it as a manual
+  *Read* is **UI-only with no API**, so the engine emits it as a manual
   checklist item rather than attempting a mutation,
 - the human checklist (confirm the 9 Insights charts — Insights has no API; and
   the base-role manual step when `--team` was given).
@@ -120,7 +120,7 @@ ensured, the no-squash setting, the **repo→Project link** (`link`/`skip`) and 
 **Project→team link** when `--team` was given, and the **human checklist** items
 (eyeball the 9 Insights charts — the engine cannot verify them, Insights has no
 API; and set the org base role to *Read* in the UI when `--team` was given —
-base role has no API, AC-23). If you re-ran on an already-scaffolded repo, confirm
+base role has no API). If you re-ran on an already-scaffolded repo, confirm
 it was a no-op (empty install manifest, zero iteration mutations, repo link
 `skip`).
 

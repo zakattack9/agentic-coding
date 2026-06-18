@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-"""Offline tests for the FOUR route-issue / plan-sprint projection verbs newly
-exposed on lib/gh.py's CLI — add-item, write-field, advance-status,
+"""Offline tests for the FOUR route-issue / plan-sprint projection verbs on
+lib/gh.py's CLI — add-item, write-field, advance-status,
 create-linked-branch — NO network, NO live org, NO mutation. Every test installs
 a fake RUN that returns canned JSON and counts round-trips (the CountingRunner
 pattern from test_gh_writeverbs.py / test_route_issue.py).
 
-These verbs reuse the EXISTING §1 lib functions (add_item / write_field /
+These verbs reuse the core lib functions (add_item / write_field /
 advance_status / create_linked_branch) — they add no new mutation primitive; they
 only resolve-then-dispatch. They ride engine.sh's dry-by-default `--force` rail
-(nothing mutates without --force — AC-31).
+(nothing mutates without --force).
 
 Covers:
-  AC-8  : add-item — a re-add returns the SAME board item id (idempotent projection)
-  AC-8  : write-field — single-select / iteration (Sprint) / date read-back-identical
-  AC-10 : advance-status — monotonic; an at/past-target re-run is a no-op (no write)
-  AC-9  : create-linked-branch — an existing linked branch is a no-op (exit 0)
-  AC-31 : dry-by-default — engine.sh runs NO mutation without --force; --force does
-  AC-28 : App-token path (gh api graphql) — never GITHUB_TOKEN
-  AC-29 : exit codes 0/2/3/1 + no secret leak
-  AC-30 : the projection verbs emit no closing keyword
-  AC-33 : "second call is a no-op" on replay for add-item / advance-status
+  add-item — a re-add returns the SAME board item id (idempotent projection)
+  write-field — single-select / iteration (Sprint) / date read-back-identical
+  advance-status — monotonic; an at/past-target re-run is a no-op (no write)
+  create-linked-branch — an existing linked branch is a no-op (exit 0)
+  dry-by-default — engine.sh runs NO mutation without --force; --force does
+  App-token path (gh api graphql) — never GITHUB_TOKEN
+  exit codes 0/2/3/1 + no secret leak
+  the projection verbs emit no closing keyword
+  "second call is a no-op" on replay for add-item / advance-status
 """
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ import gh  # noqa: E402
 ENGINE = os.path.join(LIB, "engine.sh")
 
 PROJECT_ID = "PVT_board"
-ITEM_ID = "ITEM_issue7"   # stable board item id (re-add returns this — AC-8)
+ITEM_ID = "ITEM_issue7"   # stable board item id (re-add returns this)
 NODE_ID = "I_issue7"      # the issue's GraphQL node id (from REST GET)
 
 _SINGLE_SELECTS = {
@@ -70,7 +70,7 @@ class PrimitiveRunner:
 
     Presets the tests can set:
       * current_status   — the item's current board Status (advance-status replay)
-      * existing_branch  — True ⇒ the issue already has a linked branch (AC-9 no-op)
+      * existing_branch  — True ⇒ the issue already has a linked branch (no-op)
       * supports_develop — native `gh issue develop` available (cap path)
     """
 
@@ -105,7 +105,7 @@ class PrimitiveRunner:
                 "id": PROJECT_ID, "number": 7, "title": "Board",
                 "fields": {"nodes": self._field_nodes()}}}}})
 
-        # ----- GraphQL: addProjectV2ItemById (REUSE a stable item id — AC-8) -----
+        # ----- GraphQL: addProjectV2ItemById (REUSE a stable item id) -----
         if "addProjectV2ItemById" in body:
             self.writes.append(("add-item", body))
             return json.dumps({"data": {"addProjectV2ItemById": {"item": {"id": ITEM_ID}}}})
@@ -224,7 +224,7 @@ class Base(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# add-item — AC-8 / AC-33: re-add returns the SAME item id (idempotent projection)
+# add-item: re-add returns the SAME item id (idempotent projection)
 # --------------------------------------------------------------------------- #
 class TestAddItem(Base):
     def test_dispatch_returns_item_id(self):
@@ -244,7 +244,7 @@ class TestAddItem(Base):
         self.assertEqual(c1, 0)
         self.assertEqual(c2, 0)
         self.assertEqual(json.loads(o1)["item"], json.loads(o2)["item"],
-                         "a re-add must yield the same board item id (AC-8/AC-33)")
+                         "a re-add must yield the same board item id")
 
     def test_uses_app_token_graphql_path(self):
         # add_item rides `gh api graphql` (the App-token write path), never GITHUB_TOKEN.
@@ -259,7 +259,7 @@ class TestAddItem(Base):
 
 
 # --------------------------------------------------------------------------- #
-# write-field — AC-8: single-select / iteration (Sprint) / date read-back-identical
+# write-field: single-select / iteration (Sprint) / date read-back-identical
 # --------------------------------------------------------------------------- #
 class TestWriteField(Base):
     def test_single_select_read_back(self):
@@ -309,7 +309,7 @@ class TestWriteField(Base):
 
 
 # --------------------------------------------------------------------------- #
-# advance-status — AC-10 / AC-33: monotonic; an at/past-target re-run is a no-op
+# advance-status: monotonic; an at/past-target re-run is a no-op
 # --------------------------------------------------------------------------- #
 class TestAdvanceStatus(Base):
     def test_advances_forward_writes_status(self):
@@ -335,7 +335,7 @@ class TestAdvanceStatus(Base):
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(out)["decision"], "no-op")
         self.assertFalse([w for w in runner.writes if w[0] == "set-field"],
-                         "a re-route past the target writes no Status (AC-10)")
+                         "a re-route past the target writes no Status")
 
     def test_replay_writes_status_at_most_once(self):
         # call 1: Ready -> In Progress writes; call 2: now In Progress -> no-op
@@ -363,7 +363,7 @@ class TestAdvanceStatus(Base):
 
 
 # --------------------------------------------------------------------------- #
-# create-linked-branch — AC-9 / AC-33: existing branch = no-op (exit 0)
+# create-linked-branch: existing branch = no-op (exit 0)
 # --------------------------------------------------------------------------- #
 class TestCreateLinkedBranch(Base):
     def test_existing_branch_is_noop_exit_0(self):
@@ -374,7 +374,7 @@ class TestCreateLinkedBranch(Base):
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(out)["action"], "already-linked")
         # no branch was created (neither native nor GraphQL)
-        self.assertFalse(runner.writes, "an existing linked branch creates nothing (AC-9)")
+        self.assertFalse(runner.writes, "an existing linked branch creates nothing")
 
     def test_creates_via_graphql_when_absent(self):
         runner = PrimitiveRunner(existing_branch=False, supports_develop=False)
@@ -413,7 +413,7 @@ class TestCreateLinkedBranch(Base):
 
 
 # --------------------------------------------------------------------------- #
-# AC-29 — exit codes + no secret leak across the new CLI surface
+# exit codes + no secret leak across the CLI surface
 # --------------------------------------------------------------------------- #
 class TestCliExitAndSecret(Base):
     def test_add_item_usage_error_exit_2(self):
@@ -459,7 +459,7 @@ class TestCliExitAndSecret(Base):
 
 
 # --------------------------------------------------------------------------- #
-# AC-30 — the projection verbs emit NO closing keyword (source scan)
+# the projection verbs emit NO closing keyword (source scan)
 # --------------------------------------------------------------------------- #
 class TestNoClosingKeyword(Base):
     def test_projection_cmd_source_has_no_closer(self):
@@ -473,12 +473,12 @@ class TestNoClosingKeyword(Base):
 
 
 # --------------------------------------------------------------------------- #
-# AC-31 — dry-by-default via engine.sh: no mutation without --force; --force does
+# dry-by-default via engine.sh: no mutation without --force; --force does
 # --------------------------------------------------------------------------- #
 class TestDryByDefaultRail(unittest.TestCase):
-    """The four new write verbs fall through engine.sh's `*)` branch (not in the
+    """The four write verbs fall through engine.sh's `*)` branch (not in the
     {resolve|capabilities|token} read-whitelist), so they are auto-gated by
-    --force (AC-31): a dry run previews and mutates NOTHING."""
+    --force: a dry run previews and mutates NOTHING."""
 
     def _engine(self, *args, env=None):
         e = dict(os.environ)

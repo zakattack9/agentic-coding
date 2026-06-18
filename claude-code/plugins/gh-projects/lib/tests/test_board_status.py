@@ -4,18 +4,18 @@
 The board-status action runs in a CONSUMING repo with NO plugin installed, so
 its resolution/GraphQL logic is vendored in
 `templates/github/actions/board-status/board_status.py`. These tests import THAT
-file (never `lib/*`) and install a fake gh/GraphQL runner. This is the AC-22
+file (never `lib/*`) and install a fake gh/GraphQL runner. This is the
 "offline run of the vendored script" evidence.
 
 Coverage:
-  AC-21  staging success -> On Staging (item stays open); prod success -> Done +
-         close + publish the tag's Release, resolving shipped issues from the
-         deployed SHA (SHA -> merged PRs -> issues).
-  AC-22  the action's python is self-contained (no plugin import) and runs green
-         offline.
-  AC-27  Project writes use the App token, never GITHUB_TOKEN.
-  AC-31  a replayed/stale deploy event does NOT regress Status (monotonic).
-  AC-20  the action notes assert the native built-in target is On Staging / open.
+  staging success -> On Staging (item stays open); prod success -> Done +
+  close + publish the tag's Release, resolving shipped issues from the
+  deployed SHA (SHA -> merged PRs -> issues).
+  The action's python is self-contained (no plugin import) and runs green
+  offline.
+  Project writes use the App token, never GITHUB_TOKEN.
+  A replayed/stale deploy event does NOT regress Status (monotonic).
+  The action notes assert the native built-in target is On Staging / open.
 """
 from __future__ import annotations
 
@@ -153,7 +153,7 @@ class BoardStatusBase(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-21 — staging success -> On Staging, item stays OPEN (not closed/Done).
+# staging success -> On Staging, item stays OPEN (not closed/Done).
 # --------------------------------------------------------------------------- #
 class TestStaging(BoardStatusBase):
     def test_staging_sets_on_staging_and_does_not_close(self):
@@ -172,7 +172,7 @@ class TestStaging(BoardStatusBase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-21 — prod success -> Done + close + publish the tag's Release.
+# prod success -> Done + close + publish the tag's Release.
 # --------------------------------------------------------------------------- #
 class TestProd(BoardStatusBase):
     def test_prod_sets_done_closes_and_publishes_release(self):
@@ -210,7 +210,7 @@ class TestProd(BoardStatusBase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-31 — a replayed/stale deploy event does NOT regress Status.
+# a replayed/stale deploy event does NOT regress Status.
 # --------------------------------------------------------------------------- #
 class TestMonotonic(BoardStatusBase):
     def test_replayed_staging_after_done_is_noop(self):
@@ -239,7 +239,7 @@ class TestMonotonic(BoardStatusBase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-22 — self-contained: no plugin import; runs green offline via the CLI.
+# self-contained: no plugin import; runs green offline via the CLI.
 # --------------------------------------------------------------------------- #
 class TestSelfContainedCli(BoardStatusBase):
     def _main(self, argv):
@@ -280,7 +280,7 @@ class TestSelfContainedCli(BoardStatusBase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-22 / AC-27 — source greps: no plugin import, no GITHUB_TOKEN for writes.
+# source greps: no plugin import, no GITHUB_TOKEN for writes.
 # --------------------------------------------------------------------------- #
 class TestSourceGreps(unittest.TestCase):
     def setUp(self):
@@ -303,7 +303,7 @@ class TestSourceGreps(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-20 — action.yml / README assert the native built-in target is On Staging,
+# action.yml / README assert the native built-in target is On Staging,
 # item stays OPEN after merge (greppable assertion).
 # --------------------------------------------------------------------------- #
 class TestActionNotesAndYaml(unittest.TestCase):
@@ -314,7 +314,7 @@ class TestActionNotesAndYaml(unittest.TestCase):
             self.readme = fh.read()
 
     def test_action_documents_native_built_in_on_staging_open(self):
-        # AC-20: an explicit, greppable assertion that the native "PR merged ->
+        # an explicit, greppable assertion that the native "PR merged ->
         # set Status" built-in target is On Staging (not Done) and stays open.
         text = (self.action + self.readme).lower()
         self.assertIn("pr merged", text)

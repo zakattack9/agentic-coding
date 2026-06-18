@@ -3,13 +3,13 @@
 **ProjectV2 views are NOT API-mutable** (no create/edit/delete), but they **are
 API-readable** (the `projectV2.views` connection: `name`, `layout`, `filter`,
 `groupByFields`, `verticalGroupByFields`). All 8 views are built by hand **once**
-on the golden-template Project (Phase 0) and **replicate via `copyProjectV2`**.
+on the golden-template Project and **replicate via `copyProjectV2`**.
 `scaffold-repo` verifies the copy in two read-only passes — it never creates or
 edits a view:
 
-1. **Presence (AC-7)** — diff the copy's view catalog against the expected 8
+1. **Presence** — diff the copy's view catalog against the expected 8
    titles in `views.json`.
-2. **Resolution (AC-25, §6 `verify_views`)** — for each of the 8 views confirm it
+2. **Resolution (`verify_views`)** — for each of the 8 views confirm it
    **resolves its documented filter / group / slice** against the copy: every
    filter qualifier maps to a native GitHub qualifier or a field that exists on
    the copy, and each documented group/slice is reflected by a non-empty live

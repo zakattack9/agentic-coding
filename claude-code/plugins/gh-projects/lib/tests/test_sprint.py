@@ -2,12 +2,12 @@
 """Offline tests for lib/sprint.py — pure deterministic math, NO network, NO AI.
 
 Covers:
-  AC-6  : working_day_capacity — date-window counts incl. boundary + gap, weekends
-          excluded, half-open [start, end) convention
-  AC-7  : recommend_ready_order — deterministic Priority↑ then Target↑, stable
-          tiebreak; pure (no input mutation)
-  AC-27 : no metered AI anywhere in sprint.py (source grep)
-  AC-29 : CLI exit codes 0/2/3/1 + no token/secret printed
+  * working_day_capacity — date-window counts incl. boundary + gap, weekends
+    excluded, half-open [start, end) convention
+  * recommend_ready_order — deterministic Priority↑ then Target↑, stable
+    tiebreak; pure (no input mutation)
+  * no metered AI anywhere in sprint.py (source grep)
+  * CLI exit codes 0/2/3/1 + no token/secret printed
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ import sprint  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
-# AC-6 — working-day capacity, weekends excluded, half-open [start, end)
+# working-day capacity, weekends excluded, half-open [start, end)
 # --------------------------------------------------------------------------- #
 class TestWorkingDayCapacity(unittest.TestCase):
     def test_two_week_iteration_from_monday(self):
@@ -75,7 +75,7 @@ class TestWorkingDayCapacity(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-7 — Ready-order recommendation: Priority↑ then Target↑, stable tiebreak
+# Ready-order recommendation: Priority↑ then Target↑, stable tiebreak
 # --------------------------------------------------------------------------- #
 class TestRecommendReadyOrder(unittest.TestCase):
     def test_priority_ascending(self):
@@ -156,7 +156,7 @@ class TestRecommendReadyOrder(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-27 — no metered AI anywhere in sprint.py
+# no metered AI anywhere in sprint.py
 # --------------------------------------------------------------------------- #
 class TestNoMeteredAI(unittest.TestCase):
     def test_source_has_no_model_call(self):
@@ -169,7 +169,7 @@ class TestNoMeteredAI(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-29 — CLI exit codes + no secret leak
+# CLI exit codes + no secret leak
 # --------------------------------------------------------------------------- #
 class TestCli(unittest.TestCase):
     def _run_main(self, argv, stdin=None):

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""VENDORED signals computer for `signals-sync.yml` (Phase 1 — deterministic, no AI).
+"""VENDORED signals computer for `signals-sync.yml` (deterministic, no AI).
 
 This file is INSTALLED INTO A CONSUMING REPO by `scaffold-repo` (it lands at
 `.github/signals.py`) and is run there by `signals-sync.yml`. That repo has NO
@@ -12,16 +12,16 @@ they can never drift.
 Hard rules baked into this file (mirrors the workflow boundaries):
   * Deterministic & FREE — there is NO metered-LLM call anywhere in this file
     (no provider SDK, no inference endpoint). Every signal is pure arithmetic +
-    graph traversal (AC-23 / AC-26). A test greps this file to prove it.
+    graph traversal. A test greps this file to prove it.
   * Every Projects v2 write uses the GitHub App INSTALLATION token passed in
-    `GH_APP_TOKEN` — NEVER `GITHUB_TOKEN` (AC-27 / constraint #2). This script
+    `GH_APP_TOKEN` — NEVER `GITHUB_TOKEN` (constraint #2). This script
     never reads `GITHUB_TOKEN`.
-  * Status-update rollup is the documented one (AC-24): any Overdue or
+  * Status-update rollup is the documented one: any Overdue or
     Blocked-blocking-release => OFF_TRACK; any At risk => AT_RISK; release
     milestone closed => COMPLETE; else ON_TRACK.
   * No blind re-PUT of any option list / iterationConfiguration (this script
     only reads schema + writes per-item field VALUES, never edits the schema).
-  * Prints no token/secret, ever (AC-3). Exit codes: 0 ok · 2 usage · 3 not
+  * Prints no token/secret, ever. Exit codes: 0 ok · 2 usage · 3 not
     found · 1 unexpected.
 
 Run modes:
@@ -40,7 +40,7 @@ import sys
 from datetime import date, datetime, timezone
 
 # --------------------------------------------------------------------------- #
-# Schedule-health / Slippage enums (must match the §Data-model option names).
+# Schedule-health / Slippage enums (must match the data-model option names).
 # --------------------------------------------------------------------------- #
 HEALTH_ON_TRACK = "On track"
 HEALTH_AT_RISK = "At risk"
@@ -278,10 +278,10 @@ def _utc_today() -> date:
 
 
 # --------------------------------------------------------------------------- #
-# Status-update rollup (AC-24) — the documented rules, exactly.
+# Status-update rollup — the documented rules, exactly.
 # --------------------------------------------------------------------------- #
 def rollup_health(signals: dict, items: dict, *, release_milestone_closed: bool) -> str:
-    """Roll per-item signals up to ONE project health enum (AC-24).
+    """Roll per-item signals up to ONE project health enum.
 
     Documented precedence:
       1. any Overdue OR any Blocked item that blocks the release => OFF_TRACK
@@ -307,7 +307,7 @@ def rollup_health(signals: dict, items: dict, *, release_milestone_closed: bool)
 
 
 def rollup_body(health: str, signals: dict) -> str:
-    """A deterministic one-line status-update body (no AI; AC-24)."""
+    """A deterministic one-line status-update body (no AI)."""
     overdue = sum(1 for s in signals.values() if s["schedule_health"] == HEALTH_OVERDUE)
     at_risk = sum(1 for s in signals.values() if s["schedule_health"] == HEALTH_AT_RISK)
     blocked = sum(1 for s in signals.values() if s["blocked"] == BLOCKED_YES)
@@ -566,7 +566,7 @@ def _refuses_github_token() -> bool:
 
 
 # --------------------------------------------------------------------------- #
-# CLI — exit codes 0/2/3/1; prints no token/secret (AC-3).
+# CLI — exit codes 0/2/3/1; prints no token/secret.
 # --------------------------------------------------------------------------- #
 def main(argv=None) -> int:
     import argparse

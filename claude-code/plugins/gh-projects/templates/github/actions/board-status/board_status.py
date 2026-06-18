@@ -4,26 +4,26 @@
 THIS FILE IS VENDORED INTO A CONSUMING REPO at
 `./.github/actions/board-status/board_status.py` and runs there with NO plugin
 installed. It therefore VENDORS its own minimal GraphQL/resolution logic and
-imports NOTHING from the gh-projects plugin (AC-22). Stdlib only — no pip.
+imports NOTHING from the gh-projects plugin. Stdlib only — no pip.
 
 What it does (one step added to an existing deploy job):
   * staging success -> set every shipped issue's Project Status to `On Staging`
     (the item stays OPEN — staging is not a terminal state).
   * prod success    -> set Status to `Done`, CLOSE the issue, and PUBLISH the
     tag's Release. Shipped issues are resolved from the DEPLOYED SHA
-    (SHA -> merged PRs -> their linked/referenced issues) (AC-21).
+    (SHA -> merged PRs -> their linked/referenced issues).
 
-Hard rules baked in (Phase-1 boundaries):
-  * Deterministic & free — NO metered AI/model call anywhere (AC-26).
+Hard rules baked in:
+  * Deterministic & free — NO metered AI/model call anywhere.
   * Every Projects v2 field write uses a GitHub App INSTALLATION token, passed
     in as `--app-token` (minted upstream by the composite action from the App
-    id + private-key secrets). NEVER GITHUB_TOKEN for a Project write (AC-27).
+    id + private-key secrets). NEVER GITHUB_TOKEN for a Project write.
   * Status writes are IDEMPOTENT + MONOTONIC: resolve the item's current Status
     and only ADVANCE it (In Progress < In Review < On Staging < Done). A stale
-    or replayed event never regresses an item (AC-31).
+    or replayed event never regresses an item.
   * The resolver speaks to GitHub ONLY through an INJECTABLE command runner
-    (`RUN`), so tests stub gh/GraphQL and run OFFLINE — never a live org (AC-22).
-  * Print no token/secret, ever (AC-3).
+    (`RUN`), so tests stub gh/GraphQL and run OFFLINE — never a live org.
+  * Print no token/secret, ever.
 
 Exit codes: 0 ok · 2 usage/validation · 3 not found · 1 unexpected.
 """
@@ -58,7 +58,7 @@ RUN = _default_run
 
 
 # --------------------------------------------------------------------------- #
-# Secret scrubbing — nothing this module prints may carry a token/secret (AC-3).
+# Secret scrubbing — nothing this module prints may carry a token/secret.
 # --------------------------------------------------------------------------- #
 _SECRET_PATTERNS = [
     re.compile(r"gh[opsuram]_[A-Za-z0-9_]{20,}"),
@@ -124,7 +124,7 @@ def _run_with_token(args, token):
 
 
 # --------------------------------------------------------------------------- #
-# Monotonic Status order (AC-31) — vendored copy; never regress except reopen.
+# Monotonic Status order — vendored copy; never regress except reopen.
 # --------------------------------------------------------------------------- #
 STATUS_ORDER = ["Backlog", "Ready", "In Progress", "In Review", "On Staging", "Done"]
 
@@ -137,7 +137,7 @@ def status_rank(status) -> int:
 
 
 def advance_status(current, target, *, reopen: bool = False):
-    """Return the Status to write, honoring monotonicity (AC-31).
+    """Return the Status to write, honoring monotonicity.
 
     Only advances along the order. A stale/replayed event whose target is at or
     behind `current` is a no-op (returns None — "do not write"). Only
@@ -367,7 +367,7 @@ def run_staging(owner: str, repo: str, project_number: int, sha: str, *, token: 
 
 def run_prod(owner: str, repo: str, project_number: int, sha: str, *, tag: str | None = None,
              token: str | None = None, explicit_issues: list | None = None) -> dict:
-    """Prod success -> Done + close the issue + publish the tag's Release (AC-21)."""
+    """Prod success -> Done + close the issue + publish the tag's Release."""
     return _apply_status(
         owner, repo, project_number, sha, "Done",
         close=True, release_tag=tag, token=token, explicit_issues=explicit_issues,
@@ -395,7 +395,7 @@ def _apply_status(owner, repo, project_number, sha, target_status, *, close, rel
         if item_id is None:
             results.append({"issue": iss["number"], "skipped": "not-on-project"})
             continue
-        # MONOTONIC guard (AC-31): only advance; a replayed/stale event is a no-op.
+        # MONOTONIC guard: only advance; a replayed/stale event is a no-op.
         to_write = advance_status(current, target_status)
         wrote = False
         if to_write is not None:
@@ -418,7 +418,7 @@ def _apply_status(owner, repo, project_number, sha, target_status, *, close, rel
 
 
 # --------------------------------------------------------------------------- #
-# CLI — documented exit codes 0/2/3/1; prints no token/secret (AC-3).
+# CLI — documented exit codes 0/2/3/1; prints no token/secret.
 # --------------------------------------------------------------------------- #
 def _print_json(obj) -> None:
     sys.stdout.write(_scrub(json.dumps(obj)) + "\n")

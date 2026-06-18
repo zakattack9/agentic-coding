@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""gh-projects dependency-DAG signals (Phase 1 — deterministic, no AI).
+"""gh-projects dependency-DAG signals (deterministic, no AI).
 
 Input: the native blocked-by edges GitHub exposes (issue dependencies). From
-them this derives, per item, the three board signals (AC-6):
+them this derives, per item, the three board signals:
 
   * Blocked      — yes/no: does the item have >=1 OPEN blocker?
   * Blast radius — None / Blocks 1 / Blocks many / Blocks release:
@@ -84,7 +84,7 @@ def is_blocked(item_id: str, items: dict) -> bool:
 
 
 def signals_for(item_id: str, items: dict) -> dict:
-    """Return {blocked, blast_radius, blast_count} for one item (AC-6)."""
+    """Return {blocked, blast_radius, blast_count} for one item."""
     item_id = str(item_id)
     if item_id not in items:
         raise DagError(f"unknown item '{item_id}'", code=3)

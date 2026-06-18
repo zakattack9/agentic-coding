@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""Offline tests for lib/gh.py's Phase-1-finish write verbs — NO network, NO
+"""Offline tests for lib/gh.py's write verbs — NO network, NO
 live org, NO mutation. Every test installs a fake RUN that returns canned JSON
 and counts round-trips (the CountingRunner pattern from test_gh.py).
 
 Covers:
-  AC-1  : open_or_update_pr — non-closing `Relates to #N`; create -> edit round-trip
-  AC-2  : pr_check_state — green / red / pending verdicts
-  AC-3  : set_milestone — assign + re-assign = ONE effective write (idempotent)
-  AC-4  : reorder_item — position mutation calls (top vs after)
-  AC-5  : set_assignee — add/remove + idempotency
-  AC-19 : merge_pr — --merge/--rebase only, never --squash (bad method -> code 2)
-  AC-28 : App-token path for the Projects v2 (reorder) write
-  AC-29 : new CLI surface exit codes 0/2/3/1 + no secret leak
-  AC-30 : NO closing keyword anywhere in the PR path (grep + runtime guard)
-  AC-33 : "second call is a no-op" for every idempotent verb
+  open_or_update_pr — non-closing `Relates to #N`; create -> edit round-trip
+  pr_check_state — green / red / pending verdicts
+  set_milestone — assign + re-assign = ONE effective write (idempotent)
+  reorder_item — position mutation calls (top vs after)
+  set_assignee — add/remove + idempotency
+  merge_pr — --merge/--rebase only, never --squash (bad method -> code 2)
+  App-token path for the Projects v2 (reorder) write
+  CLI surface exit codes 0/2/3/1 + no secret leak
+  NO closing keyword anywhere in the PR path (grep + runtime guard)
+  "second call is a no-op" for every idempotent verb
 """
 from __future__ import annotations
 
@@ -104,7 +104,7 @@ class Base(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-1 / AC-16 / AC-30 — open_or_update_pr: non-closing, create -> edit
+# open_or_update_pr: non-closing, create -> edit
 # --------------------------------------------------------------------------- #
 class TestOpenOrUpdatePr(Base):
     def test_creates_when_no_existing_pr(self):
@@ -170,7 +170,7 @@ class TestOpenOrUpdatePr(Base):
 
 
 # --------------------------------------------------------------------------- #
-# AC-2 / AC-18 — pr_check_state: green / red / pending
+# pr_check_state: green / red / pending
 # --------------------------------------------------------------------------- #
 class TestPrCheckState(Base):
     def test_green_when_all_pass(self):
@@ -195,7 +195,7 @@ class TestPrCheckState(Base):
 
 
 # --------------------------------------------------------------------------- #
-# AC-19 — merge_pr: --merge/--rebase only, never --squash
+# merge_pr: --merge/--rebase only, never --squash
 # --------------------------------------------------------------------------- #
 class TestMergePr(Base):
     def test_merge_method(self):
@@ -231,7 +231,7 @@ class TestMergePr(Base):
 
 
 # --------------------------------------------------------------------------- #
-# AC-3 / AC-12 — set_milestone: assign + re-assign = one effective write
+# set_milestone: assign + re-assign = one effective write
 # --------------------------------------------------------------------------- #
 class TestSetMilestone(Base):
     def test_assign_writes_once(self):
@@ -261,7 +261,7 @@ class TestSetMilestone(Base):
 
 
 # --------------------------------------------------------------------------- #
-# AC-4 / AC-14 / AC-28 — reorder_item: position mutation calls, App token
+# reorder_item: position mutation calls, App token
 # --------------------------------------------------------------------------- #
 class TestReorderItem(Base):
     def test_top_omits_after(self):
@@ -310,7 +310,7 @@ class TestReorderItem(Base):
 
 
 # --------------------------------------------------------------------------- #
-# AC-5 — set_assignee: add / remove + idempotency
+# set_assignee: add / remove + idempotency
 # --------------------------------------------------------------------------- #
 class TestSetAssignee(Base):
     def test_add_when_absent(self):
@@ -343,7 +343,7 @@ class TestSetAssignee(Base):
 
 
 # --------------------------------------------------------------------------- #
-# AC-33 — "second call is a no-op" for every idempotent write verb
+# "second call is a no-op" for every idempotent write verb
 # --------------------------------------------------------------------------- #
 class TestSecondCallIsNoop(Base):
     def test_pr_second_call_no_duplicate(self):
@@ -369,7 +369,7 @@ class TestSecondCallIsNoop(Base):
 
 
 # --------------------------------------------------------------------------- #
-# AC-29 — new CLI surface: exit codes + no secret leak
+# CLI surface: exit codes + no secret leak
 # --------------------------------------------------------------------------- #
 class TestCliExitAndSecret(Base):
     def _run_main(self, argv):

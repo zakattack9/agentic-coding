@@ -5,14 +5,14 @@
 #   * DETERMINISTIC & FREE — there is NO metered-LLM step in this workflow (no
 #     provider SDK, no inference endpoint). Every signal is computed by the
 #     vendored stdlib-python
-#     `.github/signals.py` (pure arithmetic + blocked-by DAG math) (AC-23/26).
+#     `.github/signals.py` (pure arithmetic + blocked-by DAG math).
 #   * Every Projects v2 write uses a GitHub App INSTALLATION token, passed to the
-#     script as GH_APP_TOKEN — NEVER GITHUB_TOKEN (AC-27 / constraint #2). The
+#     script as GH_APP_TOKEN — NEVER GITHUB_TOKEN (constraint #2). The
 #     job's GITHUB_TOKEN is read-only and is NOT used for any Project write.
 #   * We do NOT use `on: projects_v2_item:` (no repo trigger exists, constraint
 #     #1). We drive recompute from issues / pull_request events + a cron.
 #   * The script writes per-item field VALUES + posts createProjectV2StatusUpdate
-#     only; it never edits an option list / iterationConfiguration (AC-30).
+#     only; it never edits an option list / iterationConfiguration.
 #
 # Required repo/org config:
 #   vars.GH_PROJECT_OWNER   — the org login that owns the Project

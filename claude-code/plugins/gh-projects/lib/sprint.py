@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""gh-projects sprint planning math (Phase 1 — deterministic, free, no AI).
+"""gh-projects sprint planning math (deterministic, free, no AI).
 
 Pure stdlib helpers that `plan-sprint` calls for capacity and Ready-order
-recommendations. NO model/AI call anywhere (AC-27). NO network. Every function
+recommendations. NO model/AI call anywhere. NO network. Every function
 is a pure computation over its inputs, so the whole surface is exercised
 offline with plain fixtures.
 
@@ -35,7 +35,7 @@ def _parse_date(value) -> _dt.date:
 
 
 # --------------------------------------------------------------------------- #
-# Working-day capacity (AC-6, AC-13)
+# Working-day capacity
 # --------------------------------------------------------------------------- #
 def working_day_capacity(start, end) -> int:
     """Count working days (Mon–Fri, weekends excluded) in an Iteration window.
@@ -54,7 +54,7 @@ def working_day_capacity(start, end) -> int:
 
     Weekends (Saturday=5, Sunday=6 in `date.weekday()`) are excluded. An empty
     or inverted window (``end <= start``) has zero capacity. Public holidays are
-    NOT modeled (out of scope — the spec's deferral).
+    NOT modeled (out of scope).
 
     Returns the integer working-day count.
     """
@@ -83,7 +83,7 @@ def working_day_capacity_from_duration(start, duration_days: int) -> int:
 
 
 # --------------------------------------------------------------------------- #
-# Ready-order recommendation (AC-7, AC-14)
+# Ready-order recommendation
 # --------------------------------------------------------------------------- #
 # Expected item shape (a list of dicts):
 #   {"id": <board item id, str>,        # stable tiebreak key + reorder target

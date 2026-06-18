@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # gh-projects engine entrypoint — the single seam the skills call.
 #
-# Collapsed from pm-ops's multi-engine engine-dispatch.sh to the ONE GitHub
-# backend (lib/gh.py). It has NO logic of its own beyond enforcing the
-# DRY-BY-DEFAULT / --force rail: nothing mutates GitHub unless --force is
-# passed. Without --force it prints the intended command and exits without
-# running it (dry preview). All Project writes downstream use the GitHub App
-# installation token, never GITHUB_TOKEN (constraint #2).
+# A thin dispatcher over the single GitHub backend (lib/gh.py). It has NO logic
+# of its own beyond enforcing the DRY-BY-DEFAULT / --force rail: nothing mutates
+# GitHub unless --force is passed. Without --force it prints the intended command
+# and exits without running it (dry preview). All Project writes downstream use
+# the GitHub App installation token, never GITHUB_TOKEN (constraint #2).
 #
 # Usage:  engine.sh <gh.py-subcommand> [args...] [--force]
 # Read verbs (run even in dry mode — gh.py is read-only/idempotent for these):
@@ -16,7 +15,7 @@
 #   | link-repo | link-team   (the two scaffold-completion links — same rail)
 #   | add-item | write-field | advance-status | create-linked-branch
 #       (the route-issue / plan-sprint projection verbs — same --force rail)
-# Anything not in the read whitelist falls to "*)" and requires --force (AC-31).
+# Anything not in the read whitelist falls to "*)" and requires --force.
 #
 # Exit:   0 ok · 2 usage · 3 not found · 1 unexpected (mirrors gh.py).
 set -euo pipefail
@@ -56,7 +55,7 @@ if [[ "$force" -ne 1 ]]; then
   for a in "${args[@]}"; do printf ' %q' "$a" >&2; done
   printf '\n' >&2
   # Read-only verbs are safe to actually run even in dry mode; write verbs are
-  # not. gh.py is itself dry/idempotent for the Phase-1 read verbs, so we run
+  # not. gh.py is itself dry/idempotent for the read verbs, so we run
   # them; anything else stays a preview until --force.
   case "${args[0]}" in
     resolve|capabilities|token)

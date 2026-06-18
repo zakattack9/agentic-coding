@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for the route-issue leaf (§2, AC-8..11) — NO network, NO live
+"""Offline tests for the route-issue leaf — NO network, NO live
 org, NO mutation. route-issue is thin prose that orchestrates the EXISTING
 lib/gh.py verbs (add_item / write_field / advance_status / create_linked_branch /
 set_assignee), all behind engine.sh's dry-by-default `--force` rail. These tests
@@ -7,20 +7,20 @@ exercise that orchestrated behavior against an injected fake RUN (the
 CountingRunner / fake-RUN pattern from test_gh_writeverbs.py + test_scaffold.py).
 
 Covers:
-  AC-8  : project the issue (add_item REUSES the existing board item on re-add —
-          same item id), populate the intake-time fields Type/Size/Tier/PM-ID/
-          Spec/Priority/Status read-back-identical, optionally self-assign the
-          actor when --assignee is given.
-  AC-9  : create the authoritative linked branch — BOTH capability paths (native
-          `gh issue develop` + GraphQL createLinkedBranch); a re-run on an
-          existing linked branch is a no-op (exit 0), never an error.
-  AC-10 : advance Status ONLY monotonically — a re-route never regresses an item
-          already at/past the target (advance_status).
-  AC-11 : dry-by-default — without --force the engine adds no item, sets no
-          field, creates no branch, sets no assignee; --force does (via engine.sh).
-  AC-25 : route-issue/SKILL.md declares disable-model-invocation true, model
-          claude-opus-4-8, effort medium, AND carries the PreToolUse/Bash guard
-          hooks block pointing at hooks/guard.sh (the guard-activation down-payment).
+  - project the issue (add_item REUSES the existing board item on re-add —
+    same item id), populate the intake-time fields Type/Size/Tier/PM-ID/
+    Spec/Priority/Status read-back-identical, optionally self-assign the
+    actor when --assignee is given.
+  - create the authoritative linked branch — BOTH capability paths (native
+    `gh issue develop` + GraphQL createLinkedBranch); a re-run on an
+    existing linked branch is a no-op (exit 0), never an error.
+  - advance Status ONLY monotonically — a re-route never regresses an item
+    already at/past the target (advance_status).
+  - dry-by-default — without --force the engine adds no item, sets no
+    field, creates no branch, sets no assignee; --force does (via engine.sh).
+  - route-issue/SKILL.md declares disable-model-invocation true, model
+    claude-opus-4-8, effort medium, AND carries the PreToolUse/Bash guard
+    hooks block pointing at hooks/guard.sh.
 """
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ def _q(args):
 # --------------------------------------------------------------------------- #
 # A fake gh runner modelling the board the route-issue projection writes onto.
 # It serves the project field/option resolve, addProjectV2ItemById (REUSING a
-# stable item id per content so a re-add returns the same id — AC-8), the
+# stable item id per content so a re-add returns the same id), the
 # two-phase field write + read-back, the assignee read/edit, and both
 # linked-branch capability paths. Every WRITE round-trip is recorded.
 # --------------------------------------------------------------------------- #
@@ -83,11 +83,11 @@ class RouteRunner:
 
     Presets the tests can set:
       * supports_develop — whether the probed `gh` exposes `gh issue develop`
-                           (drives the AC-9 native vs GraphQL capability path)
+                           (drives the native vs GraphQL capability path)
       * existing_branch  — True ⇒ the issue already has a linked branch (re-run
                            no-op path); native `gh issue develop` then reports
-                           "already linked" and is a clean no-op (AC-9)
-      * current_status   — the item's current Status (for monotonic replay, AC-10)
+                           "already linked" and is a clean no-op
+      * current_status   — the item's current Status (for monotonic replay)
       * assignees        — the issue's current assignee logins (a set)
     """
 
@@ -99,7 +99,7 @@ class RouteRunner:
         self.existing_branch = existing_branch
         self.current_status = current_status
         self.assignees = set(assignees or [])
-        # Per-field last-written value so the two-phase read-back matches (AC-8).
+        # Per-field last-written value so the two-phase read-back matches.
         self._written = {}
 
     def __call__(self, args):
@@ -177,7 +177,7 @@ class RouteRunner:
 
     def _record_written(self, body):
         # Capture the field id + the typed literal value from the inlined mutation
-        # so the read-back serves back exactly what was written (AC-8 verify).
+        # so the read-back serves back exactly what was written.
         fid = None
         for c in self.calls[-1]:
             c = str(c)
@@ -218,7 +218,7 @@ class Base(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-8 — projection: reuse the existing item, populate intake fields, self-assign
+# Projection: reuse the existing item, populate intake fields, self-assign
 # --------------------------------------------------------------------------- #
 class TestProjection(Base):
     def test_re_add_returns_same_item_id(self):
@@ -230,7 +230,7 @@ class TestProjection(Base):
         second = gh.add_item(proj.id, CONTENT_ID)
         self.assertEqual(first, ITEM_ID)
         self.assertEqual(second, first,
-                         "re-add must reuse the existing board item id (AC-8)")
+                         "re-add must reuse the existing board item id")
 
     def test_field_dump_matches_inputs(self):
         # Populate every intake-time field; each write reads back identical
@@ -269,7 +269,7 @@ class TestProjection(Base):
 
 
 # --------------------------------------------------------------------------- #
-# AC-9 — authoritative linked branch: both capability paths + re-run no-op
+# Authoritative linked branch: both capability paths + re-run no-op
 # --------------------------------------------------------------------------- #
 class TestLinkedBranch(Base):
     def test_native_path_when_gh_supports_develop(self):
@@ -302,11 +302,11 @@ class TestLinkedBranch(Base):
                                       repo="acme/web", issue_number=7)
         self.assertEqual(res["via"], "native")
         self.assertTrue([w for w in runner.writes if w[0] == "branch-native-noop"],
-                        "re-run on an existing linked branch is a no-op (AC-9)")
+                        "re-run on an existing linked branch is a no-op")
 
 
 # --------------------------------------------------------------------------- #
-# AC-10 — Status advances ONLY monotonically (re-route never regresses)
+# Status advances ONLY monotonically (re-route never regresses)
 # --------------------------------------------------------------------------- #
 class TestMonotonicStatus(Base):
     def test_advances_forward(self):
@@ -316,7 +316,7 @@ class TestMonotonicStatus(Base):
     def test_no_backward_write_when_already_past_target(self):
         # Re-route an item already In Review back toward In Progress: NO write.
         self.assertIsNone(gh.advance_status("In Review", "In Progress"),
-                          "re-route must not regress a more-advanced item (AC-10)")
+                          "re-route must not regress a more-advanced item")
 
     def test_replay_no_backward_status_write(self):
         # Replay the same route twice. The first advances Ready->In Progress; the
@@ -331,7 +331,7 @@ class TestMonotonicStatus(Base):
 
 
 # --------------------------------------------------------------------------- #
-# AC-11 — dry-by-default via engine.sh: no write without --force; --force writes.
+# Dry-by-default via engine.sh: no write without --force; --force writes.
 # --------------------------------------------------------------------------- #
 class TestDryByDefault(Base):
     """route-issue's writes ride engine.sh's `--force` rail. We exercise the rail
@@ -385,7 +385,7 @@ class TestDryByDefault(Base):
 
 
 # --------------------------------------------------------------------------- #
-# AC-25 (down-payment) — route-issue/SKILL.md static frontmatter assertions.
+# route-issue/SKILL.md static frontmatter assertions.
 # --------------------------------------------------------------------------- #
 class TestSkillFrontmatter(unittest.TestCase):
     @classmethod
@@ -409,7 +409,7 @@ class TestSkillFrontmatter(unittest.TestCase):
         self.assertRegex(self.fm, r"(?m)^name:\s*route-issue\s*$")
 
     def test_carries_guard_hooks_block(self):
-        # AC-25: the PreToolUse / matcher "Bash" guard block pointing at guard.sh
+        # The PreToolUse / matcher "Bash" guard block pointing at guard.sh
         # so the guard is active ONLY while route-issue runs.
         self.assertIn("PreToolUse:", self.fm)
         self.assertRegex(self.fm, r'matcher:\s*"Bash"')

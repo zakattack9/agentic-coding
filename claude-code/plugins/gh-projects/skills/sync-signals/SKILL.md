@@ -32,7 +32,7 @@ need a GitHub **App installation token** in `GH_APP_TOKEN` — **never**
 | **Slippage-days** | whole days past Target (0 if not late) |
 | **Project Status update** | rolled-up health (`ON_TRACK/AT_RISK/OFF_TRACK/COMPLETE`) + a one-line body |
 
-**Rollup (AC-24):** any `Overdue` or any `Blocked`-item-that-blocks-release ⇒
+**Rollup:** any `Overdue` or any `Blocked`-item-that-blocks-release ⇒
 `OFF_TRACK`; any `At risk` ⇒ `AT_RISK`; release milestone closed ⇒ `COMPLETE`;
 else `ON_TRACK`.
 
@@ -74,11 +74,11 @@ so plainly.
 ## Guardrails
 - Dry run first, every time. Only `--apply` after the user confirms.
 - **NO AI** — this skill never calls a model; the computation is pure
-  arithmetic + DAG traversal (AC-23/26).
+  arithmetic + DAG traversal.
 - Every Project write uses the **App installation token** (`GH_APP_TOKEN`),
   never `GITHUB_TOKEN` (constraint #2). The script refuses to write without it.
 - This skill only writes per-item **signal field values** + posts the Status
-  update — it never edits an option list or iteration config (AC-30), never
+  update — it never edits an option list or iteration config, never
   moves the Status column (that's `board-sync` / `board-status`), and never
   authors a spec (that's spec-ops).
 - Exit codes: `0` ok · `2` usage / no App token · `3` project or field not

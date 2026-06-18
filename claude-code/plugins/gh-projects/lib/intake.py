@@ -6,15 +6,15 @@ raw dump into atomic items and DELEGATES every body+AC to `spec-ops:write-spec`
 at the tier's rigor. It authors NO body itself. THIS file holds only the
 non-AI decision logic the skill must not invent in prose:
 
-  * size_from_groups        — AC-group count -> S/M/L (AC-15)
-  * tier_rigor              — Tier -> spec-ops rigor + whether refine-spec runs (AC-14)
+  * size_from_groups        — AC-group count -> S/M/L
+  * tier_rigor              — Tier -> spec-ops rigor + whether refine-spec runs
   * epic_split              — >~3-4 groups -> one sub-issue per group, with the
-                              `needs §X` DAG projected onto blocked-by edges (AC-15)
+                              `needs §X` DAG projected onto blocked-by edges
   * ready_gate / classify_ac — atomic-observable vs prose AC; refuse `Ready`
-                              for prose-only / non-atomic AC, with a reason (AC-13)
-  * build_issue_fields      — Type/Size/Tier/PM-ID the issue must carry (AC-12)
+                              for prose-only / non-atomic AC, with a reason
+  * build_issue_fields      — Type/Size/Tier/PM-ID the issue must carry
 
-Nothing here makes a model call (AC-26) or touches GitHub. The skill feeds it the
+Nothing here makes a model call or touches GitHub. The skill feeds it the
 spec-ops AC groups + tier and renders/acts on the result; lib/gh.py performs the
 actual `addSubIssue`/blocked-by writes, lib/pm.py allocates the PM-#### id.
 
@@ -27,7 +27,7 @@ import re
 import sys
 
 # --------------------------------------------------------------------------- #
-# Tier -> spec-ops rigor (AC-14). The mapping is the pinned, stable interface
+# Tier -> spec-ops rigor. The mapping is the pinned, stable interface
 # between gh-projects and spec-ops; spec-ops internals may churn without
 # breaking us. T3 additionally runs refine-spec to harden + commit the DAG.
 # --------------------------------------------------------------------------- #
@@ -37,7 +37,7 @@ TIER_RIGOR = {
     "T3": {"rigor": "full", "refine": True},
 }
 
-# The spec-ops skill each tier delegates to (AC-14: write-spec always; T3 also
+# The spec-ops skill each tier delegates to (write-spec always; T3 also
 # refine-spec). These are skill ids the orchestrating SKILL.md invokes; they are
 # named here so the call path is asserted in tests, never hand-typed in prose.
 WRITE_SPEC_SKILL = "spec-ops:write-spec"
@@ -66,7 +66,7 @@ def normalize_tier(tier) -> str:
 
 
 def tier_rigor(tier) -> dict:
-    """Tier -> {'tier','rigor','refine','write_spec','refine_spec'} (AC-14).
+    """Tier -> {'tier','rigor','refine','write_spec','refine_spec'}.
 
     T1->light · T2->standard · T3->full + refine-spec. `write_spec` /
     `refine_spec` name the exact spec-ops skill the SKILL.md must invoke; the
@@ -84,7 +84,7 @@ def tier_rigor(tier) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# Size from AC-group count (AC-15): 1->S · 2-3->M · 4+->L
+# Size from AC-group count: 1->S · 2-3->M · 4+->L
 # --------------------------------------------------------------------------- #
 def size_from_groups(group_count: int) -> str:
     n = int(group_count)
@@ -98,8 +98,7 @@ def size_from_groups(group_count: int) -> str:
 
 
 # Epic-split threshold: at >~3-4 groups, recommend splitting into one sub-issue
-# per group. We split at 4+ (same boundary that makes size L), matching the
-# spec's ">~3-4 groups -> Epic split".
+# per group. We split at 4+ (same boundary that makes size L).
 EPIC_SPLIT_THRESHOLD = 4
 
 
@@ -108,7 +107,7 @@ def should_epic_split(group_count: int) -> bool:
 
 
 # --------------------------------------------------------------------------- #
-# needs §X -> blocked-by edge projection (AC-15)
+# needs §X -> blocked-by edge projection
 # --------------------------------------------------------------------------- #
 _NEEDS_RE = re.compile(r"§\s*([0-9]+)")
 
@@ -133,7 +132,7 @@ def parse_needs(needs) -> list:
 
 
 def epic_split(groups: list) -> dict:
-    """Project the AC-group DAG onto an Epic split (AC-15).
+    """Project the AC-group DAG onto an Epic split.
 
     `groups` is the ordered list of spec-ops AC groups, each:
         {"index": 1, "name": "lib core", "needs": [...] | "needs §2", "ac": [...]}
@@ -171,7 +170,7 @@ def epic_split(groups: list) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# AC quality gate (AC-13): atomic, observable end-states vs prose
+# AC quality gate: atomic, observable end-states vs prose
 # --------------------------------------------------------------------------- #
 # A criterion enters `Ready` only if it reads as an observable END-STATE
 # ("X is true / exists / returns / matches ...") — never a TASK ("add ...",
@@ -263,7 +262,7 @@ def classify_ac(text: str) -> dict:
 
 
 def ready_gate(ac_items) -> dict:
-    """Decide whether the item may enter `Ready` (AC-13).
+    """Decide whether the item may enter `Ready`.
 
     `ac_items` is the flat list of criterion strings (across all groups). Returns
         {"ready": bool, "rejections": [{"index","text","reason"}, ...],
@@ -292,13 +291,13 @@ def ready_gate(ac_items) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# Issue field block (AC-12): every item carries Type/Size/Tier/PM-ID
+# Issue field block: every item carries Type/Size/Tier/PM-ID
 # --------------------------------------------------------------------------- #
 _VALID_TYPE = {"Feature", "Bug", "Chore", "Infra"}
 
 
 def build_issue_fields(*, item_type: str, tier, pm_id: str, group_count: int) -> dict:
-    """Assemble the required field block every intake issue must set (AC-12).
+    """Assemble the required field block every intake issue must set.
 
     Size is DERIVED from the AC-group count (not free-chosen); Tier is
     normalized; Type is validated against the issue-form enum; PM-#### is the id
@@ -337,9 +336,9 @@ def plan_item(item: dict) -> dict:
           "title": "...",
           "groups": [{"index","name","needs","ac":[...]}...],  # spec-ops output
         }
-    Returns the merged plan: fields (AC-12), the ready decision (AC-13), the
-    tier->rigor delegation (AC-14), and the size + epic-split + blocked-by edges
-    (AC-15). Makes NO model call and NO GitHub write — pure function.
+    Returns the merged plan: fields, the ready decision, the tier->rigor
+    delegation, and the size + epic-split + blocked-by edges. Makes NO model
+    call and NO GitHub write — pure function.
     """
     groups = list(item.get("groups") or [])
     group_count = len(groups)

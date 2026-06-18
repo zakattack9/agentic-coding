@@ -2,11 +2,11 @@
 """Offline tests for the SIGNALS phase — NO network, NO live org, NO mutation.
 
 Covers:
-  * AC-23: the vendored signals computer derives Schedule health / Slippage /
+  * the vendored signals computer derives Schedule health / Slippage /
     Slippage-days / Blast radius / Blast-count / Blocked DETERMINISTICALLY from a
     fixture board (expected values) — and ZERO AI calls exist (grep the workflow
     + the vendored script for anthropic/claude/model API calls -> none).
-  * AC-24: rollup fixtures -> expected health enum (the documented rules).
+  * rollup fixtures -> expected health enum (the documented rules).
   * DAG cross-check: the vendored DAG math reproduces lib/dag.compute exactly.
   * App-token discipline: --apply refuses to write without GH_APP_TOKEN and the
     workflow never feeds GITHUB_TOKEN to a Project write.
@@ -65,7 +65,7 @@ def board_fixture():
 
 
 # --------------------------------------------------------------------------- #
-# AC-23 — fixture board -> expected DETERMINISTIC signal values.
+# fixture board -> expected DETERMINISTIC signal values.
 # --------------------------------------------------------------------------- #
 class TestSignalValues(unittest.TestCase):
     def setUp(self):
@@ -171,7 +171,7 @@ class TestDagCrossCheck(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-24 — rollup fixtures -> expected health enum.
+# rollup fixtures -> expected health enum.
 # --------------------------------------------------------------------------- #
 class TestRollup(unittest.TestCase):
     def _rollup(self, board, *, rel_closed=None):
@@ -259,13 +259,13 @@ class TestRollup(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-23 / AC-26 — ZERO AI calls (grep the workflow + the vendored script).
+# ZERO AI calls (grep the workflow + the vendored script).
 # --------------------------------------------------------------------------- #
 class TestNoAiCalls(unittest.TestCase):
     # Call-site-shaped tokens that would indicate a metered-LLM invocation: a
     # provider SDK import, an inference endpoint, or an LLM API key. (We do NOT
     # forbid the bare words "claude"/"anthropic" — the SKILL.md legitimately
-    # pins `model: claude-haiku-4-6` and these files' own prose says there is no
+    # pins `model: claude-opus-4-8` and these files' own prose says there is no
     # such call; only a real CALL SITE would carry one of these needles.)
     AI_NEEDLES = [
         "anthropic-ai", "import anthropic", "from anthropic",
@@ -280,7 +280,7 @@ class TestNoAiCalls(unittest.TestCase):
         for needle in self.AI_NEEDLES:
             self.assertNotIn(
                 needle.lower(), text,
-                f"{os.path.basename(path)} must contain NO AI call (found {needle!r}) — AC-23/26",
+                f"{os.path.basename(path)} must contain NO AI call (found {needle!r})",
             )
 
     def test_workflow_has_no_ai(self):
@@ -291,7 +291,7 @@ class TestNoAiCalls(unittest.TestCase):
 
     def test_skill_declares_no_ai(self):
         # The skill is explicit/user-invoked. Its frontmatter legitimately PINS a
-        # model (`model: claude-haiku-4-6`) for the orchestrating turn, but its
+        # model (`model: claude-opus-4-8`) for the orchestrating turn, but its
         # WORK is the deterministic script — it must make no AI/model API CALL.
         # So we forbid actual API-endpoint needles (not the `model:` pin) and
         # assert it is disable-model-invocation + points at the vendored script.
@@ -452,7 +452,7 @@ class TestVendoredOffline(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# CLI exit codes + secret scrubbing (AC-3).
+# CLI exit codes + secret scrubbing.
 # --------------------------------------------------------------------------- #
 class TestCli(unittest.TestCase):
     def _main(self, argv):
@@ -512,7 +512,7 @@ class TestCli(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-27 — the WORKFLOW never feeds GITHUB_TOKEN to a Project write.
+# the WORKFLOW never feeds GITHUB_TOKEN to a Project write.
 # --------------------------------------------------------------------------- #
 class TestWorkflowAppToken(unittest.TestCase):
     def setUp(self):

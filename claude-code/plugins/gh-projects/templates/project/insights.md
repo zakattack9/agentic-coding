@@ -2,7 +2,7 @@
 
 GitHub **Insights is free on all plans** (since Feb 2025). It is **read-only, UI-only,
 zero API**: charts can be **neither created nor read** programmatically. So the 9 charts
-are **built by hand once** on the golden-template Project (Phase 0, exactly like the 8
+are **built by hand once** on the golden-template Project (exactly like the 8
 views) and then **replicate via `copyProjectV2`** (which carries Insights config).
 
 Because Insights has **no API**, `scaffold-repo` can neither create *nor* verify charts —

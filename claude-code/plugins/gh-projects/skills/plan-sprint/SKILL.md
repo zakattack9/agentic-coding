@@ -24,8 +24,7 @@ Let `ENGINE=${CLAUDE_PLUGIN_ROOT}/lib/engine.sh` and
 installation token** already in the environment (`GH_APP_TOKEN`, or
 `APP_ID`+`APP_PRIVATE_KEY`) — **never** `GITHUB_TOKEN` (it cannot write Projects
 v2 fields). The engine **never prints** the token: `bash $ENGINE token` only
-**confirms** availability (returns a REDACTED `ok:true`); do not try to capture it
-(AC-28).
+**confirms** availability (returns a REDACTED `ok:true`); do not try to capture it.
 
 **Field-home split.** `plan-sprint` OWNS the **scheduling** fields — **Sprint
 (Iteration)**, **Milestone**, **Start**, **Target** — and the **Ready order**. It
@@ -36,16 +35,16 @@ does **not** wire the guard.
 
 ## What it does (all deterministic, no AI)
 
-| Step | Mechanism | AC |
-|---|---|---|
-| Pick the **active Iteration** | computed OFFLINE from the field config (see rule below) | AC-12 |
-| Assign each issue to that Iteration (**Sprint** field) | `engine.sh resolve` ids → `gh.py` field write | AC-12 |
-| Assign the **Milestone** | `gh.py set-milestone` (repo-scoped number, idempotent) | AC-12 |
-| Set **Start/Target** dates | `gh.py` field write per item | AC-12 |
-| Show **capacity vs load**, warn on over-allocation | `sprint.py capacity` vs assigned count | AC-13 |
-| **Reorder** the Ready queue | `sprint.py ready-order` → `gh.py reorder-item` | AC-14 |
+| Step | Mechanism |
+|---|---|
+| Pick the **active Iteration** | computed OFFLINE from the field config (see rule below) |
+| Assign each issue to that Iteration (**Sprint** field) | `engine.sh resolve` ids → `gh.py` field write |
+| Assign the **Milestone** | `gh.py set-milestone` (repo-scoped number, idempotent) |
+| Set **Start/Target** dates | `gh.py` field write per item |
+| Show **capacity vs load**, warn on over-allocation | `sprint.py capacity` vs assigned count |
+| **Reorder** the Ready queue | `sprint.py ready-order` → `gh.py reorder-item` |
 
-## Active-Iteration rule (AC-12 — deterministic, computed offline)
+## Active-Iteration rule (deterministic, computed offline)
 
 The "current" Iteration is **not** asked for and **not** guessed — it is computed
 from the resolved Iteration field's `configuration` (the `iterations` list of
@@ -62,12 +61,10 @@ from the resolved Iteration field's `configuration` (the `iterations` list of
 5. Ties/ordering break by `startDate` ascending; this is a pure, stable function
    of the config + today, so a re-run picks the identical iteration.
 
-> This active-iteration selection is the **one new piece of logic** plan-sprint
-> needs. It is a pure computation over the resolved field config — there is no
-> model call. (Implementation note for the orchestrator: if a shared lib helper
-> is wanted, it belongs in `lib/sprint.py` as an `active_iteration(iterations,
-> today)` pure function; this leaf does not edit `lib/`. Meanwhile the rule above
-> is fully specified and is covered offline by `test_plan_sprint.py`.)
+> Active-iteration selection is a pure computation over the resolved field
+> config — there is no model call. The shared helper lives in `lib/sprint.py` as
+> the `active_iteration(iterations, today)` pure function, and the rule above is
+> covered offline by `test_plan_sprint.py`.
 
 Resolve the field config (read-only, safe in dry mode):
 
@@ -78,7 +75,7 @@ bash "$ENGINE" resolve --owner <org> --number <project#>
 ## 1. Dry run (always first)
 
 Without `--force` the engine **mutates nothing** — it prints the resolved
-command(s) it *would* run and exits (AC-15). Build and preview the full plan:
+command(s) it *would* run and exits. Build and preview the full plan:
 
 - the **active Iteration** title (per the rule above) every issue will be assigned
   to,
@@ -96,7 +93,7 @@ python3 "$SPRINT" ready-order --items '<json array of {id,priority,target}>'
 ```
 
 If the **load exceeds capacity**, emit an **over-allocation WARNING** and still
-show the full plan — capacity is advisory, it **does not hard-block** (AC-13).
+show the full plan — capacity is advisory, it **does not hard-block**.
 Surface the warning to the user; do not silently drop issues.
 
 ## 2. Confirm, then apply
@@ -106,7 +103,7 @@ Use `AskUserQuestion` to confirm (this mutates the board). The App token must
 (the engine never prints the token; `bash "$ENGINE" token` returns a REDACTED
 confirmation only, so do **not** try to capture it). Confirm availability first
 (`ok:true`); if it is unset the write verbs **refuse** (exit 2) — that refusal is
-intentional (AC-28):
+intentional:
 
 ```bash
 bash "$ENGINE" token   # confirms availability only — prints {"app_token":"[REDACTED]","ok":true}
@@ -139,7 +136,7 @@ bash "$ENGINE" set-milestone --repo owner/name --number <n> --milestone <m> --fo
 
 **(d) Reorder the Ready queue** (`reorder-item`) in the **recommended order**
 returned by `ready-order`: move the first recommended item to the top (omit
-`--after`), then each subsequent item `--after` the previous one (AC-14):
+`--after`), then each subsequent item `--after` the previous one:
 
 ```bash
 bash "$ENGINE" reorder-item --project-id <projectId> --item <firstItemId> --force
@@ -147,7 +144,7 @@ bash "$ENGINE" reorder-item --project-id <projectId> --item <nextItemId> --after
 ```
 
 An already-assigned Iteration/date/Milestone, or an item already at its
-recommended position, is detected and skipped — never a 409/422 (AC-33).
+recommended position, is detected and skipped — never a 409/422.
 
 ## 3. Report
 
@@ -158,18 +155,18 @@ you re-ran on an already-scheduled sprint, confirm it was a no-op (every
 assignment / milestone / position already in place → no further write, exit 0).
 
 ## Guardrails
-- Dry run first, every time; `--force` only after the user confirms (AC-15).
+- Dry run first, every time; `--force` only after the user confirms.
 - **NO AI** — this skill never calls a model; capacity, ordering, and
-  active-iteration selection are pure arithmetic over the resolved config (AC-27).
+  active-iteration selection are pure arithmetic over the resolved config.
 - Every Project write uses the **App installation token** (`GH_APP_TOKEN`), never
-  `GITHUB_TOKEN` (AC-28). The engine refuses to write without it and scrubs
+  `GITHUB_TOKEN`. The engine refuses to write without it and scrubs
   secrets from all output.
-- **Idempotent** (AC-33): an already-assigned Iteration/Milestone/date, or an item
+- **Idempotent**: an already-assigned Iteration/Milestone/date, or an item
   already at its recommended position, is detected and **skipped** — never a
   409/422. A second run is a clean no-op (exit 0).
 - This skill owns **scheduling** fields + Ready order only. It does **not** project
   new issues or self-assign (`route-issue`), and does **not** open/merge PRs or
   advance lifecycle Status (`promote-pr`).
-- Capacity is **advisory** — over-allocation warns, it never hard-blocks (AC-13).
+- Capacity is **advisory** — over-allocation warns, it never hard-blocks.
 - Exit codes: `0` ok · `2` usage / no App token · `3` project/field not found ·
   `1` unexpected.

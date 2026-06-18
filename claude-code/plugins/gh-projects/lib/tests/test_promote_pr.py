@@ -9,21 +9,20 @@ adds NO decision logic of its own to the lib. These tests therefore exercise the
 COMPOSITION the SKILL.md prescribes (the lib verbs are unit-tested in
 test_gh_writeverbs.py) plus the skill's frontmatter contract.
 
-Covers the §4 ACs (PM-0002):
-  AC-16 : open/update the issue-linked PR with a NON-CLOSING `Relates to #N`;
-          when a PR exists it edits in place; a no-diff re-run is a no-op (never
-          a duplicate-PR error).
-  AC-17 : advance board Status across the PR lifecycle — `In Review` on a ready
-          PR, hold `In Progress` while draft — MONOTONICALLY (no regression).
-  AC-18 : read the PR's check state and WITHHOLD the merge step while checks are
-          red/pending, stating the reason.
-  AC-19 : NON-SQUASH merge (--merge/--rebase) only on confirm/--force and only on
-          green; never --squash.
-  AC-20 : dry-by-default — preview mutates nothing; --force mutates.
-  AC-25 : guard activation down-payment — the PreToolUse / matcher Bash block is
-          present in promote-pr's frontmatter.
-  AC-34 : frontmatter — disable-model-invocation true, model claude-opus-4-8,
-          effort high.
+Covers:
+  - open/update the issue-linked PR with a NON-CLOSING `Relates to #N`;
+    when a PR exists it edits in place; a no-diff re-run is a no-op (never
+    a duplicate-PR error).
+  - advance board Status across the PR lifecycle — `In Review` on a ready
+    PR, hold `In Progress` while draft — MONOTONICALLY (no regression).
+  - read the PR's check state and WITHHOLD the merge step while checks are
+    red/pending, stating the reason.
+  - NON-SQUASH merge (--merge/--rebase) only on confirm/--force and only on
+    green; never --squash.
+  - dry-by-default — preview mutates nothing; --force mutates.
+  - the PreToolUse / matcher Bash guard block is present in promote-pr's frontmatter.
+  - frontmatter — disable-model-invocation true, model claude-opus-4-8,
+    effort high.
 """
 from __future__ import annotations
 
@@ -113,7 +112,7 @@ def _promote(repo, head, base, issue, *, draft, current_status,
     status_write = gh.advance_status(current_status, target)  # None = no regression
     merged = None
     if do_merge:
-        # Merge is WITHHELD unless checks are green (AC-18); never squash (AC-19).
+        # Merge is WITHHELD unless checks are green; never squash.
         if verdict == "green":
             merged = gh.merge_pr(repo, pr_number, method)
     return {
@@ -126,7 +125,7 @@ def _promote(repo, head, base, issue, *, draft, current_status,
 
 
 # --------------------------------------------------------------------------- #
-# AC-16 — open/update issue-linked PR: non-closing, edit-in-place, no-op re-run
+# Open/update issue-linked PR: non-closing, edit-in-place, no-op re-run
 # --------------------------------------------------------------------------- #
 class TestOpenLinkedPr(Base):
     def test_created_pr_carries_relates_to_no_closer(self):
@@ -166,7 +165,7 @@ class TestOpenLinkedPr(Base):
 
 
 # --------------------------------------------------------------------------- #
-# AC-17 — Status lifecycle: ready -> In Review, draft -> In Progress, monotonic
+# Status lifecycle: ready -> In Review, draft -> In Progress, monotonic
 # --------------------------------------------------------------------------- #
 class TestStatusLifecycle(Base):
     def test_ready_pr_advances_to_in_review(self):
@@ -211,7 +210,7 @@ class TestStatusLifecycle(Base):
 
 
 # --------------------------------------------------------------------------- #
-# AC-18 — withhold merge while checks are red/pending, with a reason
+# Withhold merge while checks are red/pending, with a reason
 # --------------------------------------------------------------------------- #
 class TestMergeWithheldUntilGreen(Base):
     def test_red_checks_withhold_merge(self):
@@ -241,7 +240,7 @@ class TestMergeWithheldUntilGreen(Base):
 
 
 # --------------------------------------------------------------------------- #
-# AC-19 — non-squash merge on green only; squash never emitted
+# Non-squash merge on green only; squash never emitted
 # --------------------------------------------------------------------------- #
 class TestNonSquashMergeOnGreen(Base):
     def test_green_offers_non_squash_merge(self):
@@ -289,7 +288,7 @@ class TestNonSquashMergeOnGreen(Base):
 
 
 # --------------------------------------------------------------------------- #
-# AC-20 — dry-by-default through engine.sh: preview mutates nothing; --force does
+# Dry-by-default through engine.sh: preview mutates nothing; --force does
 # --------------------------------------------------------------------------- #
 class TestDryByDefault(unittest.TestCase):
     """The write verbs promote-pr drives (open-pr, merge-pr) are gated by
@@ -323,7 +322,7 @@ class TestDryByDefault(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-25 / AC-34 — frontmatter contract incl. the guard hooks block
+# Frontmatter contract incl. the guard hooks block
 # --------------------------------------------------------------------------- #
 class TestFrontmatter(unittest.TestCase):
     @classmethod
@@ -366,7 +365,7 @@ class TestFrontmatter(unittest.TestCase):
         self.assertIn("Bash(bash *)", tools)
 
     def test_guard_hooks_block_present(self):
-        # AC-25: the PreToolUse / matcher Bash guard block, pointing at guard.sh,
+        # The PreToolUse / matcher Bash guard block, pointing at guard.sh,
         # scopes the guard to only-while-this-skill-runs.
         self.assertRegex(self.front, r"(?m)^hooks:\s*$")
         self.assertIn("PreToolUse:", self.front)
@@ -380,7 +379,7 @@ class TestFrontmatter(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-27 / AC-30 — no metered AI; no closing keyword anywhere in the skill prose
+# No metered AI; no closing keyword anywhere in the skill prose
 # --------------------------------------------------------------------------- #
 class TestSkillInvariants(unittest.TestCase):
     @classmethod

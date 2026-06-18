@@ -3,9 +3,9 @@
 
 Every test installs a fake RUN that returns canned JSON and counts round-trips,
 so the whole GraphQL/REST surface is exercised deterministically. Verifies
-AC-1 (resolve+cache: 1 resolve for 2 lookups), AC-2 (two-phase round-trip),
-AC-3 (exit codes + no token/secret printed), AC-4 (capability probe both ways +
-no label dependency fallback).
+resolve+cache (1 resolve for 2 lookups), the two-phase round-trip, exit codes +
+no token/secret printed, and the capability probe both ways + no label
+dependency fallback.
 """
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ def _q(args):
 
 class CountingRunner:
     """A fake gh runner that returns canned JSON keyed by the operation and
-    counts every round-trip (so AC-1's "1 resolve for 2 lookups" is testable)."""
+    counts every round-trip (so "1 resolve for 2 lookups" is testable)."""
 
     def __init__(self):
         self.calls = []
@@ -148,7 +148,7 @@ class GhTestBase(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-1 — resolve + cache: 1 resolve serves 2 lookups
+# resolve + cache: 1 resolve serves 2 lookups
 # --------------------------------------------------------------------------- #
 class TestResolveCache(GhTestBase):
     def test_one_resolve_for_two_lookups(self):
@@ -162,7 +162,7 @@ class TestResolveCache(GhTestBase):
         self.assertEqual(proj.iteration_id("Sprint", "Sprint 1"), "IT_1")
 
         resolves = runner.count(lambda q: "fields(first:100)" in q)
-        self.assertEqual(resolves, 1, "two+ lookups must reuse one cached resolve (AC-1)")
+        self.assertEqual(resolves, 1, "two+ lookups must reuse one cached resolve")
 
     def test_resolve_idempotent(self):
         runner = CountingRunner()
@@ -180,7 +180,7 @@ class TestResolveCache(GhTestBase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-2 — two-phase add -> update -> read-back identical
+# two-phase add -> update -> read-back identical
 # --------------------------------------------------------------------------- #
 class TestTwoPhaseWrite(GhTestBase):
     def test_single_select_round_trip(self):
@@ -238,7 +238,7 @@ class TestTwoPhaseWrite(GhTestBase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-31 — monotonic status advance
+# monotonic status advance
 # --------------------------------------------------------------------------- #
 class TestMonotonicStatus(unittest.TestCase):
     def test_advances_forward(self):
@@ -258,7 +258,7 @@ class TestMonotonicStatus(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-30 — diff before mutate (iteration + option ID stability)
+# diff before mutate (iteration + option ID stability)
 # --------------------------------------------------------------------------- #
 class TestSchemaDiff(unittest.TestCase):
     def test_iterations_skip_when_unchanged(self):
@@ -282,7 +282,7 @@ class TestSchemaDiff(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-4 — capability probe both ways; native preferred when present, else GraphQL
+# capability probe both ways; native preferred when present, else GraphQL
 # --------------------------------------------------------------------------- #
 class TestCapabilityProbe(GhTestBase):
     def test_blocked_by_native_when_present(self):
@@ -339,7 +339,7 @@ class TestCapabilityProbe(GhTestBase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-4 — NO label-based dependency fallback exists anywhere in gh.py
+# NO label-based dependency fallback exists anywhere in gh.py
 # --------------------------------------------------------------------------- #
 class TestNoLabelDependencyFallback(unittest.TestCase):
     def test_source_has_no_label_dependency_fallback(self):
@@ -355,7 +355,7 @@ class TestNoLabelDependencyFallback(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-27 — App token, never GITHUB_TOKEN
+# App token, never GITHUB_TOKEN
 # --------------------------------------------------------------------------- #
 class TestAppToken(GhTestBase):
     def test_injected_token_used(self):
@@ -401,7 +401,7 @@ class TestAppToken(GhTestBase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-3 — exit codes for each entrypoint + secret scan (prints no token)
+# exit codes for each entrypoint + secret scan (prints no token)
 # --------------------------------------------------------------------------- #
 class TestExitCodesAndSecretScan(GhTestBase):
     def _run_main(self, argv):

@@ -1,29 +1,28 @@
 #!/usr/bin/env python3
-"""Offline tests for the `plan-sprint` skill (§3, AC-12..15) — NO network, NO
+"""Offline tests for the `plan-sprint` skill — NO network, NO
 live org, NO mutation. Everything is exercised against an injected fake `gh`
 runner (the CountingRunner / WriteVerbRunner pattern) and pure date fixtures.
 
 plan-sprint OWNS the scheduling fields (Sprint/Milestone/Start/Target) + Ready
-order. It REUSES the §1 lib verbs (`gh.set_milestone`, `gh.reorder_item`) and the
-§1 sprint math (`sprint.working_day_capacity`, `sprint.recommend_ready_order`) —
+order. It REUSES the lib verbs (`gh.set_milestone`, `gh.reorder_item`) and the
+sprint math (`sprint.working_day_capacity`, `sprint.recommend_ready_order`) —
 this module does not re-implement them. The ONE new piece of logic plan-sprint
-needs is **active-iteration selection**, which this leaf cannot place in `lib/`
+needs is **active-iteration selection**, which the skill cannot place in `lib/`
 (it must not edit lib). So the rule is documented in SKILL.md and proven here by a
 SELF-CONTAINED pure helper (`active_iteration`) that mirrors the documented rule.
-If the orchestrator wants a shared helper, it belongs in `lib/sprint.py` — see the
-finding in this leaf's report.
+A shared helper, if ever wanted, belongs in `lib/sprint.py`.
 
 Covers:
-  AC-12 : active Iteration computed offline from the field config —
-          in-window / gap (next-upcoming) / boundary fixtures → expected iteration;
-          Milestone + dates set via the engine (set_milestone reused).
-  AC-13 : working-day capacity vs assigned load → over-allocation WARNING emitted,
-          plan still previewed (advisory, not a hard block).
-  AC-14 : reorder the Ready queue to recommend_ready_order via reorder_item, in the
-          recommended order (top, then each --after the previous).
-  AC-15 : dry-by-default — no write verb runs without --force; --force writes.
-  frontmatter: disable-model-invocation true, model claude-opus-4-8, effort high,
-          and NO guard hooks block (AC-25 excludes plan-sprint).
+  - active Iteration computed offline from the field config —
+    in-window / gap (next-upcoming) / boundary fixtures → expected iteration;
+    Milestone + dates set via the engine (set_milestone reused).
+  - working-day capacity vs assigned load → over-allocation WARNING emitted,
+    plan still previewed (advisory, not a hard block).
+  - reorder the Ready queue to recommend_ready_order via reorder_item, in the
+    recommended order (top, then each --after the previous).
+  - dry-by-default — no write verb runs without --force; --force writes.
+  - frontmatter: disable-model-invocation true, model claude-opus-4-8, effort high,
+    and NO guard hooks block (the guard excludes plan-sprint).
 """
 from __future__ import annotations
 
@@ -36,8 +35,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 LIB = os.path.dirname(HERE)
 sys.path.insert(0, LIB)
 
-import gh  # noqa: E402  (reuse §1 write verbs — set_milestone, reorder_item)
-import sprint  # noqa: E402  (reuse §1 math — working_day_capacity, recommend_ready_order)
+import gh  # noqa: E402  (reuse write verbs — set_milestone, reorder_item)
+import sprint  # noqa: E402  (reuse math — working_day_capacity, recommend_ready_order)
 
 PLUGIN_ROOT = os.path.dirname(LIB)
 SKILL_PATH = os.path.join(PLUGIN_ROOT, "skills", "plan-sprint", "SKILL.md")
@@ -49,7 +48,7 @@ def _q(args):
 
 # --------------------------------------------------------------------------- #
 # Self-contained ACTIVE-ITERATION helper (the one new piece of plan-sprint
-# logic). This leaf must NOT edit lib/, so the rule lives here, mirroring the
+# logic). The skill must NOT edit lib/, so the rule lives here, mirroring the
 # documented SKILL.md rule exactly. Pure function of (iterations, today):
 #   * each iteration spans the HALF-OPEN window [startDate, startDate+duration)
 #   * completed iterations are excluded (only the live `iterations` list)
@@ -128,7 +127,7 @@ class Base(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-12 — active Iteration computed offline (in-window / gap / boundary)
+# Active Iteration computed offline (in-window / gap / boundary)
 # --------------------------------------------------------------------------- #
 class TestActiveIteration(Base):
     def test_today_in_window_picks_that_iteration(self):
@@ -168,7 +167,7 @@ class TestActiveIteration(Base):
 
 
 # --------------------------------------------------------------------------- #
-# AC-12 — Milestone + dates set via the engine (reused gh.set_milestone)
+# Milestone + dates set via the engine (reused gh.set_milestone)
 # --------------------------------------------------------------------------- #
 class TestSchedulingWrites(Base):
     def test_milestone_assigned_via_engine_verb(self):
@@ -187,14 +186,14 @@ class TestSchedulingWrites(Base):
 
 
 # --------------------------------------------------------------------------- #
-# AC-13 — capacity vs load: over-allocation WARNS, plan still previewed
+# Capacity vs load: over-allocation WARNS, plan still previewed
 # --------------------------------------------------------------------------- #
 class TestCapacityWarning(Base):
     def _plan_capacity_vs_load(self, iteration, issues):
         """Mirror the SKILL's advisory capacity check: capacity is the
         working-day count of the active iteration's half-open window; load is the
         number of issues assigned. Returns (capacity, load, over_allocated, plan).
-        The plan is ALWAYS produced (capacity does not hard-block, AC-13)."""
+        The plan is ALWAYS produced (capacity does not hard-block)."""
         start = _dt.date.fromisoformat(iteration["startDate"])
         end = start + _dt.timedelta(days=int(iteration["duration"]))
         capacity = sprint.working_day_capacity(start, end)
@@ -209,7 +208,7 @@ class TestCapacityWarning(Base):
         self.assertEqual(cap, 10)
         self.assertEqual(load, 12)
         self.assertTrue(over, "12 issues over a 10-working-day sprint is over-allocated")
-        # advisory: the plan is still produced in full (no hard block, AC-13)
+        # advisory: the plan is still produced in full (no hard block)
         self.assertEqual(len(plan["assign"]), 12)
 
     def test_within_capacity_no_warning(self):
@@ -221,7 +220,7 @@ class TestCapacityWarning(Base):
 
 
 # --------------------------------------------------------------------------- #
-# AC-14 — reorder Ready queue to recommend_ready_order, in recommended order
+# Reorder Ready queue to recommend_ready_order, in recommended order
 # --------------------------------------------------------------------------- #
 class TestReadyReorder(Base):
     def test_reorder_calls_in_recommended_order(self):
@@ -253,7 +252,7 @@ class TestReadyReorder(Base):
         self.assertIn("after=B", _q(pos[2]))
 
     def test_reorder_rides_app_token_graphql_path(self):
-        # AC-28: the reorder is a Projects v2 write over `gh api graphql`
+        # The reorder is a Projects v2 write over `gh api graphql`
         # (App token via the engine), never GITHUB_TOKEN.
         runner = SprintRunner()
         gh.RUN = runner
@@ -265,7 +264,7 @@ class TestReadyReorder(Base):
 
 
 # --------------------------------------------------------------------------- #
-# AC-15 — dry-by-default: no write verb runs without --force; --force writes.
+# Dry-by-default: no write verb runs without --force; --force writes.
 # Exercised against the real engine.sh rail (the seam plan-sprint calls).
 # --------------------------------------------------------------------------- #
 class TestDryByDefault(unittest.TestCase):
@@ -295,7 +294,7 @@ class TestDryByDefault(unittest.TestCase):
 
 # --------------------------------------------------------------------------- #
 # Frontmatter assertions — model/effort/disable-model-invocation + NO guard.
-# AC-25 explicitly EXCLUDES plan-sprint from the guard (it neither merges nor
+# The guard explicitly EXCLUDES plan-sprint (it neither merges nor
 # deploys), so the PreToolUse guard.sh block must NOT be present.
 # --------------------------------------------------------------------------- #
 class TestFrontmatter(unittest.TestCase):
@@ -320,7 +319,7 @@ class TestFrontmatter(unittest.TestCase):
         self.assertIn("name: plan-sprint", self.fm)
 
     def test_no_guard_hooks_block(self):
-        # AC-25 excludes plan-sprint: no PreToolUse hook / guard.sh wiring anywhere.
+        # The guard excludes plan-sprint: no PreToolUse hook / guard.sh wiring anywhere.
         self.assertNotIn("guard.sh", self.text)
         self.assertNotIn("PreToolUse", self.text)
         self.assertNotIn("hooks:", self.fm)

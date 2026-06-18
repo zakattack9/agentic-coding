@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-"""Finish-Phase-1 cross-cutting invariants (PM-0002 §6) — offline, no network.
+"""Cross-cutting invariants over the six skills + template + marketplace — offline, no network.
 
-Holistic assertions over the six gh-projects skills + the new template + the root
-marketplace, behind the acceptance criteria that must hold across §1–§5:
+Holistic assertions over the six gh-projects skills + the add-to-project template
++ the root marketplace, behind the invariants that must hold across the plugin:
 
-  AC-25  route-issue and promote-pr frontmatter carry the PreToolUse / matcher
-         "Bash" guard hooks block pointing at hooks/guard.sh; plan-sprint does NOT
-         (it neither deploys nor merges). The guard's behavior (squash / prod /
-         fail-open) is exercised separately in test_guard.py.
-  AC-27  No metered AI/model call in the three new skills or the add-to-project
-         template (the SKILL.md `model:` selector is NOT a metered call).
-  AC-22  add-to-project.yml SHA-pins its third-party actions and authenticates the
-         project write with a GitHub App token, never GITHUB_TOKEN.
-  AC-32  Root marketplace.json bumps gh-projects to >= 0.2.0.
-  AC-34  All six skills declare disable-model-invocation + model: claude-opus-4-8
-         with the deliberate per-skill effort (route-issue medium · plan-sprint
-         high · promote-pr high · scaffold-repo medium · intake-issues high ·
-         sync-signals low). intake-issues was already opus/high (asserted here).
+  - route-issue and promote-pr frontmatter carry the PreToolUse / matcher
+    "Bash" guard hooks block pointing at hooks/guard.sh; plan-sprint does NOT
+    (it neither deploys nor merges). The guard's behavior (squash / prod /
+    fail-open) is exercised separately in test_guard.py.
+  - No metered AI/model call in the three side-effecting skills or the
+    add-to-project template (the SKILL.md `model:` selector is NOT a metered call).
+  - add-to-project.yml SHA-pins its third-party actions and authenticates the
+    project write with a GitHub App token, never GITHUB_TOKEN.
+  - Root marketplace.json pins gh-projects to >= 0.2.0.
+  - All six skills declare disable-model-invocation + model: claude-opus-4-8
+    with the deliberate per-skill effort (route-issue medium · plan-sprint
+    high · promote-pr high · scaffold-repo medium · intake-issues high ·
+    sync-signals low).
 """
 from __future__ import annotations
 
@@ -36,12 +36,12 @@ ADD_TO_PROJECT = os.path.join(
 
 NEW_SKILLS = ["route-issue", "plan-sprint", "promote-pr"]
 ALL_SKILLS = NEW_SKILLS + ["scaffold-repo", "intake-issues", "sync-signals"]
-# AC-34: deliberate per-skill effort.
+# Deliberate per-skill effort.
 EXPECTED_EFFORT = {
     "route-issue": "medium", "plan-sprint": "high", "promote-pr": "high",
     "scaffold-repo": "medium", "intake-issues": "high", "sync-signals": "low",
 }
-# AC-25: the guard is scoped ONLY to the deploy/merge-capable skills.
+# The guard is scoped ONLY to the deploy/merge-capable skills.
 GUARD_SKILLS = {"route-issue", "promote-pr"}
 
 
@@ -57,25 +57,25 @@ def _frontmatter(text: str) -> str:
 
 
 class AC34_ModelAndEffort(unittest.TestCase):
-    """All six skills are Explicit, opus, with the deliberate effort (AC-34)."""
+    """All six skills are Explicit, opus, with the deliberate effort."""
 
     def test_all_six_skills_are_opus_with_expected_effort(self):
-        # AC-34 is about model + effort across ALL six skills.
+        # Model + effort across ALL six skills.
         for name in ALL_SKILLS:
             fm = _frontmatter(_read_skill(name))
             self.assertTrue(fm, f"{name}: no frontmatter block found")
             self.assertRegex(
                 fm, r"(?m)^model:\s*claude-opus-4-8\s*$",
-                f"{name}: must declare model: claude-opus-4-8 (AC-34)",
+                f"{name}: must declare model: claude-opus-4-8",
             )
             self.assertRegex(
                 fm, rf"(?m)^effort:\s*{EXPECTED_EFFORT[name]}\s*$",
-                f"{name}: effort must be {EXPECTED_EFFORT[name]} (AC-34)",
+                f"{name}: effort must be {EXPECTED_EFFORT[name]}",
             )
 
     def test_new_skills_are_explicit(self):
-        # The three new side-effecting skills must be Explicit (user-invoked only).
-        # Existing skills' Explicit-ness is out of scope for PM-0002 (assert-don't-change).
+        # The three side-effecting skills must be Explicit (user-invoked only).
+        # Existing skills' Explicit-ness is out of scope here (assert-don't-change).
         for name in NEW_SKILLS:
             fm = _frontmatter(_read_skill(name))
             self.assertRegex(
@@ -86,12 +86,12 @@ class AC34_ModelAndEffort(unittest.TestCase):
     def test_no_skill_remains_on_sonnet_or_haiku(self):
         for name in ALL_SKILLS:
             fm = _frontmatter(_read_skill(name))
-            self.assertNotIn("claude-sonnet", fm, f"{name}: still on sonnet (AC-34)")
-            self.assertNotIn("claude-haiku", fm, f"{name}: still on haiku (AC-34)")
+            self.assertNotIn("claude-sonnet", fm, f"{name}: on sonnet")
+            self.assertNotIn("claude-haiku", fm, f"{name}: on haiku")
 
 
 class AC25_GuardFrontmatter(unittest.TestCase):
-    """route-issue + promote-pr wire the guard; plan-sprint does not (AC-25)."""
+    """route-issue + promote-pr wire the guard; plan-sprint does not."""
 
     def _has_guard_block(self, fm: str) -> bool:
         return (
@@ -108,14 +108,14 @@ class AC25_GuardFrontmatter(unittest.TestCase):
             self.assertTrue(
                 self._has_guard_block(fm),
                 f"{name}: must carry the PreToolUse/Bash guard hooks block "
-                "pointing at ${CLAUDE_PLUGIN_ROOT}/hooks/guard.sh (AC-25)",
+                "pointing at ${CLAUDE_PLUGIN_ROOT}/hooks/guard.sh",
             )
 
     def test_plan_sprint_does_not_wire_the_guard(self):
         fm = _frontmatter(_read_skill("plan-sprint"))
         self.assertNotIn(
             "guard.sh", fm,
-            "plan-sprint neither deploys nor merges — it must NOT wire the guard (AC-25)",
+            "plan-sprint neither deploys nor merges — it must NOT wire the guard",
         )
 
     def test_guard_script_exists_and_is_executable(self):
@@ -125,7 +125,7 @@ class AC25_GuardFrontmatter(unittest.TestCase):
 
 
 class AC32_MarketplaceVersion(unittest.TestCase):
-    """gh-projects is bumped to >= 0.2.0 in the root marketplace (AC-32)."""
+    """gh-projects is pinned to >= 0.2.0 in the root marketplace."""
 
     def test_gh_projects_version_at_least_0_2_0(self):
         with open(MARKETPLACE, encoding="utf-8") as fh:
@@ -150,17 +150,17 @@ class AC27_NoMeteredAI(unittest.TestCase):
         for name in ("route-issue", "plan-sprint", "promote-pr"):
             body = _read_skill(name)
             self.assertIsNone(
-                self.METERED.search(body), f"{name}: contains a metered-AI reference (AC-27)"
+                self.METERED.search(body), f"{name}: contains a metered-AI reference"
             )
 
     def test_add_to_project_template_makes_no_metered_call(self):
         with open(ADD_TO_PROJECT, encoding="utf-8") as fh:
             body = fh.read()
-        self.assertIsNone(self.METERED.search(body), "add-to-project.yml metered-AI (AC-27)")
+        self.assertIsNone(self.METERED.search(body), "add-to-project.yml metered-AI")
 
 
 class AC22_AddToProjectSupplyChain(unittest.TestCase):
-    """add-to-project.yml is SHA-pinned + App-token authed, never GITHUB_TOKEN (AC-22, AC-28)."""
+    """add-to-project.yml is SHA-pinned + App-token authed, never GITHUB_TOKEN."""
 
     def setUp(self):
         with open(ADD_TO_PROJECT, encoding="utf-8") as fh:
@@ -170,7 +170,7 @@ class AC22_AddToProjectSupplyChain(unittest.TestCase):
         # actions/add-to-project must be pinned to a full 40-hex commit SHA.
         self.assertRegex(
             self.body, r"actions/add-to-project@[0-9a-f]{40}\b",
-            "actions/add-to-project must be SHA-pinned (40-hex), stricter than tag pins (AC-22)",
+            "actions/add-to-project must be SHA-pinned (40-hex), stricter than tag pins",
         )
         # Every `uses:` of a non-local action must carry a 40-hex SHA.
         for line in self.body.splitlines():
@@ -179,17 +179,17 @@ class AC22_AddToProjectSupplyChain(unittest.TestCase):
                 continue
             self.assertRegex(
                 m.group(2), r"^[0-9a-f]{40}",
-                f"third-party action {m.group(1)} must be SHA-pinned (AC-22): {line.strip()}",
+                f"third-party action {m.group(1)} must be SHA-pinned: {line.strip()}",
             )
 
     def test_project_write_uses_app_token_not_github_token(self):
         # The App installation token is minted in-workflow and passed as the
         # add-to-project github-token; GITHUB_TOKEN is never the project-write cred.
         self.assertIn("create-github-app-token", self.body,
-                      "must mint a GitHub App installation token (AC-22, AC-28)")
+                      "must mint a GitHub App installation token")
         self.assertNotRegex(
             self.body, r"github-token:\s*\$\{\{\s*secrets\.GITHUB_TOKEN",
-            "the add-to-project write must NOT authenticate with GITHUB_TOKEN (AC-28)",
+            "the add-to-project write must NOT authenticate with GITHUB_TOKEN",
         )
 
 

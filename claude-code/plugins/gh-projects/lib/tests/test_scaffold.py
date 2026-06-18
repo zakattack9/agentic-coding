@@ -3,19 +3,19 @@
 
 A fake gh runner stubs every GraphQL/REST round-trip (copyProjectV2, the org +
 template resolve, the COPY's field resolve, org Issue Field list, REST settings).
-Verifies the §2 ACs:
+Verifies that:
 
-  AC-7  : scaffold stands the project up via copyProjectV2 from the NAMED golden
-          template; the copy carries every Data-model project field.
-  AC-8  : ids/options/iterations are re-resolved against the COPY, never the
-          template — resolved ids != template ids in the fixture.
-  AC-9  : a second run is a no-op for fields and SKIPS existing iterations
-          (iteration-mutation count == 0; re-run install manifest empty).
-  AC-10 : the install manifest lists ALL required destination paths (issue forms,
-          PR template, board-sync.yml, signals-sync.yml, board-status action,
-          release.yml, CODEOWNERS, project README); org Issue Fields + no-squash
-          + App access are planned.
-  AC-11 : dry-run mutates nothing (no copy of files, no REST/GraphQL writes).
+  * scaffold stands the project up via copyProjectV2 from the NAMED golden
+    template; the copy carries every Data-model project field.
+  * ids/options/iterations are re-resolved against the COPY, never the
+    template — resolved ids != template ids in the fixture.
+  * a second run is a no-op for fields and SKIPS existing iterations
+    (iteration-mutation count == 0; re-run install manifest empty).
+  * the install manifest lists ALL required destination paths (issue forms,
+    PR template, board-sync.yml, signals-sync.yml, board-status action,
+    release.yml, CODEOWNERS, project README); org Issue Fields + no-squash
+    + App access are planned.
+  * dry-run mutates nothing (no copy of files, no REST/GraphQL writes).
 """
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ import scaffold  # noqa: E402
 
 # --------------------------------------------------------------------------- #
 # Fixture: the TEMPLATE and the COPY have DISTINCT field/option/iteration ids so
-# AC-8 ("resolved ids != template ids") is observable. The runner serves the
+# re-resolution ("resolved ids != template ids") is observable. The runner serves the
 # template's fields when resolved by the template number, the copy's fields when
 # resolved by the copy number.
 # --------------------------------------------------------------------------- #
@@ -85,7 +85,7 @@ def _project_fields_payload(id_suffix: str, *, with_iterations: bool):
     # Iteration field.
     iter_cfg = {"iterations": [], "completedIterations": []}
     if with_iterations:
-        # Match iterations.json's desired set exactly so the diff SKIPs (AC-9).
+        # Match iterations.json's desired set exactly so the diff SKIPs.
         sched = json.loads((scaffold.templates_dir() / "project" / "iterations.json").read_text())
         iter_cfg["iterations"] = [
             {"id": f"IT_{i}_{id_suffix}", "title": it["title"],
@@ -100,9 +100,9 @@ def _project_fields_payload(id_suffix: str, *, with_iterations: bool):
 
 # The 8 saved views the golden template (and every copy) must carry. ProjectV2
 # views are read-only via the API (projectV2.views) but never mutable — the
-# fixture serves them so the AC-7 view-catalog diff (views.json) is observable.
+# fixture serves them so the view-catalog diff (views.json) is observable.
 # When `detail` is set the payload also carries each view's resolved filter,
-# groupByFields and verticalGroupByFields so the §6 verify_views (AC-25) sees a
+# groupByFields and verticalGroupByFields so verify_views sees a
 # fully RESOLVED catalog (every documented group/slice maps to a non-empty live
 # field). A faithful golden-template copy resolves all 8 — these match views.json.
 def _project_views_payload(id_suffix: str, *, detail: bool = False):
@@ -125,7 +125,7 @@ class ScaffoldRunner:
     """Fake gh runner: canned JSON per operation + a counter of WRITE round-trips.
 
     Reads are always served; writes (copyProjectV2, REST POST/PATCH, updateProject)
-    are served too but RECORDED so AC-11 can assert "no writes in dry-run". The
+    are served too but RECORDED so a test can assert "no writes in dry-run". The
     COPY exists from the start (copyProjectV2 is what creates it) so resolving it
     yields the copy's ids."""
 
@@ -173,9 +173,9 @@ class ScaffoldRunner:
             return json.dumps({"data": {"updateProjectV2": {"projectV2": {"id": COPY_PROJECT_ID}}}})
         # view-catalog read — serve all 8 saved views, copy vs template by the
         # project number variable. Views are READ-ONLY here (no mutation). The
-        # DETAIL query (AC-25 verify_views) asks for groupByFields, so serve the
+        # DETAIL query (verify_views) asks for groupByFields, so serve the
         # resolved filter/group/slice when present; the plain presence query
-        # (AC-7) just needs number/name/layout.
+        # just needs number/name/layout.
         if "views(first:100)" in body:
             suffix = "copy" if f"number={COPY_NUMBER}" in body else "tmpl"
             detail = "groupByFields" in body
@@ -223,7 +223,7 @@ class ScaffoldTestBase(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-7 — copyProjectV2 from the NAMED template; the copy carries every field.
+# copyProjectV2 from the NAMED template; the copy carries every field.
 # --------------------------------------------------------------------------- #
 class TestCopyFromTemplate(ScaffoldTestBase):
     def test_copies_named_template_and_has_all_fields(self):
@@ -247,7 +247,7 @@ class TestCopyFromTemplate(ScaffoldTestBase):
         self.assertIn(("graphql", "copyProjectV2"), runner.writes)
 
     def test_copy_carries_all_8_views(self):
-        # AC-7 (view-catalog half): the copy's saved-view catalog, read read-only
+        # View-catalog half: the copy's saved-view catalog, read read-only
         # from projectV2.views, must contain all 8 views.json titles with none
         # missing — the "GraphQL dump diffs ... view catalog" Verify.
         runner = ScaffoldRunner()
@@ -273,7 +273,8 @@ class TestCopyFromTemplate(ScaffoldTestBase):
 
     def test_no_view_mutation_issued(self):
         # Scaffold reads the view catalog but must NEVER mutate a view (ProjectV2
-        # views are not API-mutable; constraint #1 / spec hard-limits).
+        # views are not API-mutable; saved views / Insights charts are not
+        # API-creatable — see rules/github-fields.md Platform constraints).
         runner = ScaffoldRunner()
         with tempfile.TemporaryDirectory() as d:
             self._plan(runner, d)
@@ -285,7 +286,7 @@ class TestCopyFromTemplate(ScaffoldTestBase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-8 — ids re-resolved against the COPY, never the template.
+# Ids re-resolved against the COPY, never the template.
 # --------------------------------------------------------------------------- #
 class TestReResolveAgainstCopy(ScaffoldTestBase):
     def test_field_ids_come_from_copy_not_template(self):
@@ -300,7 +301,7 @@ class TestReResolveAgainstCopy(ScaffoldTestBase):
                             f"field '{name}' id must be from the COPY, got {copy_id!r}")
             tmpl_id = tmpl.field_id(name)
             self.assertNotEqual(copy_id, tmpl_id,
-                                f"field '{name}': copy id must differ from template id (AC-8)")
+                                f"field '{name}': copy id must differ from template id")
 
     def test_option_ids_come_from_copy(self):
         runner = ScaffoldRunner()
@@ -327,7 +328,7 @@ class TestReResolveAgainstCopy(ScaffoldTestBase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-9 — second run is a no-op for fields; iterations SKIP (zero mutations).
+# Second run is a no-op for fields; iterations SKIP (zero mutations).
 # --------------------------------------------------------------------------- #
 class TestIdempotentSecondRun(ScaffoldTestBase):
     def test_iterations_skip_when_copy_matches_desired(self):
@@ -336,7 +337,7 @@ class TestIdempotentSecondRun(ScaffoldTestBase):
             plan = self._plan(runner, d)
         self.assertFalse(plan["iterations"]["mutate"],
                          "iterations already match -> must SKIP (no re-PUT)")
-        self.assertEqual(plan["iterations"]["mutations"], 0, "AC-9: zero iteration mutations")
+        self.assertEqual(plan["iterations"]["mutations"], 0, "zero iteration mutations")
 
     def test_second_run_install_manifest_empty(self):
         runner = ScaffoldRunner()
@@ -362,7 +363,7 @@ class TestIdempotentSecondRun(ScaffoldTestBase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-10 — install manifest lists ALL required destination paths + org setup.
+# Install manifest lists ALL required destination paths + org setup.
 # --------------------------------------------------------------------------- #
 class TestInstallManifest(ScaffoldTestBase):
     REQUIRED_DESTS = [
@@ -386,7 +387,7 @@ class TestInstallManifest(ScaffoldTestBase):
             plan = self._plan(runner, d)
         dests = {r["dest"] for r in plan["files"]}
         for required in self.REQUIRED_DESTS:
-            self.assertIn(required, dests, f"manifest must list destination {required} (AC-10)")
+            self.assertIn(required, dests, f"manifest must list destination {required}")
 
     def test_manifest_enumerates_other_phase_files_even_without_source(self):
         # board-sync.yml / signals-sync.yml / board-status are authored by other
@@ -421,7 +422,7 @@ class TestInstallManifest(ScaffoldTestBase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-11 — dry-run mutates nothing.
+# Dry-run mutates nothing.
 # --------------------------------------------------------------------------- #
 class TestDryByDefault(ScaffoldTestBase):
     def test_dry_run_writes_no_files(self):
@@ -444,7 +445,7 @@ class TestDryByDefault(ScaffoldTestBase):
             writes_after_plan = list(runner.writes)
             scaffold.apply_plan(plan, repo_dir=d, force=False)
         self.assertEqual(runner.writes, writes_after_plan,
-                         "dry-run apply must add no REST/GraphQL writes (AC-11)")
+                         "dry-run apply must add no REST/GraphQL writes")
         # And specifically: no REST POST/PATCH (issue-fields/types/repo settings).
         self.assertFalse([w for w in runner.writes if w[0] == "rest"],
                          "dry-run must not POST/PATCH any org/repo setting")
@@ -488,7 +489,7 @@ class TestCli(ScaffoldTestBase):
             self.assertIn("dry-run", err)
             result = json.loads(out.strip().splitlines()[-1])
             self.assertFalse(result["applied"])
-            # AC-11: a CLI dry-run makes NO copyProjectV2 and NO REST/field writes
+            # A CLI dry-run makes NO copyProjectV2 and NO REST/field writes
             # (leaves the project + repo unchanged) — the project is only copied
             # under --force.
             self.assertEqual(runner.writes, [],

@@ -7,13 +7,13 @@ status/link/monotonic logic lives in the vendored
 `lib/*`) and install a fake gh/GraphQL runner.
 
 Coverage:
-  AC-17  push to an issue-linked branch -> In Progress via App-token GraphQL.
-  AC-18  ready PR -> In Review; draft PR holds In Progress until ready_for_review.
-  AC-19  link resolves LINKED-BRANCH-first AND via branch-name parse; grep that
-         there is no `Closes #N` / closing-keyword dependence.
-  AC-27  Project writes use the App token, never GITHUB_TOKEN.
-  AC-31  a replayed/stale event does NOT regress Status (monotonic).
-  AC-22  the workflow's python is self-contained (no plugin import).
+  push to an issue-linked branch -> In Progress via App-token GraphQL.
+  ready PR -> In Review; draft PR holds In Progress until ready_for_review.
+  link resolves LINKED-BRANCH-first AND via branch-name parse; grep that
+  there is no `Closes #N` / closing-keyword dependence.
+  Project writes use the App token, never GITHUB_TOKEN.
+  A replayed/stale event does NOT regress Status (monotonic).
+  The workflow's python is self-contained (no plugin import).
 """
 from __future__ import annotations
 
@@ -79,7 +79,7 @@ class FakeBoard:
         self.calls.append(list(args))
         body = _q(args)
 
-        # Token discipline (AC-27): a Project write must carry the App token via
+        # Token discipline: a Project write must carry the App token via
         # GH_TOKEN env, and GITHUB_TOKEN must NOT be what authorizes it.
         if "updateProjectV2ItemFieldValue" in body:
             if os.environ.get("GH_TOKEN") == "GITHUB_TOKEN_VALUE":
@@ -140,7 +140,7 @@ class BoardSyncBase(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-19 — link resolution: LINKED BRANCH first, branch-name parse fallback.
+# link resolution: LINKED BRANCH first, branch-name parse fallback.
 # --------------------------------------------------------------------------- #
 class TestLinkResolution(BoardSyncBase):
     def test_linked_branch_first(self):
@@ -171,7 +171,7 @@ class TestLinkResolution(BoardSyncBase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-17 — push to an issue-linked branch -> In Progress via App-token GraphQL.
+# push to an issue-linked branch -> In Progress via App-token GraphQL.
 # --------------------------------------------------------------------------- #
 class TestPushInProgress(BoardSyncBase):
     def test_push_linked_branch_sets_in_progress(self):
@@ -199,7 +199,7 @@ class TestPushInProgress(BoardSyncBase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-18 — ready PR -> In Review; draft PR holds In Progress until ready.
+# ready PR -> In Review; draft PR holds In Progress until ready.
 # --------------------------------------------------------------------------- #
 class TestPullRequestStatus(BoardSyncBase):
     def test_ready_pr_in_review(self):
@@ -227,7 +227,7 @@ class TestPullRequestStatus(BoardSyncBase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-31 — a replayed/stale event does NOT regress Status (monotonic).
+# a replayed/stale event does NOT regress Status (monotonic).
 # --------------------------------------------------------------------------- #
 class TestMonotonic(BoardSyncBase):
     def test_stale_push_does_not_regress_staged_item(self):
@@ -256,7 +256,7 @@ class TestMonotonic(BoardSyncBase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-19 / boundary greps over the SOURCE — no `Closes #N` dependence.
+# boundary greps over the SOURCE — no `Closes #N` dependence.
 # --------------------------------------------------------------------------- #
 class TestSourceGreps(unittest.TestCase):
     def setUp(self):
@@ -271,7 +271,7 @@ class TestSourceGreps(unittest.TestCase):
         # parsing exists. (Mentions in a comment explaining the ban are allowed
         # only as the negated phrase; assert the API field itself is absent.)
         self.assertNotIn("closingissuesreferences", self.lowered,
-                         "board-sync must not read closingIssuesReferences (AC-19)")
+                         "board-sync must not read closingIssuesReferences")
         # No regex/string that parses a closing keyword + issue number.
         for kw in ("closes #", "fixes #", "resolves #", "close #", "fix #"):
             # allow the word only inside a NEGATING explanation; assert it is not
@@ -304,7 +304,7 @@ class TestSourceGreps(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-19 boundary greps over the WORKFLOW yaml — no projects_v2_item trigger,
+# boundary greps over the WORKFLOW yaml — no projects_v2_item trigger,
 # no Closes-driven close.
 # --------------------------------------------------------------------------- #
 class TestWorkflowYaml(unittest.TestCase):
@@ -333,7 +333,7 @@ class TestWorkflowYaml(unittest.TestCase):
 
     def test_uses_app_token_not_github_token(self):
         self.assertIn("create-github-app-token", self.yml)
-        self.assertIn("PROJECTS_APP_PRIVATE_KEY", self.yml)
+        self.assertIn("GH_APP_PRIVATE_KEY", self.yml)
         # GITHUB_TOKEN may appear ONLY in boundary prose; it must never be WIRED
         # as the token for the Project write step.
         low = self.yml.lower()

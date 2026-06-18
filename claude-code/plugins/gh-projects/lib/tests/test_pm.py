@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Offline tests for lib/pm.py — PM-#### monotonic allocator (AC-5) + flow-style
-front-matter round-trip property test (AC-5). Stdlib only, no network."""
+"""Offline tests for lib/pm.py — PM-#### monotonic allocator + flow-style
+front-matter round-trip property test. Stdlib only, no network."""
 from __future__ import annotations
 
 import io
@@ -58,7 +58,7 @@ class TestAllocator(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-5 — front-matter round-trips flow-style collections without loss
+# front-matter round-trips flow-style collections without loss
 # --------------------------------------------------------------------------- #
 class TestFrontMatterRoundTrip(unittest.TestCase):
     def test_known_shapes(self):
@@ -125,7 +125,7 @@ class TestFrontMatterRoundTrip(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-3 (pm.py share) — exit codes + normalize
+# exit codes + normalize
 # --------------------------------------------------------------------------- #
 class TestPmCli(unittest.TestCase):
     def _run(self, argv):

@@ -10,23 +10,23 @@ What it does, driven by repo `push` / `pull_request` events (we INVERT the
 trigger — `projects_v2_item` can't trigger a repo workflow, constraint #1):
 
   * `push` to an ISSUE-LINKED branch -> set that issue's item to `In Progress`
-    via an App-token GraphQL write (AC-17).
+    via an App-token GraphQL write.
   * `pull_request` opened/ready/draft -> a READY PR -> `In Review`; a DRAFT PR
-    holds `In Progress` until `ready_for_review` (AC-18).
+    holds `In Progress` until `ready_for_review`.
   * Resolve the PR<->issue link from the LINKED BRANCH first, then a branch-name
     `123-foo` parse fallback. It NEVER depends on `Closes #N` / any closing
-    keyword (AC-19).
+    keyword.
 
-Hard rules baked in (Phase-1 boundaries):
-  * Deterministic & free — NO metered AI/model call anywhere (AC-26).
+Hard rules baked in:
+  * Deterministic & free — NO metered AI/model call anywhere.
   * Every Projects v2 field write uses a GitHub App INSTALLATION token (passed in
-    as `--app-token` / GH_APP_TOKEN), NEVER GITHUB_TOKEN (AC-27 / constraint #2).
+    as `--app-token` / GH_APP_TOKEN), NEVER GITHUB_TOKEN (constraint #2).
   * Status writes are IDEMPOTENT + MONOTONIC: resolve the item's current Status
     and only ADVANCE it (In Progress < In Review < On Staging < Done). A stale or
-    replayed event never regresses an item (AC-31). Items are NEVER closed here.
+    replayed event never regresses an item. Items are NEVER closed here.
   * The resolver speaks to GitHub ONLY through an INJECTABLE command runner
     (`RUN`), so tests stub gh/GraphQL and run OFFLINE — never a live org.
-  * Print no token/secret, ever (AC-3).
+  * Print no token/secret, ever.
 
 Exit codes: 0 ok · 2 usage/validation · 3 not found · 1 unexpected.
 """
@@ -59,7 +59,7 @@ RUN = _default_run
 
 
 # --------------------------------------------------------------------------- #
-# Secret scrubbing (AC-3).
+# Secret scrubbing.
 # --------------------------------------------------------------------------- #
 _SECRET_PATTERNS = [
     re.compile(r"gh[opsuram]_[A-Za-z0-9_]{20,}"),
@@ -115,7 +115,7 @@ def _run_with_token(args, token):
 
 
 # --------------------------------------------------------------------------- #
-# Monotonic Status order (AC-31).
+# Monotonic Status order.
 # --------------------------------------------------------------------------- #
 STATUS_ORDER = ["Backlog", "Ready", "In Progress", "In Review", "On Staging", "Done"]
 
@@ -140,7 +140,7 @@ def advance_status(current, target, *, reopen: bool = False):
 
 # --------------------------------------------------------------------------- #
 # PR<->issue link resolution: LINKED BRANCH first, branch-name parse fallback.
-# NEVER parses `Closes #N` / any closing keyword (AC-19).
+# NEVER parses `Closes #N` / any closing keyword.
 # --------------------------------------------------------------------------- #
 # A branch created via `gh issue develop` / the dev panel is an AUTHORITATIVE
 # linked branch — GitHub records it on the issue (`linkedBranches`). We resolve
@@ -180,7 +180,7 @@ def short_branch(ref: str) -> str:
 def issue_from_linked_branch(owner: str, repo: str, branch: str, *, token: str | None = None):
     """Return the issue number whose AUTHORITATIVE linked branch == `branch`.
 
-    This is the FIRST resolution path (AC-19). Returns None if no issue has this
+    This is the FIRST resolution path. Returns None if no issue has this
     branch as a linked branch (caller then tries the branch-name parse).
     """
     name = short_branch(branch)
@@ -205,7 +205,7 @@ def issue_from_branch_name(branch: str):
 
 
 def resolve_issue_for_branch(owner: str, repo: str, branch: str, *, token: str | None = None):
-    """LINKED BRANCH first, branch-name parse fallback. No `Closes #N` (AC-19)."""
+    """LINKED BRANCH first, branch-name parse fallback. No `Closes #N`."""
     linked = issue_from_linked_branch(owner, repo, branch, token=token)
     if linked and linked.get("number"):
         return linked
@@ -342,7 +342,7 @@ def apply_event(owner: str, repo: str, project_number: int, *, event_name: str,
     """Resolve the issue + advance its Status for this event (idempotent/monotonic).
 
     `branch` is the head ref (the pushed branch or the PR head branch). The issue
-    is resolved LINKED-BRANCH-FIRST then by branch name (AC-19) unless a caller
+    is resolved LINKED-BRANCH-FIRST then by branch name unless a caller
     passes an already-known `pr_issue_number` (still never from `Closes #N`).
     """
     target = target_for_event(event_name, action, draft=draft)
@@ -362,7 +362,7 @@ def apply_event(owner: str, repo: str, project_number: int, *, event_name: str,
     if item_id is None:
         return {"skipped": "not-on-project", "issue": link["number"]}
 
-    # MONOTONIC guard (AC-31): only advance; a stale/replayed event is a no-op.
+    # MONOTONIC guard: only advance; a stale/replayed event is a no-op.
     to_write = advance_status(current, target)
     if to_write is None:
         return {"issue": link["number"], "from": current, "to": current,

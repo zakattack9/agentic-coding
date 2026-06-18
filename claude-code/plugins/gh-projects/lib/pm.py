@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""gh-projects PM-ID allocator + flow-style front-matter (Phase 1).
+"""gh-projects PM-ID allocator + flow-style front-matter.
 
-Salvaged from pm-ops/lib/pm.py, trimmed to what gh-projects needs: the
-monotonic `PM-####` allocator + registry and the dependency-free flow-style
-YAML-subset front-matter parse/serialize/normalize that round-trips T3 deep
-specs WITHOUT loss (AC-5). The pm-ops folder-as-stage / index.md machinery is
-deliberately DROPPED — the GitHub Project replaces it (spec "Locked decisions":
-"No markdown-canonical sync, no folder-as-stage, ... no index.md").
+Two pieces gh-projects needs: the monotonic `PM-####` allocator + registry, and
+the dependency-free flow-style YAML-subset front-matter parse/serialize/normalize
+that round-trips T3 deep specs WITHOUT loss. There is no folder-as-stage or
+index.md machinery — the GitHub Project is the source of truth for task state, so
+nothing here syncs markdown as the canonical store.
 
 Stdlib only. Exit codes: 0 ok · 2 usage/validation · 3 not found · 1 unexpected.
 

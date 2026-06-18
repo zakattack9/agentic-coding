@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""gh-projects scaffold (Phase 1 — deterministic, free, GitHub-native).
+"""gh-projects scaffold (deterministic, free, GitHub-native).
 
 `scaffold-repo`'s deterministic engine. Stands up a new org Project + repo
 templates + setup by:
@@ -7,25 +7,25 @@ templates + setup by:
   * `copyProjectV2` from the NAMED golden template, then VERIFY the copy carries
     every Data-model field AND all 8 saved views — fields by re-resolve, views by
     a read-only `projectV2.views` catalog diff (views are template-copied, never
-    API-created/edited) (AC-7);
+    API-created/edited);
   * RE-RESOLVING every field/option/iteration id against the COPY, never the
-    template, before any write (AC-8);
+    template, before any write;
   * idempotent, manifest-first file install of the issue forms / PR template /
     `board-sync.yml` / `signals-sync.yml` / `board-status` action / `release.yml`
-    / CODEOWNERS / project README (AC-10);
+    / CODEOWNERS / project README;
   * iterations DIFF/SKIP — never a blind re-PUT of `iterationConfiguration`
-    (AC-9, AC-30 / constraint #3);
+    (constraint #3);
   * ensure org Issue Types + Issue Fields, set repo `allow_squash_merge=false`,
-    grant the App project access (AC-10);
+    grant the App project access;
   * DRY-BY-DEFAULT — print the full change manifest and mutate NOTHING without
-    `--force` (AC-11).
+    `--force`.
 
-Boundaries baked in (Phase-1):
-  * Deterministic & free — NO metered AI/model call (AC-26).
+Boundaries baked in:
+  * Deterministic & free — NO metered AI/model call.
   * Every Projects v2 write uses the App INSTALLATION token, never GITHUB_TOKEN
-    (AC-27 / constraint #2) — minted in lib/gh.py, never printed (AC-3).
+    (constraint #2) — minted in lib/gh.py, never printed.
   * No blind re-PUT of a single-select option list or iterationConfiguration —
-    diff before mutate (AC-30 / constraint #3).
+    diff before mutate (constraint #3).
   * STDLIB ONLY. Bundled paths resolve via ${CLAUDE_PLUGIN_ROOT} or
     Path(__file__).parent — never a hardcoded ~/.claude path.
   * The gh runner is INJECTABLE (lib/gh.RUN) so this whole surface runs OFFLINE.
@@ -40,7 +40,7 @@ import os
 import sys
 from pathlib import Path
 
-# Import the §1 core. lib/ is this file's parent; add it to the path so the
+# Import the shared core. lib/ is this file's parent; add it to the path so the
 # module resolves both when run as a script and when imported by tests.
 _LIB = Path(__file__).resolve().parent
 if str(_LIB) not in sys.path:
@@ -66,12 +66,11 @@ def templates_dir() -> Path:
 
 # --------------------------------------------------------------------------- #
 # File-install manifest — the COMPLETE set of destination paths scaffold writes
-# into a target repo (AC-10). Each entry maps a bundled template source to its
-# destination RELATIVE path in the repo. Sources that other phases author
+# into a target repo. Each entry maps a bundled template source to its
+# destination RELATIVE path in the repo. Sources authored elsewhere
 # (board-sync.yml, signals-sync.yml, the board-status action) are listed by
 # their EXPECTED destination so the manifest is complete even before those files
-# exist on disk (per the §2 brief: assert the manifest ENTRIES, don't depend on
-# the other phases' files existing yet).
+# exist on disk — the manifest asserts ENTRIES, not the presence of those files.
 # --------------------------------------------------------------------------- #
 INSTALL_FILES = [
     # Issue forms + chooser config.
@@ -86,12 +85,12 @@ INSTALL_FILES = [
     ("github/release.yml", ".github/release.yml"),
     # Governance.
     ("github/CODEOWNERS", ".github/CODEOWNERS"),
-    # Board automation workflows (authored by §4/§5 — listed by destination).
+    # Board automation workflows (authored elsewhere — listed by destination).
     ("github/workflows/board-sync.yml", ".github/workflows/board-sync.yml"),
     ("github/workflows/signals-sync.yml", ".github/workflows/signals-sync.yml"),
-    # Per-repo auto-add: new issues/PRs auto-add to the org board (AC-22).
+    # Per-repo auto-add: new issues/PRs auto-add to the org board.
     ("github/workflows/add-to-project.yml", ".github/workflows/add-to-project.yml"),
-    # Self-contained composable deploy bridge (authored by §4 — listed by dest).
+    # Self-contained composable deploy bridge (authored elsewhere — listed by dest).
     ("github/actions/board-status/action.yml", ".github/actions/board-status/action.yml"),
     # Project README (board legend) lives in the repo at project/.
     ("project/README.md", "project/README.md"),
@@ -139,9 +138,9 @@ def expected_view_names(schema: dict) -> list[str]:
 def view_specs(schema: dict) -> list[dict]:
     """The full per-view filter/group/slice catalog (views.json `views`).
 
-    Each entry: {"name", "layout", "filter", "group", "slice"}. Used by §6
-    verify_views to check each view RESOLVES its documented filter/group/slice
-    (AC-25), distinct from the AC-7 presence-by-title diff.
+    Each entry: {"name", "layout", "filter", "group", "slice"}. Used by
+    verify_views to check each view RESOLVES its documented filter/group/slice,
+    distinct from the presence-by-title diff.
     """
     return list(schema.get("views", []))
 
@@ -232,7 +231,7 @@ def resolve_owner_and_template(org: str, template_title: str) -> tuple[str, str,
 
 # --------------------------------------------------------------------------- #
 # Iteration plan — DIFF the COPY's iterations against the desired set; SKIP when
-# unchanged (no iterationConfiguration re-PUT). NEVER blind re-PUT (AC-9/AC-30).
+# unchanged (no iterationConfiguration re-PUT). NEVER blind re-PUT.
 # --------------------------------------------------------------------------- #
 def copy_iterations(copy_proj: "gh.Project", schema: dict) -> list[dict]:
     """Read the iteration set already present in the COPY's Sprint field."""
@@ -250,8 +249,7 @@ def plan_iterations(copy_proj: "gh.Project", schema: dict) -> dict:
 
     Uses gh.iterations_need_update (diff by title/startDate/duration). When the
     copied iterations already match the desired set, this is a SKIP with zero
-    mutations — the AC-9 / AC-30 guard against a blind iterationConfiguration
-    re-PUT.
+    mutations — the guard against a blind iterationConfiguration re-PUT.
     """
     desired = schema.get("iterations") or []
     existing = copy_iterations(copy_proj, schema)
@@ -284,11 +282,11 @@ def plan_file_install(repo_dir: str | None) -> list[dict]:
         src = tdir / src_rel
         row = {"dest": dest_rel, "src": src_rel}
         if not src.is_file():
-            # Source authored by another phase and not present yet — the manifest
-            # still ENUMERATES the destination (AC-10). It is a planned install,
-            # marked so the orchestrator skips the copy until that phase lands.
+            # Source authored elsewhere and not present yet — the manifest
+            # still ENUMERATES the destination. It is a planned install,
+            # marked so the orchestrator skips the copy until that source lands.
             row["action"] = "install"
-            row["reason"] = "source authored by another phase (not yet on disk); destination enumerated"
+            row["reason"] = "source authored elsewhere (not yet on disk); destination enumerated"
             rows.append(row)
             continue
         if repo_dir is None:
@@ -419,7 +417,7 @@ def grant_app_access(copy_project_id: str) -> dict:
     is a confirmation touch of the copy, not a grant. It is deliberately NOT a
     bare no-op masquerading as a grant: it confirms the App can read/touch the
     copy. It does NOT — and must not — attempt an org base-role mutation (base
-    role is UI-only; updateProjectV2 has no base-role field, AC-23). The real
+    role is UI-only; updateProjectV2 has no base-role field). The real
     Project↔team link is link_team (gh.link_team), NOT this _LINK_PROJECT_APP
     touch. Kept App-token only; never GITHUB_TOKEN, never prints a secret.
     """
@@ -427,11 +425,11 @@ def grant_app_access(copy_project_id: str) -> dict:
     return {"confirmed": True, "project": copy_project_id,
             "note": "App already has org Projects-write via its installation; "
                     "this is a confirmation touch, not a grant. No base-role "
-                    "mutation attempted (base role is UI-only, AC-23)."}
+                    "mutation attempted (base role is UI-only)."}
 
 
 # --------------------------------------------------------------------------- #
-# Repo→Project link (AC-21) — resolve the repo node id, plan/diff against the
+# Repo→Project link — resolve the repo node id, plan/diff against the
 # Project's already-linked repos (idempotent), apply via gh.link_repo.
 # --------------------------------------------------------------------------- #
 _REPO_NODE_ID = """
@@ -454,7 +452,7 @@ def resolve_repo_id(repo: str) -> str:
 
 
 def plan_repo_link(project_id: str | None, repo: str | None) -> dict | None:
-    """Plan linking `repo` to the COPY Project — diff-before-mutate (AC-21/AC-24).
+    """Plan linking `repo` to the COPY Project — diff-before-mutate.
 
     Returns None when no repo is given. On a dry preview (no copy yet →
     project_id is None) the link is reported as a planned 'link' WITHOUT resolving
@@ -484,7 +482,7 @@ def plan_repo_link(project_id: str | None, repo: str | None) -> dict | None:
 
 
 # --------------------------------------------------------------------------- #
-# Project→team link (AC-23) — resolve the team node id; the real write-to-team
+# Project→team link — resolve the team node id; the real write-to-team
 # is gh.link_team (NOT _LINK_PROJECT_APP). base-role stays a MANUAL step.
 # --------------------------------------------------------------------------- #
 _TEAM_NODE_ID = """
@@ -509,12 +507,12 @@ def resolve_team_id(org: str, team: str) -> str:
 _BASE_ROLE_MANUAL_STEP = (
     "MANUAL (UI-only, no API): set the org base role for the linked Project to "
     "'Read' under Project → Settings → Manage access → Base role. There is no "
-    "GraphQL/REST mutation for base role (AC-23) — this step cannot be automated."
+    "GraphQL/REST mutation for base role — this step cannot be automated."
 )
 
 
 def plan_team_link(project_id: str | None, org: str, team: str | None) -> dict | None:
-    """Plan linking the COPY Project to `team` — diff-before-mutate (AC-23/AC-24).
+    """Plan linking the COPY Project to `team` — diff-before-mutate.
 
     Returns None when no team is given. Mirrors `plan_repo_link`: on a dry preview
     (no copy yet → project_id is None) the link is reported as a planned 'link'
@@ -522,8 +520,8 @@ def plan_team_link(project_id: str | None, org: str, team: str | None) -> dict |
     the resolve + diff/skip happen at apply time against the real copy. On the
     apply path (project_id set) it resolves the team node id and checks the
     Project's already-linked teams: a team already linked is a SKIP (re-run no-op,
-    never a 409/422 re-link — AC-33). Always carries the base-role MANUAL step
-    (UI-only, never an API mutation, AC-23). Shape:
+    never a 409/422 re-link). Always carries the base-role MANUAL step
+    (UI-only, never an API mutation). Shape:
     {"team", "team_id"|None, "action": "link"|"skip", "reason", "base_role_manual"}.
     """
     if not team:
@@ -548,14 +546,14 @@ def plan_team_link(project_id: str | None, org: str, team: str | None) -> dict |
 
 
 # --------------------------------------------------------------------------- #
-# Field-presence verification against the COPY (AC-7): every project field + the
+# Field-presence verification against the COPY: every project field + the
 # resolved ids come from the COPY, never the template.
 # --------------------------------------------------------------------------- #
 def verify_copy_fields(copy_proj: "gh.Project", schema: dict) -> dict:
     """Diff the COPY's resolved fields against the expected project schema.
 
     Returns {"present": [...], "missing": [...], "field_ids": {name: id}} where
-    every id is read from the COPY (AC-8). Missing fields are a copy/template
+    every id is read from the COPY. Missing fields are a copy/template
     defect to fix on the template and re-copy (views/fields are not API-created).
     """
     expected = project_field_names(schema)
@@ -571,16 +569,17 @@ def verify_copy_fields(copy_proj: "gh.Project", schema: dict) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# View-catalog verification against the COPY (AC-7, the "all 8 views" half).
+# View-catalog verification against the COPY (the "all 8 views" half).
 #
 # ProjectV2 views are NOT API-MUTABLE (no create/edit) — they ship only by
-# copyProjectV2 from the golden template (constraint #1 / spec hard-limits). They
+# copyProjectV2 from the golden template (saved views / Insights charts are not
+# API-creatable — see rules/github-fields.md Platform constraints). They
 # ARE, however, API-READABLE via the `projectV2.views` connection (only Insights
 # CHARTS are neither created nor read via API — views are not charts). So scaffold
 # reads the copy's view catalog read-only and diffs it against the expected 8
 # (views.json). It never CREATES or EDITS a view; a missing view is a template/copy
 # defect to fix on the template and re-copy. Per-view filter/group RESOLUTION is
-# AC-25 (§6); here we verify only PRESENCE by title (the AC-7 "view catalog" diff).
+# handled separately; here we verify only PRESENCE by title (the "view catalog" diff).
 # --------------------------------------------------------------------------- #
 _VIEWS_QUERY = """
 query($owner:String!, $number:Int!){
@@ -600,7 +599,7 @@ def read_copy_views(org: str, copy_number: int) -> list[dict]:
 
     Self-contained read against the copy (never the template). Returns [] on a
     not-found / empty response rather than raising — verify_copy_views turns an
-    empty catalog into a 'missing' list so the AC-7 diff still reports clearly.
+    empty catalog into a 'missing' list so the diff still reports clearly.
     """
     data = gh.graphql(_VIEWS_QUERY, {"owner": org, "number": int(copy_number)})
     proj = (((data or {}).get("organization") or {}).get("projectV2")) or {}
@@ -614,7 +613,7 @@ def read_copy_views(org: str, copy_number: int) -> list[dict]:
 
 
 def verify_copy_views(copy_view_names: "list[str] | set[str]", schema: dict) -> dict:
-    """Diff the COPY's view catalog against the expected 8 (views.json) for AC-7.
+    """Diff the COPY's view catalog against the expected 8 (views.json).
 
     Returns {"present": [...], "missing": [...], "extra": [...]}. A non-empty
     `missing` means the copy is short a template view (fix on the template +
@@ -630,7 +629,7 @@ def verify_copy_views(copy_view_names: "list[str] | set[str]", schema: dict) -> 
 
 
 # --------------------------------------------------------------------------- #
-# §6 verify_views (AC-25) — beyond the AC-7 presence-by-title diff, confirm each
+# verify_views — beyond the presence-by-title diff, confirm each
 # of the 8 views RESOLVES its documented filter / group / slice without error.
 #
 # Views are NOT API-mutable (no create/edit) — they ship via copyProjectV2 and
@@ -649,7 +648,8 @@ def verify_copy_views(copy_view_names: "list[str] | set[str]", schema: dict) -> 
 #     verticalGroupBy is non-empty.
 # A missing view or an unresolved filter/group/slice is a TEMPLATE/COPY defect:
 # fix it on the golden template and re-copy — scaffold never API-creates/edits a
-# view (constraint #1 / spec hard-limits).
+# view (saved views / Insights charts are not API-creatable — see
+# rules/github-fields.md Platform constraints).
 # --------------------------------------------------------------------------- #
 _VIEWS_DETAIL_QUERY = """
 query($owner:String!, $number:Int!){
@@ -731,7 +731,7 @@ def read_copy_views_detail(org: str, copy_number: int) -> dict:
 
 def verify_views(org: str, copy_number: int, *, views_schema: dict,
                  fields_schema: dict, copy_proj: "gh.Project") -> dict:
-    """AC-25: confirm all 8 views exist AND each resolves filter/group/slice.
+    """Confirm all 8 views exist AND each resolves filter/group/slice.
 
     Reads the COPY's view detail and, for every documented view, checks presence
     + that each filter qualifier, the group field and the slice field resolve.
@@ -865,10 +865,10 @@ def raise_for_views(view_result: dict) -> None:
 
 
 def resolved_option_ids(copy_proj: "gh.Project", schema: dict) -> dict:
-    """Every single-select option id resolved FROM THE COPY (AC-8).
+    """Every single-select option id resolved FROM THE COPY.
 
     Shape: {field_name: {option_name: option_id}}. Used by the manifest + the
-    AC-8 test (these ids must differ from the template's in the fixture).
+    re-resolution test (these ids must differ from the template's in the fixture).
     """
     out = {}
     for f in schema.get("fields", []):
@@ -894,10 +894,10 @@ def build_plan(*, org: str, template_title: str, repo: str | None,
     """Resolve everything and return the FULL change manifest.
 
     `do_copy=True` (the apply path + tests): runs `copyProjectV2` from the NAMED
-    golden template (AC-7) and RE-RESOLVES every field/option/iteration id against
-    the COPY (AC-8). `do_copy=False` (a pure dry preview): does NOT create a copy
+    golden template and RE-RESOLVES every field/option/iteration id against
+    the COPY. `do_copy=False` (a pure dry preview): does NOT create a copy
     — `copyProjectV2` is a real mutation and a dry-run must leave the project
-    unchanged (AC-11). The preview instead resolves the TEMPLATE read-only and
+    unchanged. The preview instead resolves the TEMPLATE read-only and
     reports field PRESENCE from it (clearly marked `from_copy=False`), noting the
     ids will be re-resolved from the copy under `--force`. apply() decides whether
     file/field/org writes happen.
@@ -909,13 +909,13 @@ def build_plan(*, org: str, template_title: str, repo: str | None,
     owner_id, template_id, template_number = resolve_owner_and_template(org, template_title)
 
     if do_copy:
-        # AC-7: stand the project up via copyProjectV2 from the NAMED template.
+        # Stand the project up via copyProjectV2 from the NAMED template.
         copied = gh.copy_project(owner_id, template_id, new_title, include_draft=True)
         copy_id = copied.get("id")
         copy_number = copied.get("number")
         if not copy_id or copy_number is None:
             raise ScaffoldError("copyProjectV2 returned no project id/number", code=1)
-        # AC-8: re-resolve every field/option/iteration id against the COPY.
+        # Re-resolve every field/option/iteration id against the COPY.
         resolved = gh.Project(org, int(copy_number))
         resolved.id = copy_id  # the copy's node id is authoritative from the mutation
         resolved.resolve()
@@ -923,19 +923,19 @@ def build_plan(*, org: str, template_title: str, repo: str | None,
                      "title": copied.get("title", new_title), "from_copy": True}
     else:
         # Dry preview only — resolve the TEMPLATE read-only; create NOTHING
-        # (copyProjectV2 is a real mutation; AC-11 keeps the project unchanged).
+        # (copyProjectV2 is a real mutation; a dry-run keeps the project unchanged).
         if template_number is None:
             raise ScaffoldError("could not resolve template number for the dry preview", code=1)
         resolved = gh.Project(org, int(template_number)).resolve()
         copy_info = {"id": None, "number": None, "title": new_title, "from_copy": False,
                      "note": "dry preview: no copyProjectV2 made; field presence shown is the "
                              "TEMPLATE's. Under --force the project is copied and all ids are "
-                             "re-resolved from the COPY (AC-8)."}
+                             "re-resolved from the COPY."}
 
     copy_proj = resolved
     field_check = verify_copy_fields(copy_proj, fields_schema)
     option_ids = resolved_option_ids(copy_proj, fields_schema)
-    # AC-7 (views half): read the saved-view catalog read-only and diff against
+    # Views half: read the saved-view catalog read-only and diff against
     # the expected 8 (views.json). On the apply path we read the COPY; on a dry
     # preview (no copy yet) we read the TEMPLATE's catalog (it carries the same 8),
     # marked from_copy=False. Views are not API-created/edited — a missing view is
@@ -944,8 +944,8 @@ def build_plan(*, org: str, template_title: str, repo: str | None,
     copy_views = read_copy_views(org, int(view_source_number))
     view_check = verify_copy_views([v["name"] for v in copy_views], views_schema)
     view_check["from_copy"] = bool(do_copy)
-    # AC-25 (§6): beyond presence-by-title, confirm each view RESOLVES its
-    # documented filter/group/slice against the COPY. Reads the views connection
+    # Beyond presence-by-title, confirm each view RESOLVES its documented
+    # filter/group/slice against the COPY. Reads the views connection
     # read-only; never mutates a view. Surfaced in the manifest as `view_verify`.
     view_verify = verify_views(org, int(view_source_number), views_schema=views_schema,
                                fields_schema=fields_schema, copy_proj=copy_proj)
@@ -954,7 +954,7 @@ def build_plan(*, org: str, template_title: str, repo: str | None,
     file_rows = plan_file_install(repo_dir)
     issue_field_rows = plan_issue_fields(org, fields_schema)
     issue_types = [t["name"] for t in issue_type_specs(fields_schema)]
-    # Scaffold completions (AC-21/AC-23/AC-24): link each target repo to the COPY
+    # Scaffold completions: link each target repo to the COPY
     # and (when --team) link the Project to the team + emit the UI-only base-role
     # as a MANUAL step. Both diff-before-mutate; the repo link is a re-run no-op
     # once already linked. On a dry preview the copy doesn't exist yet, so the
@@ -970,18 +970,18 @@ def build_plan(*, org: str, template_title: str, repo: str | None,
         "owner_id": owner_id,
         "copy": copy_info,
         "fields": field_check,            # present/missing + field_ids (from COPY under --force)
-        "views": view_check,              # AC-7 view-catalog diff (present/missing vs the 8)
-        "view_verify": view_verify,       # AC-25 per-view filter/group/slice resolution
+        "views": view_check,              # view-catalog diff (present/missing vs the 8)
+        "view_verify": view_verify,       # per-view filter/group/slice resolution
         "option_ids": option_ids,         # option ids resolved from the COPY under --force
         "iterations": iter_plan,          # mutate/skip + mutation count
-        "files": file_rows,              # full destination manifest (AC-10)
+        "files": file_rows,              # full destination manifest
         "issue_fields": issue_field_rows,
         "issue_types": issue_types,
         "repo": repo,
         "no_squash": {"repo": repo, "allow_squash_merge": False} if repo else None,
         "app_access": {"project": copy_info["id"], "grant": True},
-        "repo_link": repo_link,           # AC-21 repo→Project link (diff/skip)
-        "team_link": team_link,           # AC-23 Project→team link + base-role manual step
+        "repo_link": repo_link,           # repo→Project link (diff/skip)
+        "team_link": team_link,           # Project→team link + base-role manual step
         "base_role_manual": (team_link or {}).get("base_role_manual") if team_link else None,
         "human_checklist": ["confirm the 9 Insights charts are present (Insights has no API)"]
         + ([(team_link or {}).get("base_role_manual")] if team_link else []),
@@ -992,10 +992,10 @@ def build_plan(*, org: str, template_title: str, repo: str | None,
 # Apply — only runs when force=True; performs the actual mutations.
 # --------------------------------------------------------------------------- #
 def apply_plan(plan: dict, *, repo_dir: str | None, force: bool) -> dict:
-    """Execute the mutations described by `plan`. No-op unless force=True (AC-11).
+    """Execute the mutations described by `plan`. No-op unless force=True.
 
-    Returns an actions report. Iterations are mutated ONLY when the diff said so
-    (AC-9). Files are installed only for rows whose source exists. Org Issue
+    Returns an actions report. Iterations are mutated ONLY when the diff said so.
+    Files are installed only for rows whose source exists. Org Issue
     Fields are created only for 'ensure' rows. Repo no-squash + App access are
     applied last.
     """
@@ -1004,10 +1004,10 @@ def apply_plan(plan: dict, *, repo_dir: str | None, force: bool) -> dict:
                      "repo_link": None, "team_link": None,
                      "base_role_manual": plan.get("base_role_manual")}
     if not force:
-        actions["note"] = "dry-run (no --force): nothing mutated (AC-11)"
+        actions["note"] = "dry-run (no --force): nothing mutated"
         return actions
 
-    # AC-25: a copy whose views don't all resolve their filter/group/slice is a
+    # A copy whose views don't all resolve their filter/group/slice is a
     # template/copy defect — fail LOUDLY before installing anything per-repo, so
     # the operator fixes the golden template and re-copies (views aren't
     # API-mutable; scaffold never repairs a view).
@@ -1039,7 +1039,7 @@ def apply_plan(plan: dict, *, repo_dir: str | None, force: bool) -> dict:
     if plan.get("repo"):
         actions["no_squash"] = gh.set_repo_merge_method(plan["repo"], allow_squash_merge=False)
 
-    # Repo→Project link (AC-21) — idempotent (gh.link_repo diffs the project's
+    # Repo→Project link — idempotent (gh.link_repo diffs the project's
     # linked repos and skips one already linked). Linked against the real COPY id
     # (the dry plan may have reported it against project_id=None).
     rl = plan.get("repo_link")
@@ -1051,8 +1051,8 @@ def apply_plan(plan: dict, *, repo_dir: str | None, force: bool) -> dict:
             actions["repo_link"] = {"deferred": True, "repo": rl["repo"],
                                     "reason": gh._scrub(str(e))}
 
-    # Project→team link (AC-23) — a REAL linkProjectV2ToTeam write-to-team. The
-    # org base-role stays a MANUAL step (UI-only, no API mutation, AC-23).
+    # Project→team link — a REAL linkProjectV2ToTeam write-to-team. The
+    # org base-role stays a MANUAL step (UI-only, no API mutation).
     tl = plan.get("team_link")
     if tl and plan["copy"].get("id"):
         try:
@@ -1076,33 +1076,33 @@ def render_manifest(plan: dict) -> str:
     lines.append(f"== scaffold change manifest (org={plan['org']}) ==")
     if c.get("from_copy"):
         lines.append(f"Project: copyProjectV2 '{plan['template_title']}' -> "
-                     f"'{c['title']}' (#{c['number']})  [AC-7]")
+                     f"'{c['title']}' (#{c['number']})")
     else:
         lines.append(f"Project: WOULD copyProjectV2 '{plan['template_title']}' -> "
-                     f"'{c['title']}'  [AC-7, dry: no copy made]")
+                     f"'{c['title']}'  [dry: no copy made]")
         if c.get("note"):
             lines.append("  " + c["note"])
     f = plan["fields"]
     src = "COPY" if c.get("from_copy") else "TEMPLATE (preview; copy re-resolves under --force)"
-    lines.append(f"Fields present in {src}: {len(f['present'])}  missing: {len(f['missing'])}  [AC-8 ids re-resolved from copy]")
+    lines.append(f"Fields present in {src}: {len(f['present'])}  missing: {len(f['missing'])}  [ids re-resolved from copy]")
     if f["missing"]:
         lines.append("  MISSING (fix on template + re-copy): " + ", ".join(f["missing"]))
     v = plan["views"]
     vsrc = "COPY" if v.get("from_copy") else "TEMPLATE (preview)"
-    lines.append(f"Views present in {vsrc}: {len(v['present'])}/8  missing: {len(v['missing'])}  [AC-7 view catalog; views are template-copied, not API-created]")
+    lines.append(f"Views present in {vsrc}: {len(v['present'])}/8  missing: {len(v['missing'])}  [view catalog; views are template-copied, not API-created]")
     if v["missing"]:
         lines.append("  MISSING VIEWS (fix on template + re-copy): " + ", ".join(v["missing"]))
     vv = plan.get("view_verify") or {}
     if vv:
         status = "ALL RESOLVE" if vv.get("ok") else "DEFECTS"
         lines.append(f"View filter/group/slice resolution: {status}  "
-                     f"({vv.get('checked', 0)} views checked)  [AC-25]")
+                     f"({vv.get('checked', 0)} views checked)")
         if not vv.get("ok"):
             for err in vv.get("errors", []):
                 lines.append("  UNRESOLVED: " + err)
             lines.append("  -> fix on the golden template and re-copy (views are not API-mutable)")
     it = plan["iterations"]
-    lines.append(f"Iterations: {it['reason']}  (mutations={it['mutations']})  [AC-9]")
+    lines.append(f"Iterations: {it['reason']}  (mutations={it['mutations']})")
     installs = [r["dest"] for r in plan["files"] if r["action"] == "install"]
     skips = [r["dest"] for r in plan["files"] if r["action"] == "skip"]
     lines.append(f"Files to install ({len(installs)}):")
@@ -1115,18 +1115,18 @@ def render_manifest(plan: dict) -> str:
     for r in plan["issue_fields"]:
         lines.append(f"  [{r['action']:>7}] {r['name']} ({r['type']})")
     if plan.get("no_squash"):
-        lines.append(f"Repo setting: {plan['no_squash']['repo']} allow_squash_merge=false  [AC-10]")
+        lines.append(f"Repo setting: {plan['no_squash']['repo']} allow_squash_merge=false")
     rl = plan.get("repo_link")
     if rl:
         lines.append(f"Repo link: [{rl['action']:>5}] {rl['repo']} -> Project  "
-                     f"({rl['reason']})  [AC-21 App token]")
+                     f"({rl['reason']})  [App token]")
     tl = plan.get("team_link")
     if tl:
         lines.append(f"Team link: [ link] Project -> team '{tl['team']}'  "
-                     f"(linkProjectV2ToTeam, write-to-team)  [AC-23 App token]")
+                     f"(linkProjectV2ToTeam, write-to-team)  [App token]")
         lines.append("  " + tl["base_role_manual"])
     app_target = plan["copy"]["id"] or "(the copy, created under --force)"
-    lines.append(f"App access: confirm on project {app_target}  [AC-27 App token; confirmation, not a base-role grant]")
+    lines.append(f"App access: confirm on project {app_target}  [App token; confirmation, not a base-role grant]")
     lines.append("Human checklist: " + "; ".join(plan["human_checklist"]))
     return "\n".join(lines)
 
@@ -1146,13 +1146,13 @@ def cmd_scaffold(args) -> int:
         repo=args.repo,
         new_title=args.title,
         repo_dir=repo_dir,
-        do_copy=args.force,   # dry preview makes NO copy (AC-11); --force copies (AC-7)
+        do_copy=args.force,   # dry preview makes NO copy; --force copies
         team=args.team,
     )
     # Human manifest to stderr; machine result to stdout.
     sys.stderr.write(render_manifest(plan) + "\n")
     if not args.force:
-        sys.stderr.write("\ndry-run (no --force): nothing was mutated. Re-run with --force to apply. [AC-11]\n")
+        sys.stderr.write("\ndry-run (no --force): nothing was mutated. Re-run with --force to apply.\n")
     actions = apply_plan(plan, repo_dir=repo_dir, force=args.force)
     _print_json({
         "ok": True,

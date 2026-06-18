@@ -1,4 +1,4 @@
-# board-sync — event-driven GitHub Projects v2 Status writer (Phase 1).
+# board-sync — event-driven GitHub Projects v2 Status writer.
 #
 # We INVERT the trigger (constraint #1): a board column move fires an ORG-level
 # `projects_v2_item` webhook that CANNOT trigger a repo workflow, so there is NO
@@ -9,18 +9,18 @@
 # beside it under `.github/workflows/`. It imports NOTHING from the gh-projects
 # plugin — the consuming repo has no plugin installed.
 #
-# Status transitions written here (idempotent + MONOTONIC, AC-31):
-#   * push to an issue-linked branch        -> In Progress (AC-17)
-#   * pull_request opened/reopened (ready)  -> In Review   (AC-18)
+# Status transitions written here (idempotent + MONOTONIC):
+#   * push to an issue-linked branch        -> In Progress
+#   * pull_request opened/reopened (ready)  -> In Review
 #   * pull_request opened/reopened (draft)  -> In Progress (draft honesty)
-#   * pull_request ready_for_review         -> In Review   (AC-18)
+#   * pull_request ready_for_review         -> In Review
 #   * pull_request converted_to_draft       -> (held — monotonic, no regress)
 # The PR<->issue link is resolved LINKED-BRANCH-FIRST, branch-name fallback, and
-# NEVER from `Closes #N` (AC-19). Items are never CLOSED here (closed at prod by
+# NEVER from `Closes #N`. Items are never CLOSED here (closed at prod by
 # board-status).
 #
 # Every Projects v2 field write uses a GitHub App INSTALLATION token minted from
-# the App id + private-key secrets — NEVER GITHUB_TOKEN (AC-27 / constraint #2).
+# the App id + private-key secrets — NEVER GITHUB_TOKEN (constraint #2).
 
 name: board-sync
 
@@ -61,8 +61,8 @@ jobs:
       - id: app-token
         uses: actions/create-github-app-token@v1
         with:
-          app-id: ${{ secrets.PROJECTS_APP_ID }}
-          private-key: ${{ secrets.PROJECTS_APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
 
       - name: Sync board Status
@@ -76,4 +76,4 @@ jobs:
         run: |
           python3 "${{ github.workspace }}/.github/workflows/board_sync.py" \
             --repo "${{ github.repository }}" \
-            --project "${{ vars.BOARD_PROJECT_NUMBER }}"
+            --project "${{ vars.GH_PROJECT_NUMBER }}"

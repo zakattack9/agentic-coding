@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for §6 verify_views (AC-25) — NO network, NO live org, NO live
+"""Offline tests for verify_views — NO network, NO live org, NO live
 mutation. A fake gh runner returns the 8 copied views with their resolved
 filter/group/slice (and lets each test corrupt that catalog) so we can assert:
 
@@ -11,9 +11,10 @@ filter/group/slice (and lets each test corrupt that catalog) so we can assert:
   * it FAILS LOUDLY when a documented group/slice is not reflected by the live
     view (the platform resolved no field — an empty groupBy/verticalGroupBy);
   * scaffold NEVER issues a view create/edit/delete mutation (views are not
-    API-mutable; constraint #1 / spec hard-limits) — it only READS the catalog.
+    API-mutable; saved views / Insights charts are not API-creatable — see
+    rules/github-fields.md Platform constraints) — it only READS the catalog.
 
-The §6 verify step ships in lib/scaffold.py (verify_views + raise_for_views) and
+The verify step ships in lib/scaffold.py (verify_views + raise_for_views) and
 is wired into build_plan (`view_verify`) + apply_plan (fails loudly under
 --force). Views are template-copied, never API-created — so a missing view or an
 unresolved filter/group/slice is a TEMPLATE/COPY defect: fix on the golden
@@ -117,7 +118,7 @@ class ViewsRunner:
                     {"id": TEMPLATE_PROJECT_ID, "number": TEMPLATE_NUMBER, "title": TEMPLATE_TITLE},
                 ]}}}})
 
-        # views-detail read (AC-25) — the verify_views query asks for groupByFields.
+        # views-detail read — the verify_views query asks for groupByFields.
         if "views(first:100)" in body and "groupByFields" in body:
             if self.views_override is not None:
                 nodes = self.views_override
@@ -126,7 +127,7 @@ class ViewsRunner:
             return json.dumps({"data": {"organization": {"projectV2": {
                 "views": {"nodes": nodes}}}}})
 
-        # views presence-only read (AC-7)
+        # views presence-only read
         if "views(first:100)" in body:
             schema = scaffold.load_views_schema()
             nodes = [{"number": i + 1, "name": v["name"], "layout": v.get("layout", "TABLE_LAYOUT")}
@@ -196,7 +197,7 @@ class TestViewsCatalog(ViewsTestBase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-25 — verify_views PASSES when all 8 present + each resolves filter/group/slice.
+# verify_views PASSES when all 8 present + each resolves filter/group/slice.
 # --------------------------------------------------------------------------- #
 class TestVerifyViewsPasses(ViewsTestBase):
     def test_all_present_and_resolved_passes(self):
@@ -218,8 +219,7 @@ class TestVerifyViewsPasses(ViewsTestBase):
             self.assertEqual(vr["errors"], [])
 
     def test_documented_group_and_slice_are_resolved_for_sliced_views(self):
-        # Critical Path Board groups by Schedule health, slices by Decision needed
-        # (spec view 4: swimlane=Impact, slice=Decision needed);
+        # Critical Path Board groups by Schedule health, slices by Decision needed;
         # Intake & Hygiene groups by Status, slices by Type. Both must resolve.
         runner = ViewsRunner()
         res = self._verify(runner)
@@ -257,7 +257,7 @@ class TestVerifyViewsPasses(ViewsTestBase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-25 — verify_views FAILS LOUDLY when a view is missing / a filter, group or
+# verify_views FAILS LOUDLY when a view is missing / a filter, group or
 # slice is unresolved.
 # --------------------------------------------------------------------------- #
 class TestVerifyViewsFailsLoudly(ViewsTestBase):
@@ -344,7 +344,7 @@ class TestVerifyViewsFailsLoudly(ViewsTestBase):
 
 
 # --------------------------------------------------------------------------- #
-# AC-25 — wired into build_plan + apply_plan: the plan carries `view_verify`,
+# Wired into build_plan + apply_plan: the plan carries `view_verify`,
 # and --force FAILS LOUDLY before installing anything if a view is unresolved.
 # --------------------------------------------------------------------------- #
 class TestVerifyViewsInPlan(ViewsTestBase):
@@ -425,7 +425,7 @@ class TestVerifyViewsInPlan(ViewsTestBase):
                                        repo_dir=d, do_copy=True)
         text = scaffold.render_manifest(plan)
         self.assertIn("View filter/group/slice resolution: ALL RESOLVE", text)
-        self.assertIn("AC-25", text)
+        self.assertIn("views checked", text)
 
 
 if __name__ == "__main__":
