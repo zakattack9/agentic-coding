@@ -2,88 +2,227 @@
 
 Run a small team's (≤4 engineers) **entire software lifecycle on GitHub Projects
 v2** — deterministic, free, and GitHub-native. One org-owned board spans every
-repo: AI-assisted intake into tiered, AC-bearing issues; a structured board; a
-light branch → PR → staging → prod flow tracked with zero hand-maintenance; and
-always-live native stakeholder surfaces (the project Status update, Gantt-signal
-fields, the Roadmap view, Insights charts) — never a hand-kept Gantt or a periodic
-digest.
+repo: AI-assisted intake into tiered issues with acceptance criteria, a structured
+board, a light **branch → PR → staging → prod** flow tracked with zero
+hand-maintenance, and always-live stakeholder surfaces (the project Status update,
+Gantt-signal fields, the Roadmap view, Insights charts) — never a hand-kept Gantt
+or a periodic digest. No metered AI: every moving part is plain Python + GraphQL.
 
-Spec (the build contract):
-[`research/pm-task-management/gh-projects.spec.md`](../../../research/pm-task-management/gh-projects.spec.md).
+## How it works (the mental model)
 
-## Phase 1 skills (deterministic, free, no metered AI)
+- **The GitHub issue is the canonical unit.** Issues carry typed fields and a
+  grouped **Acceptance Criteria** table; the board is a live projection of
+  issue / PR / deploy events, driven *into* the Project via GraphQL.
+- **One org board, three field homes** — the work taxonomy is an **Issue Type**
+  (`Feature/Bug/Chore/Infra/Epic`); org-wide attributes are **Issue Fields**
+  (Priority, Start date, Target date); board-local state lives in **Project
+  fields** (Size, Tier, Status, Blocked, and the auto Gantt signals).
+- **The board stays current by itself** via three loosely-coupled layers (below);
+  Status only ever advances `Backlog < Ready < In Progress < In Review < On Staging
+  < Done`.
+- **Signals are recomputed deterministically** (date math + the native blocked-by
+  graph, no AI) so the Roadmap, Insights, and the project Status update are always
+  live.
+
+---
+
+## Prerequisites (set these up before using the plugin)
+
+### 1. Tooling
+
+- **GitHub CLI (`gh`)** installed and authenticated (`gh auth login`). The plugin
+  shells out to `gh` / `gh api`.
+- **Python 3** (standard library only — nothing to `pip install`).
+- **The `spec-ops` plugin installed.** `intake-issues` delegates the issue body +
+  acceptance-criteria authoring to `spec-ops`; without it, intake can't write issue
+  bodies.
+
+### 2. A GitHub App (one-time, org admin) — *required*
+
+`GITHUB_TOKEN` **cannot write Projects v2 fields** — a GitHub App installation
+token is the only credential that can. Create an **org-owned GitHub App** with:
+
+- **Projects:** read & write (org)
+- **Repository:** Contents, Issues, Pull requests — read & write
+- **Administration:** read & write (to toggle the repo no-squash merge setting)
+
+Install it on the org (all or selected repos), then store its **App id** and
+**private key** as org/repo Actions secrets so the installed workflows can mint an
+installation token. (The token is never printed; the plugin scrubs secrets from all
+output.)
+
+### 3. A golden-template Project (one-time, by hand) — *required*
+
+`scaffold-repo` replicates a board by **copying** a golden template — it does not
+build one from scratch (saved views and Insights charts have no creation API). So
+build **one** org Project once:
+
+1. Apply the field schema from [`templates/project/fields.json`](templates/project/fields.json)
+   and add the **Iteration** field (these *can* be API-created to speed it up).
+2. **Hand-build the 8 saved views** ([`templates/project/views.md`](templates/project/views.md))
+   and the **9 Insights charts** ([`templates/project/insights.md`](templates/project/insights.md))
+   — the irreducibly manual step.
+3. Mark the Project an **org template**.
+
+`scaffold-repo`'s `copyProjectV2` then replicates fields + views + chart config to
+every scaffolded project. It can verify field/view *presence* after copying but not
+the charts (Insights has no API) — confirm those by eye once.
+
+### 4. The App token in your environment (for running the skills)
+
+The skills write to the Project through the App token. Provide it one of two ways:
+
+```bash
+export GH_APP_TOKEN=<installation-token>        # if you already have one, or…
+export APP_ID=<app-id>
+export APP_PRIVATE_KEY="$(cat app-private-key.pem)"   # or: APP_PRIVATE_KEY_PATH=/path/to.pem
+# optional, if the App has more than one installation:
+export APP_INSTALLATION_ID=<installation-id>
+```
+
+`GITHUB_TOKEN` is explicitly rejected for Project writes.
+
+---
+
+## Setup: scaffold a repo onto the board
+
+Run **`scaffold-repo`** once per org/repo to stand everything up — it copies the
+golden template, re-resolves all IDs against the copy, ensures the org Issue Types
++ Issue Fields, sets the repo **no-squash** merge setting, links the repo (and
+optionally a team) to the Project, and installs the per-repo automation (issue
+forms, PR template, `board-sync.yml`, `signals-sync.yml`, the `add-to-project`
+auto-add workflow, the `board-status` deploy action, `release.yml`, CODEOWNERS, the
+board README).
+
+```
+scaffold-repo --org <login> --template "<golden template title>" \
+              --title "<new project title>" [--repo owner/name] [--team <slug>]
+```
+
+Every mutating skill is **dry-by-default**: it prints the full change manifest and
+writes nothing. Re-run with **`--force`** to apply. A second run is a clean no-op
+(diff-before-mutate; iterations are never blind re-PUT).
+
+> Note: the org **base role** for a linked team is UI-only (no API) — `scaffold-repo`
+> emits it as a one-line manual step in the manifest.
+
+---
+
+## The skills
+
+All skills are thin orchestrators over the deterministic engine (`lib/`), run on
+`model: opus`, and (except `intake-issues`) are **Explicit** — user-invoked only.
 
 | Skill | What it does | Invocation |
 |---|---|---|
-| `scaffold-repo` | `copyProjectV2` from the golden template, then API-only setup: ensure org Issue Types + Issue Fields, link repos, recreate per-repo Auto-add, re-anchor the iteration, re-resolve IDs against the copy, set base roles, grant App access, set the repo **no-squash** merge setting, and install the issue forms / PR template / `board-sync.yml` / `signals-sync.yml` / the `board-status` action / `release.yml` / CODEOWNERS + the board README and Insights/view playbooks. Idempotent, dry-run manifest, `--force`. | Explicit |
-| `intake-issues` | Raw dump → tiered, field-complete issues. Delegates the body + Acceptance Criteria to **spec-ops** (`write-spec` at the tier's rigor; `refine-spec` for T3); sizes + Epic-splits from the AC-group count. Dry-runs before any `gh issue create`. | Model-invocable |
-| `sync-signals` | On-demand recompute of the auto Gantt-signal fields (Schedule health, Slippage, Slippage-days, Blast radius, Blast-count, **Blocked**) from the native blocked-by DAG **+ post the project Status update**. | Explicit |
+| `scaffold-repo` | Stand up the board + per-repo automation from the golden template (see Setup). Idempotent, dry-by-default. | Explicit |
+| `intake-issues` | Raw dump → tiered, field-complete issues. Delegates the body + acceptance criteria to `spec-ops`; sizes and Epic-splits from the AC-group count. Dry-runs before any `gh issue create`. | Model-invocable |
+| `plan-sprint` | Assign issues to the current Iteration + Milestone, set Start/Target dates, show working-day capacity vs. assigned load (warns on over-allocation), and reorder the Ready queue. Dry-by-default. | Explicit |
+| `route-issue` | Project one issue onto the board, populate its intake-time fields (Type/Size/Tier/PM-ID/Spec/Priority/Status), optionally self-assign, and cut its authoritative linked branch. Monotonic Status, dry-by-default, guard-scoped. | Explicit |
+| `promote-pr` | Open/update the issue-linked PR (non-closing `Relates to #N`), advance board Status across the PR lifecycle, surface the PR's check state, and offer a **non-squash** merge only when checks are green. Dry-by-default, guard-scoped. | Explicit |
+| `sync-signals` | Recompute the auto Gantt signals (Schedule health, Slippage, Slippage-days, Blast radius, Blast-count, **Blocked**) from the blocked-by graph and post the project Status update. Also runs automatically via `signals-sync.yml` on events + cron. | Explicit |
 
-> The spec's Phase-1 list also names `plan-sprint`, `route-issue`, and
-> `promote-pr`. Those are **out of scope for the current build** (AC-1..31) and not
-> shipped here. `hooks/guard.sh` is authored to wire into `route-issue` /
-> `promote-pr` when they land.
+---
+
+## Everyday lifecycle
+
+```
+intake-issues  →  plan-sprint  →  route-issue  →  (dev codes)  →  promote-pr  →  deploy
+     │               │               │              │                │             │
+  tiered AC       Iteration +     board item +   board-sync.yml    PR + Status   board-status
+  issues          dates + Ready   linked branch  moves Status      + green-gated  → On Staging
+  on the board    order           (self-assign)  on push/PR        non-squash     / Done + Release
+```
+
+1. **Intake** — `intake-issues "<dump or path>"` turns a brain-dump into tiered
+   issues with acceptance criteria; prose-only / non-atomic items are refused
+   `Ready` with a reason.
+2. **Plan** — `plan-sprint --owner <org> --number <project#> …` schedules the
+   current Iteration + Milestone + dates and orders the Ready queue by Priority
+   then Target.
+3. **Start work** — `route-issue --owner <org> --number <project#> --repo
+   owner/name --issue <n> [--assignee <login>]` projects the issue, sets its fields,
+   and creates the linked branch.
+4. **Code** — push to the linked branch and open a PR; the board moves itself
+   (`In Progress` on push, `In Review` on a ready PR).
+5. **Promote** — `promote-pr --owner <org> --number <project#> --repo owner/name
+   --issue <n>` opens/updates the non-closing PR, holds the merge while checks are
+   red/pending, and offers a non-squash merge when green.
+6. **Deploy** — add the `board-status` action as one step in your deploy job to set
+   `On Staging` on staging success and `Done` + close + cut the Release on prod
+   success.
+7. **Signals** — refresh on their own; run `sync-signals --owner <org> --number
+   <project#>` to force a recompute + Status-update post.
+
+Preview first, every time; add `--force` (or `--apply` for `sync-signals`) only
+after reviewing the dry-run manifest.
+
+---
 
 ## How the board stays live (three loosely-coupled layers)
 
-1. **Native built-in workflows** — item added → Backlog · PR merged → On Staging ·
-   reopened → In Progress.
-2. **`board-sync.yml`** (event-driven, App token) — push → In Progress · PR opened
-   / ready → In Review.
+1. **Native built-in workflows** (free, zero setup) — item added → `Backlog` · PR
+   merged → `On Staging` · reopened → `In Progress`.
+2. **`board-sync.yml`** (event-driven, App token) — push → `In Progress` · PR
+   opened/ready → `In Review` (draft PRs hold `In Progress`). Resolves the PR↔issue
+   link from the linked branch first, branch-name parse as fallback — never from
+   `Closes #N`.
 3. **`board-status` action** (opt-in, self-contained, one step in a deploy job) —
-   deploy-accurate On Staging / Done + close + cut the Release.
+   deploy-accurate `On Staging` / `Done` + close + publish the tag's Release.
 
-All three write the one Status field **idempotently and monotonically** (Backlog <
-Ready < In Progress < In Review < On Staging < Done): a stale or replayed event is
-a no-op; only an explicit reopen moves Status back.
+All three write the one Status field **idempotently and monotonically**: a stale or
+replayed event is a no-op; only an explicit reopen moves Status back. Issues are
+**never auto-closed by `Closes #N`** — closure happens at prod deploy.
 
-## Invariants (enforced, with tests)
+---
 
-- **No metered AI** anywhere in Phase 1 (AC-26).
-- **Every Projects v2 field write uses a GitHub App installation token**, never
-  `GITHUB_TOKEN` (AC-27).
-- **`hooks/guard.sh`** (skill-scoped `PreToolUse`) blocks `--squash` and prod
-  actions without provably-green checks; fails **open** on unrelated input
-  (AC-28). Wired in the route-issue / promote-pr skill frontmatter.
+## Guarantees (enforced, with tests)
+
+- **No metered AI** anywhere — pure date math + the blocked-by graph.
+- **Every Projects v2 write uses the GitHub App installation token**, never
+  `GITHUB_TOKEN`; no token or secret is ever printed.
+- **`hooks/guard.sh`** (a `PreToolUse` hook scoped to `route-issue` / `promote-pr`)
+  blocks `--squash` merges and prod actions without provably-green checks, and fails
+  **open** on anything unrelated.
+- **Dry-by-default + idempotent** — every skill and write verb previews first and
+  re-runs as a clean no-op (an existing item/branch/PR/link/assignee/milestone is
+  detected and skipped, never a 409/422).
 - **Schema edits diff before mutate** — no blind re-PUT of a single-select option
-  list or `iterationConfiguration`; option/iteration IDs stay stable (AC-30).
-- The plugin manifest carries only `name` + `description`; the **version lives in
-  the root `marketplace.json`** (`0.1.0`) (AC-29).
+  list or `iterationConfiguration`; option/iteration IDs stay stable.
+- **Non-squash merges** via the free repo merge-method setting.
+
+---
 
 ## Layout
 
-- `skills/` — the Phase-1 skills above.
+- `skills/` — the six skills above (`SKILL.md` each).
 - `lib/` — Python **stdlib only**, exit codes `0` ok / `2` usage / `3` not-found /
-  `1` unexpected. `gh.py` (GraphQL/REST core, ID resolution, monotonic
-  `advance_status`, diff-gated schema mutations), `pm.py` (`PM-####` allocator +
-  front-matter I/O), `scaffold.py`, `dag.py`, `engine.sh` (dry-by-default rail).
-- `templates/` — the golden-template `project/*`, the `github/` repo files
-  (issue forms, PR template, workflows, the self-contained `board-status` action,
-  `release.yml`, CODEOWNERS), and the issue/spec skeletons.
+  `1` unexpected:
+  - `gh.py` — GraphQL/REST core: ID resolution + cache, two-phase field writes,
+    monotonic `advance_status`, PR/merge/check/milestone/assignee/reorder/repo &
+    team link verbs, diff-gated schema mutations, App-token minting.
+  - `sprint.py` — working-day capacity + Ready-order recommendation.
+  - `scaffold.py` — golden-template copy + idempotent file install.
+  - `dag.py` — blocked-by graph → Blocked / Blast radius / Blast-count.
+  - `pm.py` — `PM-####` id allocator + flow-style front-matter I/O.
+  - `engine.sh` — the dry-by-default / `--force` rail the skills call.
+- `templates/` — the golden-template `project/*` and the per-repo `github/*` files
+  (issue forms, PR template, `board-sync.yml`, `signals-sync.yml`,
+  `add-to-project.yml`, the self-contained `board-status` action, `release.yml`,
+  CODEOWNERS).
 - `hooks/guard.sh` — the skill-scoped PreToolUse guard.
 - `rules/` — `github-fields.md`, `repo-conventions.md`, `ac-rubric.md`,
   `tier-rubric.md`.
 
+The plugin manifest carries only `name` + `description`; the version lives in the
+repo-root `.claude-plugin/marketplace.json`.
+
 ## Tests
 
-Offline, no network, no live org (an injectable command runner stubs gh/GraphQL):
+Fully offline — no network, no live org (an injectable command runner stubs
+`gh`/GraphQL):
 
-```
+```bash
 cd claude-code/plugins/gh-projects
-python3 -m unittest discover -s lib/tests -p "test_*.py"
+python3 -m unittest discover -s lib/tests -t lib
 ```
-
-## Phase 0 (external prerequisite)
-
-A human/org one-time step assumed to exist: a GitHub **App** (Projects write) and
-the **golden-template Project** with the field schema, the 8 saved views, and the
-9 Insights charts built by hand, marked an org template. `scaffold-repo` replicates
-it via `copyProjectV2`. Views and Insights are not API-creatable — the plugin only
-verifies their presence.
-
-## Delegation to spec-ops (the WHAT, not the HOW)
-
-Spec/AC **authoring + hardening + verification** is delegated to spec-ops
-(`write-spec` / `refine-spec` / `verify-spec`). gh-projects does **not** depend on
-`launch-spec` — implementation stays the dev's free choice. The `AC-id` contract
-and spec/AC format are the pinned, stable interface.
