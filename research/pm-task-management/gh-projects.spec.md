@@ -3,9 +3,8 @@ id: PM-0001
 title: gh-projects — GitHub-native PM & software-lifecycle plugin
 type: epic
 tier: T3
-rigor: full
 size: L
-status: draft
+status: ready
 owner: PM
 depends: [spec-ops]
 spec_backing: ./research/synthesis-and-plan.md
@@ -23,43 +22,71 @@ feature_audit: ./research/gh-projects-feature-audit.md
 
 ## Acceptance Criteria
 
-> The Phase-1 build is done when every AC below holds — atomic, observable end-states (this spec dogfoods its own AC-first rule); the sections below realize each, and `verify:` names a concrete check.
+> The Phase-1 build is done when every AC below holds — atomic, observable end-states (this spec dogfoods its own AC-first rule **and** grouped-table format). The `AC` column is the bare number; cite ids elsewhere as `AC-1…`. **Verify** names a concrete check. The groups carry a `needs §X` build **DAG**: §2–§5 parallelize after §1, §6 needs §2, §7 is cross-cutting (verified across the whole surface). Projected onto the board this DAG *is* the Epic-split — one sub-issue per group, `needs §X`→blocked-by.
 
-- **AC-1** [lib] `lib/gh.py` resolves and caches a real org Project's field/option/iteration IDs via a GitHub App token; a repeat lookup in the same run hits cache (no second round-trip). `verify:` integration test asserts one resolve for two lookups.
-- **AC-2** [lib] A field write goes through the two-phase `addProjectV2ItemById` → read item id → `updateProjectV2ItemFieldValue` sequence and reads back identical. `verify:` round-trip test on a single-select.
-- **AC-3** [lib] Every `lib/*.py` entrypoint returns the documented exit codes (`0/2/3/1`) and prints no token/secret. `verify:` exit-code + secret-scan test.
-- **AC-4** [lib] `lib/gh.py` prefers native `gh ≥ 2.94` flags, falls back to GraphQL, and contains **no** label-based dependency fallback. `verify:` grep + version-branch test.
-- **AC-5** [lib] `lib/pm.py` allocates monotonic `PM-####` ids and round-trips flow-style front-matter without loss. `verify:` property test.
-- **AC-6** [lib] `lib/dag.py` derives `Blocked`, `Blast radius`, and `Blast-count` from blocked-by edges matching a hand-checked fixture. `verify:` graph fixture test.
-- **AC-7** [scaffold] `scaffold-repo` stands up the Project via `copyProjectV2` from the named golden template; the copy contains every §Data-model field and all 8 views. `verify:` post-scaffold GraphQL dump diffs `fields.json` + view catalog.
-- **AC-8** [scaffold] `scaffold-repo` re-resolves all field/option/iteration IDs against the **copy** (never the template) before any write. `verify:` assert resolved IDs ≠ template IDs.
-- **AC-9** [scaffold] A second run is a no-op for fields and **skips existing iterations** (no `iterationConfiguration` re-PUT). `verify:` re-run change-manifest empty; iteration-mutation count = 0.
-- **AC-10** [scaffold] `scaffold-repo` ensures org Issue Types + Issue Fields exist, sets the repo `allow_squash_merge=false`, grants the App project access, and installs the issue forms, PR template, `board-sync.yml`, `signals-sync.yml`, `board-status` action, `release.yml`, CODEOWNERS, and project README. `verify:` post-scaffold file + setting assertions.
-- **AC-11** [scaffold] `scaffold-repo` is dry-by-default — prints the full change manifest and mutates nothing without confirm/`--force`. `verify:` dry-run leaves project + repo unchanged.
-- **AC-12** [intake] `intake-issues` turns a raw dump into individual tiered issues, each with `Type/Size/Tier/PM-ID` set and a grouped `## Acceptance Criteria` table. `verify:` sample dump → issues with required fields populated.
-- **AC-13** [intake] `intake-issues` **refuses `Ready`** for any item whose AC are prose-only / not atomic observable end-states, stating the reason. `verify:` prose-AC fixture stays out of `Ready`.
-- **AC-14** [intake] `intake-issues` delegates each body+AC to `spec-ops:write-spec` **at the tier's rigor** (T1→`light` · T2→`standard` · T3→`full`+`refine-spec`) and authors no body inline. `verify:` call trace shows the rigor arg + delegation.
-- **AC-15** [intake] **AC-group count** drives the size suggestion (1→S/2–3→M/4+→L) and >~3–4 groups yields an Epic-split (one sub-issue per group via `addSubIssue`; `needs §X`→blocked-by). `verify:` 1/3/5-group fixtures → S/M/L + split + dep edges.
-- **AC-16** [intake] `intake-issues` is dry-by-default — previews drafts, calls `gh issue create` only on confirm. `verify:` dry-run creates no issue.
-- **AC-17** [board] A push to an issue-linked branch moves the item to `In Progress` via an App-token GraphQL write. `verify:` event→status fixture.
-- **AC-18** [board] A ready PR → `In Review`; a draft PR holds `In Progress` until `ready_for_review`. `verify:` draft vs ready fixtures.
-- **AC-19** [board] `board-sync` resolves the PR↔issue link from the **linked branch first, branch-name parse fallback**, and never depends on `Closes #N`. `verify:` both paths + grep for no closing-keyword dependence.
-- **AC-20** [board] The native "PR merged → set Status" built-in is set to `On Staging` (not `Done`) and the item stays **open** after merge. `verify:` post-merge item open + On Staging.
-- **AC-21** [board] The `board-status` step sets `On Staging` on staging success and `Done` + closes + publishes the tag's Release on prod success, resolving shipped issues from the deployed SHA. `verify:` fixture-repo action run.
-- **AC-22** [board] The `board-status` action is **self-contained** (vendors its GraphQL logic, no plugin import) and runs from `./.github/actions/board-status` in a repo without the plugin installed. `verify:` action runs green in a plugin-less repo.
-- **AC-23** [signals] `signals-sync` recomputes Schedule health/Slippage/Slippage-days/Blast radius/Blast-count/Blocked deterministically (no model call) on events + cron. `verify:` fixture board → expected values; zero AI calls asserted.
-- **AC-24** [signals] `signals-sync` posts a `createProjectV2StatusUpdate` whose health enum matches the documented rollup. `verify:` rollup fixtures → expected enum.
-- **AC-25** [views] All 8 views exist and each resolves its documented filter/group/slice without error. `verify:` view-presence + query check.
-- **AC-26** [invariant] No Phase-1 workflow or skill makes a metered AI/model call. `verify:` CI grep across templates + skills.
-- **AC-27** [invariant] Every Projects field write uses the App installation token; none use `GITHUB_TOKEN`. `verify:` token-usage grep.
-- **AC-28** [invariant] `hooks/guard.sh` blocks `--squash` and prod actions without green checks during route/promote, and fails open on unrelated input. `verify:` guard unit tests.
-- **AC-29** [invariant] The plugin manifest carries only `name`+`description`; the version is in root `marketplace.json` at `0.1.0`; pm-ops is marked deprecated there. `verify:` manifest + marketplace assertions.
-- **AC-30** [invariant] No schema mutation re-PUTs a single-select option list or `iterationConfiguration` without a prior diff. `verify:` ID-stability guard test.
+### 1. lib core — start here
+| AC | Criterion | Verify |
+|----|-----------|--------|
+| 1 | `lib/gh.py` resolves & caches a real org Project's field/option/iteration IDs via a GitHub App token; a repeat lookup in the same run hits cache (no second round-trip) | 1 resolve for 2 lookups |
+| 2 | A field write uses the two-phase `addProjectV2ItemById` → read item id → `updateProjectV2ItemFieldValue` sequence and reads back identical | single-select round-trip |
+| 3 | Every `lib/*.py` entrypoint returns the documented exit codes (`0/2/3/1`) and prints no token/secret | exit-code + secret-scan test |
+| 4 | `lib/gh.py` prefers native `gh` issue-dependency/linked-branch flags **when the installed `gh` supports them** (feature-detected, not a hardcoded version), else falls back to GraphQL; contains **no** label-based dependency fallback | grep + capability-branch test |
+| 5 | `lib/pm.py` allocates monotonic `PM-####` ids and round-trips flow-style front-matter without loss | property test |
+| 6 | `lib/dag.py` derives `Blocked`, `Blast radius`, and `Blast-count` from blocked-by edges matching a hand-checked fixture | graph fixture test |
+
+### 2. scaffold — needs §1
+| AC | Criterion | Verify |
+|----|-----------|--------|
+| 7 | `scaffold-repo` stands up the Project via `copyProjectV2` from the named golden template; the copy contains every §Data-model field and all 8 views | post-scaffold GraphQL dump diffs `fields.json` + view catalog |
+| 8 | `scaffold-repo` re-resolves all field/option/iteration IDs against the **copy** (never the template) before any write | resolved IDs ≠ template IDs |
+| 9 | A second run is a no-op for fields and **skips existing iterations** (no `iterationConfiguration` re-PUT) | re-run manifest empty; iteration-mutation count = 0 |
+| 10 | `scaffold-repo` ensures org Issue Types + Issue Fields exist, sets the repo `allow_squash_merge=false`, grants the App project access, and installs the issue forms, PR template, `board-sync.yml`, `signals-sync.yml`, `board-status` action, `release.yml`, CODEOWNERS, and project README | post-scaffold file + setting assertions |
+| 11 | `scaffold-repo` is dry-by-default — prints the full change manifest and mutates nothing without confirm/`--force` | dry-run leaves project + repo unchanged |
+
+### 3. intake — needs §1
+| AC | Criterion | Verify |
+|----|-----------|--------|
+| 12 | `intake-issues` turns a raw dump into individual tiered issues, each with `Type/Size/Tier/PM-ID` set and a grouped `## Acceptance Criteria` table | sample dump → issues with required fields populated |
+| 13 | `intake-issues` **refuses `Ready`** for any item whose AC are prose-only / not atomic observable end-states, stating the reason | prose-AC fixture stays out of `Ready` |
+| 14 | `intake-issues` delegates each body+AC to `spec-ops:write-spec` **at the tier's rigor** (T1→`light` · T2→`standard` · T3→`full`+`refine-spec`) and authors no body inline | call trace shows the rigor arg + delegation |
+| 15 | **AC-group count** drives the size suggestion (1→S/2–3→M/4+→L) and >~3–4 groups yields an Epic-split (one sub-issue per group via `addSubIssue`; `needs §X`→blocked-by) | 1/3/5-group fixtures → S/M/L + split + dep edges |
+| 16 | `intake-issues` is dry-by-default — previews drafts, calls `gh issue create` only on confirm | dry-run creates no issue |
+
+### 4. board sync — needs §1
+| AC | Criterion | Verify |
+|----|-----------|--------|
+| 17 | A push to an issue-linked branch moves the item to `In Progress` via an App-token GraphQL write | event→status fixture |
+| 18 | A ready PR → `In Review`; a draft PR holds `In Progress` until `ready_for_review` | draft vs ready fixtures |
+| 19 | `board-sync` resolves the PR↔issue link from the **linked branch first, branch-name parse fallback**, and never depends on `Closes #N` | both paths + grep for no closing-keyword dependence |
+| 20 | The native "PR merged → set Status" built-in is set to `On Staging` (not `Done`) and the item stays **open** after merge | post-merge item open + On Staging |
+| 21 | The `board-status` step sets `On Staging` on staging success and `Done` + closes + publishes the tag's Release on prod success, resolving shipped issues from the deployed SHA | fixture-repo action run |
+| 22 | The `board-status` action is **self-contained** (vendors its GraphQL logic, no plugin import) and runs from `./.github/actions/board-status` in a repo without the plugin installed | action runs green in a plugin-less repo |
+
+### 5. signals — needs §1
+| AC | Criterion | Verify |
+|----|-----------|--------|
+| 23 | `signals-sync` recomputes Schedule health/Slippage/Slippage-days/Blast radius/Blast-count/Blocked deterministically (no model call) on events + cron | fixture board → expected values; zero AI calls asserted |
+| 24 | `signals-sync` posts a `createProjectV2StatusUpdate` whose health enum matches the documented rollup | rollup fixtures → expected enum |
+
+### 6. views — needs §2
+| AC | Criterion | Verify |
+|----|-----------|--------|
+| 25 | All 8 views exist and each resolves its documented filter/group/slice without error | view-presence + query check |
+
+### 7. invariants — cross-cutting (hold across §1–§6)
+| AC | Criterion | Verify |
+|----|-----------|--------|
+| 26 | No Phase-1 workflow or skill makes a metered AI/model call | CI grep across templates + skills |
+| 27 | Every Projects field write uses the App installation token; none use `GITHUB_TOKEN` | token-usage grep |
+| 28 | `hooks/guard.sh` blocks `--squash` and prod actions without green checks during route/promote, and fails open on unrelated input | guard unit tests |
+| 29 | The plugin manifest carries only `name`+`description`; the version is in root `marketplace.json` at `0.1.0`; pm-ops is marked deprecated there | manifest + marketplace assertions |
+| 30 | No schema mutation re-PUTs a single-select option list or `iterationConfiguration` without a prior diff | ID-stability guard test |
+| 31 | Status writes from the three layers (built-in, `board-sync`, `board-status`) are **idempotent** and **monotonic** — a stale or replayed event never regresses an item to an earlier lifecycle stage (`In Progress`<`In Review`<`On Staging`<`Done`); only an explicit reopen moves it back | concurrent + replayed-event fixture → deterministic final Status, no backward flicker |
 
 ## ⚠️ Load-bearing constraints (break the system if missed)
 
 1. **`projects_v2_item` cannot trigger repo workflows.** A board column move fires an **org-level** `projects_v2_item` webhook — there is *no* `on: projects_v2_item:` in repo Actions. The board is driven **from** `issues` / `pull_request` / `push` events writing Status **into** the Project via GraphQL (we invert the trigger), plus native built-in workflows and the opt-in `board-status` action.
-2. **`GITHUB_TOKEN` cannot write Projects v2 fields.** All Project writes use a **GitHub App installation token** (org-scoped, `project` scope, survives staff departure, 10k GraphQL pts/hr). PRs created by `GITHUB_TOKEN` also don't trigger downstream workflows.
+2. **`GITHUB_TOKEN` cannot write Projects v2 fields.** All Project writes use a **GitHub App installation token** — org-scoped, `project` scope, survives staff departure, and the *only* token that can mutate Projects v2 at all. (Rate: ~**5k GraphQL pts/hr** baseline + 2k/min on our plan — the **same baseline as a PAT**; the documented 10k/hr applies only to Enterprise Cloud. So caching + incremental syncs are load-bearing, not optional.) PRs created by `GITHUB_TOKEN` also don't trigger downstream workflows.
 3. **Field/option/iteration edits regenerate IDs and orphan assignments.** Editing a single-select option list regenerates option IDs; worse, `updateProjectV2Field`'s `iterationConfiguration` is **replace-all** — re-PUTting it wipes completed iterations and orphans every issue↔iteration assignment + chart history. Treat all schema edits as **rare, idempotent, ID-stable**: resolve & cache IDs, **diff before mutate**, never blind re-PUT.
 4. **Metered Claude can silently stop.** Any future AI Action draws the separate Agent-SDK credit pool that drains first and stops without erroring. Every metered step uses a **dedicated spend-capped Console key**, **fails loud** (post "AI unavailable" + block), and is gated behind an explicit label.
 
@@ -86,7 +113,7 @@ feature_audit: ./research/gh-projects-feature-audit.md
 | Status options | `Backlog → Ready → In Progress → In Review → On Staging → Done` (+ `Blocked` flag-state) |
 | Cadence | **2-week** iterations; Milestone = release; plan *direction* a quarter out, *detail* one cycle out |
 | Sizing | `S/M/L` appetite, **no betting**; **AC-group count** suggests size + drives an **Epic-split** (one sub-issue per group; `needs §X`→blocked-by) |
-| **Field homes** | **3 homes** — Issue **Type** (taxonomy) · org **Issue Fields** (Priority/Start/Target — org-wide, searchable) · **Project** single-selects (Size/Tier/Rigor/Blocked/signals — board-local) |
+| **Field homes** | **3 homes** — Issue **Type** (taxonomy) · org **Issue Fields** (Priority/Start/Target — org-wide, searchable) · **Project** single-selects (Size/Tier/Blocked/signals — board-local) |
 | **Board↔deploy** | Native built-ins + `board-sync.yml` (events) + an **opt-in composable `board-status` action** (one step in a deploy job for deploy-accurate On Staging/Done); no forced CI/CD edits |
 | **Merge & close** | no-squash via **free repo setting**; review/checks = convention + `guard.sh` (rulesets need a paid plan we don't have); items are **never auto-closed by `Closes #N`** — closed at prod by `board-status` |
 | **Releases** | real GitHub Release + auto-notes cut at prod deploy; **Milestone = planning %**, **Release = shipped artifact** |
@@ -163,7 +190,7 @@ Built-in metadata also relied on: **Assignees, Milestone, Linked PRs, Sub-issue 
 
 > **Auto** signals (Schedule health, Slippage, Slippage-days, Blast radius, Blast-count, **Blocked**, project **Status update**) are recomputed deterministically (GraphQL + blocked-by DAG math, **no AI**) by `signals-sync.yml` on events + a low-frequency cron — every view and the status post stay live. The two **human** fields (Impact, Decision needed) are deliberate PM/lead calls. **Status-update rollup:** any `Overdue` or `Blocked`-blocking-release ⇒ `OFF_TRACK`; any `At risk` ⇒ `AT_RISK`; release milestone closed ⇒ `COMPLETE`; else `ON_TRACK` — start/target from the active Milestone/Iteration + a deterministic one-line body.
 
-**Hard limits:** 50 fields/project · **50k items (active+archive — archiving does *not* free headroom)** · 25 issue types/org · **25 Issue Fields/org** · 100 sub-issues/parent · **8-level sub-issue depth** · **50 issues/dependency-relationship** · 100 items/page · **GraphQL 10k pts/hr + 2k/min (App token); mutation = 5 pts; content-creation 80/min·500/hr** · **replicate via `copyProjectV2` from a golden template** (carries fields/views/workflows-except-auto-add/Insights — *not* items/collaborators/repo-links) · **NO ProjectV2 view mutations** (views ship only by template-copy; scaffold verifies presence) · **Insights has zero API** (UI-only playbook). Issue Fields surface as Project columns on **private** projects only.
+**Hard limits:** 50 fields/project · **50k items/project** (treat archiving as **not guaranteed** to free headroom — unverified by GitHub, so don't rely on it) · 25 issue types/org · **25 Issue Fields/org** · 100 sub-issues/parent · **8-level sub-issue depth** · **50 issues/dependency-relationship** · 100 items/page · **GraphQL ~5k pts/hr baseline + 2k/min (App token, our plan; 10k/hr is Enterprise-Cloud-only); mutation = 5 pts; content-creation 80/min·500/hr** · **replicate via `copyProjectV2` from a golden template** (carries fields/views/draft-issues/workflows-except-auto-add/Insights config — *not* items/collaborators/repo-links) · **NO ProjectV2 view mutations** (views ship only by template-copy; scaffold verifies presence) · **Insights has zero API** (charts neither created nor read via API — UI-only). Issue Fields surface as Project columns on **private** projects only.
 
 ## Sprints / milestones / releases
 
@@ -195,7 +222,7 @@ Cadence: ~3 milestone buckets a quarter out; detailed breakdown only one cycle a
 
 ## Insights & charts (the live numeric trend)
 
-GitHub **Insights is free on all plans** (since Feb 2025) — no paid gate. **Read-only, UI-only, zero API** → ships as a click-through playbook (`templates/project/insights.md`); `scaffold-repo`'s dry-run manifest lists chart creation as a **manual post-step**. The **Number fields** (Slippage-days, Blast-count) make charts quantitative (sum/avg), not just issue counts. **History accrues from project start, never backfilled** → define Status + Iteration day one, never archive in-flight items. (Historical group-by works only on **stacked** layouts.)
+GitHub **Insights is free on all plans** (since Feb 2025) — no paid gate. **Read-only, UI-only, zero API**: the 9 charts are **built by hand once on the golden-template Project** (Phase 0, exactly like the 8 views) and then **replicate via `copyProjectV2`** (which carries Insights config). Because Insights has **no API**, `scaffold-repo` can neither create *nor* verify charts programmatically — it trusts the copy and lists a one-line **"confirm charts present"** human checklist item. `templates/project/insights.md` is the build-it-on-the-template playbook. The **Number fields** (Slippage-days, Blast-count) make charts quantitative (sum/avg), not just issue counts. **History accrues per project from its own start, never backfilled and never copied** → define Status + Iteration day one; don't archive in-flight items (archiving isn't confirmed to free the 50k cap). (Historical group-by works only on **stacked** layouts.)
 
 | # | Chart | Layout · X · Y · Group · Filter | Audience |
 |---|---|---|---|
@@ -232,9 +259,9 @@ GitHub **Insights is free on all plans** (since Feb 2025) — no paid gate. **Re
 | Item reopened → `In Progress` | Built-in | reopened | free regression handling |
 | Signals + project Status update refresh | `signals-sync` | `issues`/`pull_request` + cron | recompute signals incl. `Blocked` + post the project Status update |
 
-All Project writes use the **GitHub App token** (constraint #2). **`projects_v2_item` gotcha:** never react to column moves (org-level, no repo trigger) — we drive from events + built-ins + the action. **Billing caution:** metered Claude is deferred; when added, dedicated spend-capped Console key + fail-loud.
+All Project writes use the **GitHub App token** (constraint #2). **Write discipline (race-safe, realizes AC-31):** the three layers all write the one `Status` field, so each **resolves the item's current Status before writing** and only **advances** it (idempotent no-op if already at/after the target) — a stale or late `push` never drags a merged/deployed item back to `In Progress`; only an explicit **reopen** regresses Status. **`projects_v2_item` gotcha:** never react to column moves (org-level, no repo trigger) — we drive from events + built-ins + the action. **Billing caution:** metered Claude is deferred; when added, dedicated spend-capped Console key + fail-loud.
 
-## Requirement artifact — tiers, phases, sizing, AC
+## Requirement artifact — tiers, AC groups, sizing, AC
 
 | Tier | `write-spec` rigor | Artifact | Deep spec? |
 |---|---|---|---|
@@ -267,11 +294,11 @@ All Project writes use the **GitHub App token** (constraint #2). **`projects_v2_
 
 ### lib/ (Python stdlib only; exit codes 0/2/3/1)
 
-- `lib/gh.py` — GraphQL/REST core: resolve+cache project/field/option/iteration IDs; two-phase add→read-itemId→update; `addProjectV2ItemById`, `updateProjectV2ItemFieldValue`, `copyProjectV2`, `updateProjectV2` (readme/desc), iteration create/edit (⚠️ replace-all), `createProjectV2StatusUpdate`, `addSubIssue`, `createLinkedBranch`, org Issue Type/Field ensure, repo merge-method setting, `gh release create` + `release.yml`. Assignees/Labels/Milestone need their own mutations. **Degrade: native `gh ≥ 2.94` → GraphQL → (no label fallback).**
+- `lib/gh.py` — GraphQL/REST core: resolve+cache project/field/option/iteration IDs; two-phase add→read-itemId→update; `addProjectV2ItemById`, `updateProjectV2ItemFieldValue`, `copyProjectV2`, `updateProjectV2` (readme/desc), iteration create/edit (⚠️ replace-all), `createProjectV2StatusUpdate`, `addSubIssue`, `createLinkedBranch`, org Issue Type/Field ensure, repo merge-method setting, `gh release create` + `release.yml`. Assignees/Labels/Milestone need their own mutations. **Degrade: feature-detected native `gh` flags → GraphQL → (no label fallback)** — probe the installed `gh` for the dependency/linked-branch subcommands rather than pinning a version.
 - `lib/pm.py` — `PM-####` allocator + registry; flow-style front-matter parse/serialize/normalize (T3 specs).
 - `lib/scaffold.py` — template substitution + idempotent file install (manifest-first; iterations diff/skip, never blind re-PUT).
 - `lib/dag.py` — native blocked-by → `Blocked` + Blast radius + Blast-count + ordering/critical path; feeds signals.
-- `lib/engine.sh` — collapsed single GitHub adapter; dry-by-default rail.
+- `lib/engine.sh` — thin shell entrypoint the skills call: enforces the **dry-by-default / `--force`** rail and dispatches to `lib/gh.py` (pm-ops's multi-engine `engine-dispatch.sh` collapsed to the single GitHub backend — no logic of its own).
 
 ### templates/
 
@@ -313,7 +340,7 @@ The **`AC-id` contract + spec/AC format are the pinned, stable interface** — s
 External to the plugin; these must exist before scaffolding works. (Realizes the prereqs assumed by AC-1, AC-7, AC-10.)
 
 - **0.1 — GitHub App.** Create an **org-owned GitHub App** with: Projects **read/write** (org), repo **Contents / Issues / Pull requests** read/write, and **Administration** read/write (to toggle the merge-method setting). Install it on the org (all or selected repos). Store the **App id + private key** as org/repo Actions secrets; workflows mint an **installation token** (constraint #2). *Exit:* a minted token writes a Project field.
-- **0.2 — Golden-template Project.** Hand-build **one** org Project as the golden template: apply the §Data-model schema (`fields.json` fields/options/descriptions — these *can* be API-created via `lib/gh.py` to speed it) + the **Iteration** field, then **build the 8 views by hand** (views are *not* API-creatable — the one irreducibly manual step), and mark the Project an **org template**. `scaffold-repo`'s `copyProjectV2` copies this. *Exit:* template Project exists with all fields + 8 views, marked a template.
+- **0.2 — Golden-template Project.** Hand-build **one** org Project as the golden template: apply the §Data-model schema (`fields.json` fields/options/descriptions — these *can* be API-created via `lib/gh.py` to speed it) + the **Iteration** field, then **build the 8 views and the 9 Insights charts by hand** (neither is API-creatable — the irreducibly manual step), and mark the Project an **org template**. `scaffold-repo`'s `copyProjectV2` then replicates fields + views + chart config to every scaffolded project (chart *history* still accrues per project). *Exit:* template Project exists with all fields + 8 views + 9 charts, marked a template.
 - **0.3 — (deferred) Console API key.** Only when metered AI (P2) ships: a dedicated **spend-capped Console `ANTHROPIC_API_KEY`**. Not needed for Phase 1.
 
 *Exit gate (Phase 0 → P1):* App installed + token writes a field; golden-template Project built + marked a template.
@@ -327,9 +354,9 @@ External to the plugin; these must exist before scaffolding works. (Realizes the
 | **P1.2 Intake** | `intake-issues` (tier→rigor, grouped AC, size+split, machine-verifiable AC) | A dump → tiered issues; prose-only AC is **refused** `Ready`; **AC-group count** drives size + Epic-split (per-group sub-issues, `needs §X`→blocked-by) |
 | **P1.3 Board sync** | `board-sync.yml` + native built-ins (PR-merged→On Staging) + the `board-status` action | Push/PR move Status; PR↔issue link resolves (linked-branch→branch-name); adding the action step yields deploy-accurate On Staging/Done+close+Release; zero AI |
 | **P1.4 Route & promote** | `route-issue`, `promote-pr`, `guard.sh` | Issue projects with all fields; linked branch created; guard blocks `--squash`/unsafe prod |
-| **P1.5 Signals, status & views** | `signals-sync.yml` + `sync-signals` + `lib/dag.py` + Number fields + 8 views + Insights playbook | Auto signals (incl. `Blocked`, Slippage-days, Blast-count) recompute; project **Status update** posts; 8 views live; Insights applied manually |
+| **P1.5 Signals, status & views** | `signals-sync.yml` + `sync-signals` + `lib/dag.py` + the Status-update post | Auto signals (incl. `Blocked`, Slippage-days, Blast-count) recompute deterministically; project **Status update** posts; the 8 copied views + 9 charts (both from the Phase-0 template via `copyProjectV2`) render with live signal data |
 
-**Deferred:** `plan-sprint` capacity-math refinements · metered-AI workflows (P2) · org-webhook→`repository_dispatch` assign-on-drag bridge · optional spec-ops handoff · cross-repo milestone rollup · server-side ruleset (**N/A until a paid plan**) · migrating Tier/Rigor/PM-ID/Size to org Issue Fields once that fits.
+**Deferred:** `plan-sprint` capacity-math refinements · metered-AI workflows (P2) · org-webhook→`repository_dispatch` assign-on-drag bridge · optional spec-ops handoff · cross-repo milestone rollup · server-side ruleset (**N/A until a paid plan**) · migrating Tier/PM-ID/Size to org Issue Fields once that fits.
 
 ## Risks
 
@@ -340,14 +367,16 @@ External to the plugin; these must exist before scaffolding works. (Realizes the
 | Option-ID regeneration / **iteration replace-all** orphans items | Schema edits rare/idempotent; diff before mutate; scaffold skips existing iterations |
 | **No ProjectV2 view mutations / Insights zero API** | Views ship via `copyProjectV2`; charts via manual playbook; signals + Status update carry what automation needs |
 | **No rulesets on our plan** (no enforced review/required-checks for private repos) | no-squash via free repo setting; review/checks = convention + `guard.sh`; revisit if we upgrade |
-| **Issue Fields surface as columns on private projects only** + newer feature | Keep projects private; verify column surfacing at scaffold; Size/Tier/Rigor stay Project fields |
+| **Issue Fields surface as columns on private projects only** + public-preview feature (all orgs, May 2026) | Keep projects private; verify column surfacing at scaffold; Size/Tier stay Project fields |
 | Required-reviewers GHEC-only → prod gate | actor-ID allowlist at the OIDC deploy role (hard) + in-workflow (soft) + tag-on-`main` (cars.bdv model) |
 | AI accelerates throughput, degrades stability (DORA) | Staging-exercise + AC-in-staging gate; small batches; feature flags; human validates each slice |
 | Self-assignment degenerates | Lead orders `Ready`; WIP=1; pull top-down |
 | T3 issue↔spec `AC-id` drift | CI parity check on `AC-id` sets; AC authored once, mirrored |
-| GraphQL point budget | App = 10k/hr + 2k/min; cache IDs; incremental syncs; paginate ≤50; mind content-creation 80/min in intake |
+| GraphQL point budget | App ≈ **5k/hr baseline** + 2k/min (not 10k on our plan — Enterprise-only); cache IDs; incremental syncs; paginate ≤50; mind content-creation 80/min in intake |
 
-## Open / parameterized (decide at build/scaffold time)
+## Build-time parameters (resolved as deferred — none block Phase 1)
+
+These are settled decisions whose *value* is supplied at build/scaffold time; none is an unresolved design question.
 
 1. **First `scaffold-repo` target** — which repo(s) + the golden-template Project to stand up first. (`board-status` action home **resolved**: per-repo local install by default; org ops-repo centralization is an optional later upgrade.)
 2. **Assign-on-drag** — keep the inverted assign-first model (default), or later add the org-webhook→`repository_dispatch` bridge.
