@@ -418,6 +418,8 @@ query($item:ID!, $field:ID!){
           ... on ProjectV2ItemFieldSingleSelectValue { optionId field { ... on ProjectV2FieldCommon { id } } }
           ... on ProjectV2ItemFieldNumberValue { number field { ... on ProjectV2FieldCommon { id } } }
           ... on ProjectV2ItemFieldTextValue { text field { ... on ProjectV2FieldCommon { id } } }
+          ... on ProjectV2ItemFieldDateValue { date field { ... on ProjectV2FieldCommon { id } } }
+          ... on ProjectV2ItemFieldIterationValue { iterationId field { ... on ProjectV2FieldCommon { id } } }
         }
       }
     }
@@ -440,15 +442,22 @@ def _value_payload(field_node: dict, value):
     """Build the ProjectV2FieldValue payload + the expected read-back tuple.
 
     Reuses the single-select / number / text shape from the pm-ops engine's
-    set_field, adapted to the GraphQL `value:` input.
+    set_field, adapted to the GraphQL `value:` input. Extended to also cover the
+    iteration (Sprint) and date (Start/Target) field kinds that plan-sprint sets.
     Returns (variables_value_json, expected_kind, expected_value).
     """
     dtype = (field_node.get("dataType") or "").upper()
     has_options = bool(field_node.get("options"))
+    has_iterations = bool(field_node.get("configuration"))
     if "SINGLE_SELECT" in dtype or has_options:
         return ({"singleSelectOptionId": value}, "optionId", value)
+    if "ITERATION" in dtype or has_iterations:
+        # `value` is already the resolved iterationId (write_field resolves it).
+        return ({"iterationId": value}, "iterationId", value)
     if "NUMBER" in dtype:
         return ({"number": float(value)}, "number", float(value))
+    if "DATE" in dtype:
+        return ({"date": str(value)}, "date", str(value))
     return ({"text": str(value)}, "text", str(value))
 
 
@@ -482,8 +491,12 @@ def _update_field_value(project_id, item_id, field_id, payload: dict) -> dict:
     """
     if "singleSelectOptionId" in payload:
         lit = '{singleSelectOptionId:"%s"}' % payload["singleSelectOptionId"]
+    elif "iterationId" in payload:
+        lit = '{iterationId:"%s"}' % payload["iterationId"]
     elif "number" in payload:
         lit = "{number:%s}" % payload["number"]
+    elif "date" in payload:
+        lit = '{date:"%s"}' % payload["date"]
     else:
         text = str(payload.get("text", "")).replace("\\", "\\\\").replace('"', '\\"')
         lit = '{text:"%s"}' % text
@@ -506,8 +519,12 @@ def _read_field_value(item_id: str, field_id: str):
             continue
         if "optionId" in fv:
             return ("optionId", fv["optionId"])
+        if "iterationId" in fv:
+            return ("iterationId", fv["iterationId"])
         if "number" in fv:
             return ("number", fv["number"])
+        if "date" in fv:
+            return ("date", fv["date"])
         if "text" in fv:
             return ("text", fv["text"])
     return None
@@ -526,11 +543,16 @@ def write_field(project: "Project", content_id: str, field_name: str, raw_value)
     """Convenience: resolve the option (if single-select), two-phase add+set.
 
     For a single-select, `raw_value` is the OPTION NAME and is resolved to its
-    cached option id first. Returns the verified result dict.
+    cached option id first. For an iteration (Sprint) field, `raw_value` is the
+    iteration TITLE and is resolved to its cached iteration id. Number / date /
+    text values pass through unresolved. Returns the verified result dict.
     """
     node = project.field(field_name)
-    if (node.get("dataType") or "").upper().find("SINGLE_SELECT") >= 0 or node.get("options"):
+    dtype = (node.get("dataType") or "").upper()
+    if "SINGLE_SELECT" in dtype or node.get("options"):
         value = project.option_id(field_name, raw_value)
+    elif "ITERATION" in dtype or node.get("configuration"):
+        value = project.iteration_id(field_name, raw_value)
     else:
         value = raw_value
     item_id = add_item(project.id, content_id)
@@ -931,6 +953,172 @@ def set_assignee(repo: str, issue_number, login: str, remove: bool = False) -> d
 
 
 # --------------------------------------------------------------------------- #
+# Link a repo to the Project (AC-21) — real linkProjectV2ToRepository, App-token,
+# idempotent (read the project's linked repositories; skip if already linked).
+# --------------------------------------------------------------------------- #
+_PROJECT_LINKED_REPOS = """
+query($project:ID!){
+  node(id:$project){
+    ... on ProjectV2 {
+      repositories(first:100){ nodes { id } }
+    }
+  }
+}
+"""
+
+_LINK_REPO = """
+mutation($project:ID!, $repo:ID!){
+  linkProjectV2ToRepository(input:{projectId:$project, repositoryId:$repo}){
+    repository { id }
+  }
+}
+"""
+
+
+def _project_linked_repo_ids(project_id: str) -> set:
+    """Read the Project's currently-linked repository node ids (read-only)."""
+    data = graphql(_PROJECT_LINKED_REPOS, {"project": project_id})
+    node = (data or {}).get("node") or {}
+    nodes = ((node.get("repositories") or {}).get("nodes")) or []
+    return {n.get("id") for n in nodes if n.get("id")}
+
+
+def link_repo(project_id: str, repo_id: str) -> dict:
+    """Link a repository to a Project via linkProjectV2ToRepository (AC-21).
+
+    Idempotent: reads the project's already-linked repositories first and makes
+    NO write when `repo_id` is already linked (returns {"changed": False}). The
+    write is an App-token Projects v2 mutation — never GITHUB_TOKEN (AC-28).
+    """
+    if repo_id in _project_linked_repo_ids(project_id):
+        return {"changed": False, "project": project_id, "repo": repo_id, "linked": True}
+    data = graphql(_LINK_REPO, {"project": project_id, "repo": repo_id})
+    return {"changed": True, "project": project_id, "repo": repo_id, "linked": True,
+            "result": data.get("linkProjectV2ToRepository")}
+
+
+# --------------------------------------------------------------------------- #
+# Link a Project to a team (AC-23) — a REAL linkProjectV2ToTeam(projectId,teamId)
+# write-to-team mutation. NOT the scaffold _LINK_PROJECT_APP confirmation no-op.
+# --------------------------------------------------------------------------- #
+_LINK_TEAM = """
+mutation($project:ID!, $team:ID!){
+  linkProjectV2ToTeam(input:{projectId:$project, teamId:$team}){
+    team { id }
+  }
+}
+"""
+
+
+def link_team(project_id: str, team_id: str) -> dict:
+    """Link a Project to a team via linkProjectV2ToTeam (AC-23) — write-to-team.
+
+    A real `linkProjectV2ToTeam(projectId, teamId)` mutation (the `teamId` is
+    actually sent), distinct from scaffold's grant_app_access confirmation touch.
+    App-token Projects v2 write — never GITHUB_TOKEN (AC-28). Idempotent on the
+    platform side: re-linking an already-linked team is a no-op, never a 4xx.
+    """
+    data = graphql(_LINK_TEAM, {"project": project_id, "team": team_id})
+    return {"project": project_id, "team": team_id, "linked": True,
+            "result": data.get("linkProjectV2ToTeam")}
+
+
+# --------------------------------------------------------------------------- #
+# Issue node-id / linked-branch / default-branch resolution (read-only) — these
+# back the route-issue projection verbs (add-item / write-field / advance-status /
+# create-linked-branch). No new mutation here; they reuse the §1 lib functions.
+# --------------------------------------------------------------------------- #
+def _split_repo(repo: str):
+    """Split an `owner/name` string into (owner, name). GhError(2) if malformed."""
+    parts = str(repo).split("/")
+    if len(parts) != 2 or not parts[0] or not parts[1]:
+        raise GhError(f"--repo must be owner/name (got {repo!r})", code=2)
+    return parts[0], parts[1]
+
+
+def issue_node_id(repo: str, issue_number) -> str:
+    """Resolve an issue's GraphQL node id via REST GET (read-only)."""
+    owner, name = _split_repo(repo)
+    issue = rest("GET", f"/repos/{owner}/{name}/issues/{int(issue_number)}") or {}
+    node_id = issue.get("node_id")
+    if not node_id:
+        raise GhError(f"issue {repo}#{issue_number} not found", code=3)
+    return node_id
+
+
+_ITEM_STATUS_QUERY = """
+query($owner:String!, $number:Int!, $content:ID!){
+  node(id:$content){
+    ... on Issue {
+      projectItems(first:50){
+        nodes{
+          id
+          project { number owner { ... on Organization { login } } }
+          fieldValueByName(name:"Status"){
+            ... on ProjectV2ItemFieldSingleSelectValue { name }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
+
+def current_item_status(owner: str, number: int, content_id: str) -> str | None:
+    """Read the issue's current board Status option NAME on this project, or None.
+
+    Read-only. Returns None when the issue is not on the board, or has no Status
+    set yet (so advance_status treats it as a fresh advance to the target).
+    """
+    data = graphql(_ITEM_STATUS_QUERY,
+                   {"owner": owner, "number": int(number), "content": content_id})
+    node = (data or {}).get("node") or {}
+    for item in ((node.get("projectItems") or {}).get("nodes")) or []:
+        proj = item.get("project") or {}
+        powner = (proj.get("owner") or {}).get("login")
+        if proj.get("number") == int(number) and (powner is None or powner == owner):
+            sv = item.get("fieldValueByName") or {}
+            return sv.get("name")
+    return None
+
+
+_ISSUE_LINKED_BRANCHES = """
+query($owner:String!, $name:String!, $number:Int!){
+  repository(owner:$owner, name:$name){
+    defaultBranchRef { target { oid } }
+    issue(number:$number){
+      id
+      linkedBranches(first:10){ nodes { ref { name } } }
+    }
+  }
+}
+"""
+
+
+def issue_linked_branch_state(repo: str, issue_number) -> dict:
+    """Read an issue's existing linked branches + the repo default-branch oid.
+
+    Read-only. Returns {"issue_id", "default_oid", "branches": [names]} so the
+    create-linked-branch verb can no-op when a linked branch already exists (AC-9).
+    """
+    owner, name = _split_repo(repo)
+    data = graphql(_ISSUE_LINKED_BRANCHES,
+                   {"owner": owner, "name": name, "number": int(issue_number)})
+    repo_node = (data or {}).get("repository") or {}
+    issue = repo_node.get("issue") or {}
+    if not issue.get("id"):
+        raise GhError(f"issue {repo}#{issue_number} not found", code=3)
+    oid = (((repo_node.get("defaultBranchRef") or {}).get("target")) or {}).get("oid")
+    branches = [
+        (n.get("ref") or {}).get("name")
+        for n in ((issue.get("linkedBranches") or {}).get("nodes")) or []
+        if (n.get("ref") or {}).get("name")
+    ]
+    return {"issue_id": issue["id"], "default_oid": oid, "branches": branches}
+
+
+# --------------------------------------------------------------------------- #
 # CLI — documented exit codes 0/2/3/1; prints no token/secret (AC-3)
 # --------------------------------------------------------------------------- #
 def _print_json(obj) -> None:
@@ -991,6 +1179,75 @@ def _cmd_set_assignee(args) -> int:
     return 0
 
 
+def _cmd_link_repo(args) -> int:
+    _print_json(link_repo(args.project_id, args.repo_id))
+    return 0
+
+
+def _cmd_link_team(args) -> int:
+    _print_json(link_team(args.project_id, args.team_id))
+    return 0
+
+
+# -- route-issue / plan-sprint projection verbs (reuse §1 lib, idempotent) ---- #
+def _cmd_add_item(args) -> int:
+    """Project an issue onto the board (add_item). Idempotent: a re-add returns
+    the SAME item id (addProjectV2ItemById is server-side idempotent — AC-8)."""
+    proj = Project(args.owner, args.number).resolve()
+    content_id = issue_node_id(args.repo, args.issue)
+    item_id = add_item(proj.id, content_id)
+    _print_json({"item": item_id, "issue": int(args.issue), "project": proj.id})
+    return 0
+
+
+def _cmd_write_field(args) -> int:
+    """Write one board field for the issue's item (write_field — add_item + set +
+    read-back-identical). Single-select=option name, iteration(Sprint)=iteration
+    title, number/date/text=raw. Idempotent: the read-back verifies the value."""
+    proj = Project(args.owner, args.number).resolve()
+    content_id = issue_node_id(args.repo, args.issue)
+    res = write_field(proj, content_id, args.field, args.value)
+    _print_json(res)
+    return 0
+
+
+def _cmd_advance_status(args) -> int:
+    """Advance the issue's board Status MONOTONICALLY (advance_status). Ensures the
+    item exists (add_item idempotent), reads the current Status, and writes only a
+    forward move; an at/past-target re-run is a no-op (no write — AC-10/AC-17)."""
+    proj = Project(args.owner, args.number).resolve()
+    content_id = issue_node_id(args.repo, args.issue)
+    add_item(proj.id, content_id)  # idempotent: reuse existing item if present
+    current = current_item_status(args.owner, args.number, content_id)
+    to_write = advance_status(current, args.to)
+    if to_write is None:
+        _print_json({"decision": "no-op", "current": current, "target": args.to,
+                     "reason": "already at/past target (monotonic)"})
+        return 0
+    res = write_field(proj, content_id, "Status", to_write)
+    _print_json({"decision": "advanced", "from": current, "to": to_write,
+                 "verified": res.get("verified", False)})
+    return 0
+
+
+def _cmd_create_linked_branch(args) -> int:
+    """Create the issue's authoritative linked branch — IDEMPOTENT: if a linked
+    branch already exists, NO-OP exit 0 (AC-9). Otherwise resolve the issue node id
+    + default-branch head oid and create it (native `gh issue develop` when
+    supported, else GraphQL createLinkedBranch)."""
+    state = issue_linked_branch_state(args.repo, args.issue)
+    if state["branches"]:
+        _print_json({"action": "already-linked", "issue": int(args.issue),
+                     "branches": state["branches"]})
+        return 0
+    res = create_linked_branch(
+        state["issue_id"], state["default_oid"], name=args.name,
+        repo=args.repo, issue_number=args.issue)
+    _print_json({"action": "created", "issue": int(args.issue),
+                 "via": res.get("via"), "name": args.name})
+    return 0
+
+
 def build_parser():
     import argparse
 
@@ -1048,6 +1305,48 @@ def build_parser():
     sp.add_argument("--login", required=True)
     sp.add_argument("--remove", action="store_true")
     sp.set_defaults(func=_cmd_set_assignee)
+
+    sp = sub.add_parser("link-repo", help="link a repo to a Project (idempotent, App-token)")
+    sp.add_argument("--project-id", required=True, dest="project_id")
+    sp.add_argument("--repo-id", required=True, dest="repo_id", help="repository node id")
+    sp.set_defaults(func=_cmd_link_repo)
+
+    sp = sub.add_parser("link-team", help="link a Project to a team (write-to-team, App-token)")
+    sp.add_argument("--project-id", required=True, dest="project_id")
+    sp.add_argument("--team-id", required=True, dest="team_id", help="team node id")
+    sp.set_defaults(func=_cmd_link_team)
+
+    sp = sub.add_parser("add-item", help="project an issue onto the board (idempotent, same item id on re-add)")
+    sp.add_argument("--owner", required=True, help="org login")
+    sp.add_argument("--number", type=int, required=True, help="project number")
+    sp.add_argument("--repo", required=True, help="owner/name")
+    sp.add_argument("--issue", type=int, required=True, help="issue number")
+    sp.set_defaults(func=_cmd_add_item)
+
+    sp = sub.add_parser("write-field", help="write one board field for an issue's item (read-back-verified)")
+    sp.add_argument("--owner", required=True, help="org login")
+    sp.add_argument("--number", type=int, required=True, help="project number")
+    sp.add_argument("--repo", required=True, help="owner/name")
+    sp.add_argument("--issue", type=int, required=True, help="issue number")
+    sp.add_argument("--field", required=True, help="board field name")
+    sp.add_argument("--value", required=True,
+                    help="option name (single-select) / iteration title (Sprint) / number / date / text")
+    sp.set_defaults(func=_cmd_write_field)
+
+    sp = sub.add_parser("advance-status", help="advance an issue's board Status monotonically (no-op past target)")
+    sp.add_argument("--owner", required=True, help="org login")
+    sp.add_argument("--number", type=int, required=True, help="project number")
+    sp.add_argument("--repo", required=True, help="owner/name")
+    sp.add_argument("--issue", type=int, required=True, help="issue number")
+    sp.add_argument("--to", required=True, help="target Status (Backlog<Ready<In Progress<In Review<On Staging<Done)")
+    sp.set_defaults(func=_cmd_advance_status)
+
+    sp = sub.add_parser("create-linked-branch",
+                        help="create an issue's authoritative linked branch (idempotent: existing branch = no-op)")
+    sp.add_argument("--repo", required=True, help="owner/name")
+    sp.add_argument("--issue", type=int, required=True, help="issue number")
+    sp.add_argument("--name", default=None, help="branch name (optional; gh/GraphQL default otherwise)")
+    sp.set_defaults(func=_cmd_create_linked_branch)
 
     return p
 

@@ -89,6 +89,8 @@ INSTALL_FILES = [
     # Board automation workflows (authored by §4/§5 — listed by destination).
     ("github/workflows/board-sync.yml", ".github/workflows/board-sync.yml"),
     ("github/workflows/signals-sync.yml", ".github/workflows/signals-sync.yml"),
+    # Per-repo auto-add: new issues/PRs auto-add to the org board (AC-22).
+    ("github/workflows/add-to-project.yml", ".github/workflows/add-to-project.yml"),
     # Self-contained composable deploy bridge (authored by §4 — listed by dest).
     ("github/actions/board-status/action.yml", ".github/actions/board-status/action.yml"),
     # Project README (board legend) lives in the repo at project/.
@@ -410,15 +412,123 @@ mutation($project:ID!, $actor:ID!){
 
 
 def grant_app_access(copy_project_id: str) -> dict:
-    """Ensure the App (and base role) can access the copied Project.
+    """CONFIRM the App can access the copied Project (a confirmation touch).
 
-    copyProjectV2 does NOT carry collaborators/access — the App that minted the
-    token already owns org-level project write via its installation, so this is a
-    confirmation/no-op touch of the copy (kept App-token only; never GITHUB_TOKEN,
-    never prints a secret). Returns a structured result for the manifest.
+    copyProjectV2 does NOT carry collaborators/access — but the App that minted
+    the token ALREADY owns org-level project write via its INSTALLATION, so this
+    is a confirmation touch of the copy, not a grant. It is deliberately NOT a
+    bare no-op masquerading as a grant: it confirms the App can read/touch the
+    copy. It does NOT — and must not — attempt an org base-role mutation (base
+    role is UI-only; updateProjectV2 has no base-role field, AC-23). The real
+    Project↔team link is link_team (gh.link_team), NOT this _LINK_PROJECT_APP
+    touch. Kept App-token only; never GITHUB_TOKEN, never prints a secret.
     """
     gh.graphql(_LINK_PROJECT_APP, {"project": copy_project_id, "actor": copy_project_id})
-    return {"granted": True, "project": copy_project_id}
+    return {"confirmed": True, "project": copy_project_id,
+            "note": "App already has org Projects-write via its installation; "
+                    "this is a confirmation touch, not a grant. No base-role "
+                    "mutation attempted (base role is UI-only, AC-23)."}
+
+
+# --------------------------------------------------------------------------- #
+# Repo→Project link (AC-21) — resolve the repo node id, plan/diff against the
+# Project's already-linked repos (idempotent), apply via gh.link_repo.
+# --------------------------------------------------------------------------- #
+_REPO_NODE_ID = """
+query($owner:String!, $name:String!){
+  repository(owner:$owner, name:$name){ id }
+}
+"""
+
+
+def resolve_repo_id(repo: str) -> str:
+    """Resolve `owner/name` -> the repository node id (read-only). code=3 if absent."""
+    if "/" not in str(repo):
+        raise ScaffoldError(f"repo must be 'owner/name', got {repo!r}", code=2)
+    owner, name = str(repo).split("/", 1)
+    data = gh.graphql(_REPO_NODE_ID, {"owner": owner, "name": name})
+    rid = ((data or {}).get("repository") or {}).get("id")
+    if not rid:
+        raise ScaffoldError(f"repository '{repo}' not found", code=3)
+    return rid
+
+
+def plan_repo_link(project_id: str | None, repo: str | None) -> dict | None:
+    """Plan linking `repo` to the COPY Project — diff-before-mutate (AC-21/AC-24).
+
+    Returns None when no repo is given. On a dry preview (no copy yet →
+    project_id is None) the link is reported as a planned 'link' WITHOUT resolving
+    the repo node id or reading the (not-yet-created) project — the resolve +
+    diff/skip happen at apply time against the real copy. On the apply path
+    (project_id set) it resolves the repo node id and checks the Project's
+    already-linked repositories: a repo already linked is a SKIP (re-run no-op).
+    Shape: {"repo", "repo_id"|None, "action": "link"|"skip", "reason"}.
+    """
+    if not repo:
+        return None
+    if project_id is None:
+        return {"repo": repo, "repo_id": None, "action": "link",
+                "reason": "dry preview: repo node id + link resolved under --force"}
+    try:
+        repo_id = resolve_repo_id(repo)
+    except (ScaffoldError, gh.GhError):
+        # The repo node id could not be resolved at PLAN time — defer the resolve
+        # + diff/skip to apply (under --force). Planning never hard-fails on this
+        # read; apply re-resolves and links idempotently.
+        return {"repo": repo, "repo_id": None, "action": "link",
+                "reason": "repo node id resolved at apply time (--force)"}
+    already = repo_id in gh._project_linked_repo_ids(project_id)
+    return {"repo": repo, "repo_id": repo_id,
+            "action": "skip" if already else "link",
+            "reason": "already linked" if already else "missing — link"}
+
+
+# --------------------------------------------------------------------------- #
+# Project→team link (AC-23) — resolve the team node id; the real write-to-team
+# is gh.link_team (NOT _LINK_PROJECT_APP). base-role stays a MANUAL step.
+# --------------------------------------------------------------------------- #
+_TEAM_NODE_ID = """
+query($org:String!, $slug:String!){
+  organization(login:$org){ team(slug:$slug){ id } }
+}
+"""
+
+
+def resolve_team_id(org: str, team: str) -> str:
+    """Resolve a team slug -> the team node id (read-only). code=3 if absent."""
+    data = gh.graphql(_TEAM_NODE_ID, {"org": org, "slug": str(team)})
+    tid = (((data or {}).get("organization") or {}).get("team") or {}).get("id")
+    if not tid:
+        raise ScaffoldError(f"team '{team}' not found in org '{org}'", code=3)
+    return tid
+
+
+# The org base-role a team is granted on the Project is UI-ONLY — there is NO
+# GraphQL/REST surface to set it (updateProjectV2 has no base-role field). So
+# scaffold EMITS it as a documented manual step instead of attempting a mutation.
+_BASE_ROLE_MANUAL_STEP = (
+    "MANUAL (UI-only, no API): set the org base role for the linked Project to "
+    "'Read' under Project → Settings → Manage access → Base role. There is no "
+    "GraphQL/REST mutation for base role (AC-23) — this step cannot be automated."
+)
+
+
+def plan_team_link(org: str, team: str | None) -> dict | None:
+    """Plan linking the COPY Project to `team` + emit the base-role manual step.
+
+    Returns None when no team is given. Otherwise resolves the team node id and
+    plans a real linkProjectV2ToTeam write (gh.link_team), and carries the
+    base-role MANUAL step (UI-only, never an API mutation, AC-23). Shape:
+    {"team", "team_id", "action": "link", "base_role_manual": <str>}.
+    """
+    if not team:
+        return None
+    try:
+        team_id = resolve_team_id(org, team)
+    except (ScaffoldError, gh.GhError):
+        team_id = None  # resolved at apply time (--force)
+    return {"team": team, "team_id": team_id, "action": "link",
+            "base_role_manual": _BASE_ROLE_MANUAL_STEP}
 
 
 # --------------------------------------------------------------------------- #
@@ -763,7 +873,8 @@ def resolved_option_ids(copy_proj: "gh.Project", schema: dict) -> dict:
 # The scaffold plan — assemble the full change manifest (dry by default).
 # --------------------------------------------------------------------------- #
 def build_plan(*, org: str, template_title: str, repo: str | None,
-               new_title: str, repo_dir: str | None, do_copy: bool = True) -> dict:
+               new_title: str, repo_dir: str | None, do_copy: bool = True,
+               team: str | None = None) -> dict:
     """Resolve everything and return the FULL change manifest.
 
     `do_copy=True` (the apply path + tests): runs `copyProjectV2` from the NAMED
@@ -827,6 +938,14 @@ def build_plan(*, org: str, template_title: str, repo: str | None,
     file_rows = plan_file_install(repo_dir)
     issue_field_rows = plan_issue_fields(org, fields_schema)
     issue_types = [t["name"] for t in issue_type_specs(fields_schema)]
+    # Scaffold completions (AC-21/AC-23/AC-24): link each target repo to the COPY
+    # and (when --team) link the Project to the team + emit the UI-only base-role
+    # as a MANUAL step. Both diff-before-mutate; the repo link is a re-run no-op
+    # once already linked. On a dry preview the copy doesn't exist yet, so the
+    # repo-link plan is reported against project_id=None (planned, applied under
+    # --force after the copy is made).
+    repo_link = plan_repo_link(copy_info.get("id"), repo)
+    team_link = plan_team_link(org, team)
 
     return {
         "org": org,
@@ -845,7 +964,11 @@ def build_plan(*, org: str, template_title: str, repo: str | None,
         "repo": repo,
         "no_squash": {"repo": repo, "allow_squash_merge": False} if repo else None,
         "app_access": {"project": copy_info["id"], "grant": True},
-        "human_checklist": ["confirm the 9 Insights charts are present (Insights has no API)"],
+        "repo_link": repo_link,           # AC-21 repo→Project link (diff/skip)
+        "team_link": team_link,           # AC-23 Project→team link + base-role manual step
+        "base_role_manual": (team_link or {}).get("base_role_manual") if team_link else None,
+        "human_checklist": ["confirm the 9 Insights charts are present (Insights has no API)"]
+        + ([(team_link or {}).get("base_role_manual")] if team_link else []),
     }
 
 
@@ -861,7 +984,9 @@ def apply_plan(plan: dict, *, repo_dir: str | None, force: bool) -> dict:
     applied last.
     """
     actions: dict = {"applied": force, "files_written": [], "iterations": plan["iterations"],
-                     "issue_fields": [], "issue_types": [], "no_squash": None, "app_access": None}
+                     "issue_fields": [], "issue_types": [], "no_squash": None, "app_access": None,
+                     "repo_link": None, "team_link": None,
+                     "base_role_manual": plan.get("base_role_manual")}
     if not force:
         actions["note"] = "dry-run (no --force): nothing mutated (AC-11)"
         return actions
@@ -898,7 +1023,30 @@ def apply_plan(plan: dict, *, repo_dir: str | None, force: bool) -> dict:
     if plan.get("repo"):
         actions["no_squash"] = gh.set_repo_merge_method(plan["repo"], allow_squash_merge=False)
 
-    # Grant App project access.
+    # Repo→Project link (AC-21) — idempotent (gh.link_repo diffs the project's
+    # linked repos and skips one already linked). Linked against the real COPY id
+    # (the dry plan may have reported it against project_id=None).
+    rl = plan.get("repo_link")
+    if rl and plan["copy"].get("id"):
+        try:
+            repo_id = rl.get("repo_id") or resolve_repo_id(rl["repo"])
+            actions["repo_link"] = gh.link_repo(plan["copy"]["id"], repo_id)
+        except (ScaffoldError, gh.GhError) as e:
+            actions["repo_link"] = {"deferred": True, "repo": rl["repo"],
+                                    "reason": gh._scrub(str(e))}
+
+    # Project→team link (AC-23) — a REAL linkProjectV2ToTeam write-to-team. The
+    # org base-role stays a MANUAL step (UI-only, no API mutation, AC-23).
+    tl = plan.get("team_link")
+    if tl and plan["copy"].get("id"):
+        try:
+            team_id = tl.get("team_id") or resolve_team_id(plan["org"], tl["team"])
+            actions["team_link"] = gh.link_team(plan["copy"]["id"], team_id)
+        except (ScaffoldError, gh.GhError) as e:
+            actions["team_link"] = {"deferred": True, "team": tl["team"],
+                                    "reason": gh._scrub(str(e))}
+
+    # Confirm App project access (a confirmation touch — NOT a base-role grant).
     actions["app_access"] = grant_app_access(plan["copy"]["id"])
     return actions
 
@@ -952,8 +1100,17 @@ def render_manifest(plan: dict) -> str:
         lines.append(f"  [{r['action']:>7}] {r['name']} ({r['type']})")
     if plan.get("no_squash"):
         lines.append(f"Repo setting: {plan['no_squash']['repo']} allow_squash_merge=false  [AC-10]")
+    rl = plan.get("repo_link")
+    if rl:
+        lines.append(f"Repo link: [{rl['action']:>5}] {rl['repo']} -> Project  "
+                     f"({rl['reason']})  [AC-21 App token]")
+    tl = plan.get("team_link")
+    if tl:
+        lines.append(f"Team link: [ link] Project -> team '{tl['team']}'  "
+                     f"(linkProjectV2ToTeam, write-to-team)  [AC-23 App token]")
+        lines.append("  " + tl["base_role_manual"])
     app_target = plan["copy"]["id"] or "(the copy, created under --force)"
-    lines.append(f"App access: grant on project {app_target}  [AC-27 App token]")
+    lines.append(f"App access: confirm on project {app_target}  [AC-27 App token; confirmation, not a base-role grant]")
     lines.append("Human checklist: " + "; ".join(plan["human_checklist"]))
     return "\n".join(lines)
 
@@ -974,6 +1131,7 @@ def cmd_scaffold(args) -> int:
         new_title=args.title,
         repo_dir=repo_dir,
         do_copy=args.force,   # dry preview makes NO copy (AC-11); --force copies (AC-7)
+        team=args.team,
     )
     # Human manifest to stderr; machine result to stdout.
     sys.stderr.write(render_manifest(plan) + "\n")
@@ -995,6 +1153,11 @@ def cmd_scaffold(args) -> int:
         "files_written": actions["files_written"],
         "issue_types": plan["issue_types"],
         "issue_fields": [r["name"] for r in plan["issue_fields"]],
+        "repo_link": plan.get("repo_link"),
+        "team_link": (plan.get("team_link") or {}).get("team") if plan.get("team_link") else None,
+        "base_role_manual": plan.get("base_role_manual"),
+        "repo_link_applied": actions.get("repo_link"),
+        "team_link_applied": actions.get("team_link"),
     })
     return 0
 
@@ -1007,7 +1170,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--org", required=True, help="org login that owns the board + golden template")
     sp.add_argument("--template", required=True, help="NAME (title) of the golden-template Project")
     sp.add_argument("--title", required=True, help="title for the new copied Project")
-    sp.add_argument("--repo", default=None, help="owner/name of the repo to install templates into")
+    sp.add_argument("--repo", default=None, help="owner/name of the repo to install templates into + link to the Project")
+    sp.add_argument("--team", default=None, help="org team slug to link the Project to (write-to-team; base-role stays a manual step)")
     sp.add_argument("--repo-dir", default=None, help="local checkout dir for file install (defaults to CWD when --repo set)")
     sp.add_argument("--force", action="store_true", help="actually mutate (dry-by-default without it)")
     sp.set_defaults(func=cmd_scaffold)

@@ -2,10 +2,10 @@
 name: scaffold-repo
 description: Stand up a new GitHub Project + repo templates for the gh-projects lifecycle by copying the org golden template and installing per-repo automation. Use when the user says "scaffold the board", "set up gh-projects for <repo>", "stand up the project", "copy the golden template", or "bootstrap a repo for the board". Dry-by-default — previews the full change manifest and mutates nothing until you re-run with --force. Does NOT do intake, routing, or signals (those are other gh-projects skills); does NOT author specs (that is spec-ops).
 disable-model-invocation: true
-model: claude-sonnet-4-6
+model: claude-opus-4-8
 effort: medium
 allowed-tools: Bash(bash *), Bash(python3 *), Read, AskUserQuestion
-argument-hint: "--org <login> --template \"<golden template title>\" --title \"<new project title>\" [--repo owner/name] (add --force only after reviewing the dry run)"
+argument-hint: "--org <login> --template \"<golden template title>\" --title \"<new project title>\" [--repo owner/name] [--team <slug>] (add --force only after reviewing the dry run)"
 ---
 
 # scaffold-repo
@@ -51,17 +51,18 @@ Let `SCAFFOLD=${CLAUDE_PLUGIN_ROOT}/lib/scaffold.py`. Read-only checks (e.g.
 ## 1. Gather inputs
 
 You need the **org login**, the **golden-template Project title** (exact, marked
-an org template in Phase 0), a **title for the new project**, and optionally the
-**`owner/name` repo** to install templates into. If any are missing, ask with
-`AskUserQuestion`. Confirm the App token is available in the environment
-(`GH_APP_TOKEN` or `APP_ID`+`APP_PRIVATE_KEY`); the engine fails with a usage
-error (exit 2) if not.
+an org template in Phase 0), a **title for the new project**, optionally the
+**`owner/name` repo** to install templates into + link to the Project, and
+optionally an org **`--team` slug** to link the Project to. If any required input
+is missing, ask with `AskUserQuestion`. Confirm the App token is available in the
+environment (`GH_APP_TOKEN` or `APP_ID`+`APP_PRIVATE_KEY`); the engine fails with
+a usage error (exit 2) if not.
 
 ## 2. Dry run (always first)
 
 ```bash
 python3 "$SCAFFOLD" scaffold --org <login> --template "<golden template title>" \
-  --title "<new project title>" [--repo owner/name]
+  --title "<new project title>" [--repo owner/name] [--team <slug>]
 ```
 
 The engine prints the full **change manifest** to stderr:
@@ -75,8 +76,19 @@ The engine prints the full **change manifest** to stderr:
 - the iteration plan (**SKIP** when unchanged, with a mutation count),
 - every **file to install** with `install`/`skip` per destination path,
 - org **Issue Types** + **Issue Fields** to ensure,
-- the repo **no-squash** setting and **App access** grant,
-- the human checklist (confirm the 9 Insights charts — Insights has no API).
+- the repo **no-squash** setting and the **App access** confirmation touch
+  (the App already has org Projects-write via its installation — this is a
+  confirmation, **not** a base-role grant),
+- the **repo→Project link** (`linkProjectV2ToRepository`, idempotent — `skip`
+  when the repo is already linked) when `--repo` is given (AC-21), and the
+  installed per-repo **`add-to-project.yml`** auto-add workflow (SHA-pinned
+  `actions/add-to-project`, App-token auth, no metered AI — AC-22),
+- the **Project→team link** (`linkProjectV2ToTeam`, write-to-team) when `--team`
+  is given, plus the **base-role manual step** — setting the org base role to
+  *Read* is **UI-only with no API** (AC-23), so the engine emits it as a manual
+  checklist item rather than attempting a mutation,
+- the human checklist (confirm the 9 Insights charts — Insights has no API; and
+  the base-role manual step when `--team` was given).
 
 Show the user this manifest verbatim. The machine-readable result JSON on stdout
 carries `copy`, `fields_present/missing`, `views_present/missing`,
@@ -91,7 +103,7 @@ re-run with `--force`:
 
 ```bash
 python3 "$SCAFFOLD" scaffold --org <login> --template "<golden template title>" \
-  --title "<new project title>" [--repo owner/name] --force
+  --title "<new project title>" [--repo owner/name] [--team <slug>] --force
 ```
 
 The result JSON's `files_written` lists exactly what changed; `applied:true`
@@ -103,10 +115,14 @@ State: the new project number + title, fields present/missing, the 8-view
 catalog present/missing AND whether all 8 views **resolved their filter/group/
 slice** (and the remedy if any are missing/unresolved — fix the template,
 re-copy), the iteration decision (skipped vs
-diff-added), files installed, Issue Types/Fields ensured, the no-squash setting,
-and the **human checklist** item (eyeball the 9 Insights charts — the engine
-cannot verify them; Insights has no API). If you re-ran on an already-scaffolded
-repo, confirm it was a no-op (empty install manifest, zero iteration mutations).
+diff-added), files installed (including `add-to-project.yml`), Issue Types/Fields
+ensured, the no-squash setting, the **repo→Project link** (`link`/`skip`) and the
+**Project→team link** when `--team` was given, and the **human checklist** items
+(eyeball the 9 Insights charts — the engine cannot verify them, Insights has no
+API; and set the org base role to *Read* in the UI when `--team` was given —
+base role has no API, AC-23). If you re-ran on an already-scaffolded repo, confirm
+it was a no-op (empty install manifest, zero iteration mutations, repo link
+`skip`).
 
 ## Guardrails
 - Dry run first, every time; `--force` only after the user confirms.
