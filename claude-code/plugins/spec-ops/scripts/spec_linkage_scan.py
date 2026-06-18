@@ -17,20 +17,19 @@ survives:
 
   ac-id            `AC-12`, `class AC34_Foo`            — a numbered build-spec criterion
   build-phase      `Phase 1`, `§4 lib`, `P1.3`         — a slot in the construction timeline
-  spec-ref         `PM-0001`, `foo.spec.md`, "drifted" — a pointer to the build spec itself
-  provenance       "Salvaged from pm-ops"              — where the code came from
+  spec-ref         `SPEC-12`, `foo.spec.md`, "drifted" — a pointer to the build spec itself
+  provenance       "Salvaged from the old engine"      — where the code came from
   temporal         "newly exposed", "now adds"         — framing relative to the build moment
 
 KEEPs the guards protect (never flagged):
-  - `Phase 1`/`Phase 2` naming the two STEPS of the two-phase field-write protocol
-    (near add/addProjectV2ItemById / update/read-back tokens);
+  - `Phase 1`/`Phase 2` naming the two STEPS of a documented two-phase protocol — they
+    co-occur, or sit near read-back / write-protocol / handshake tokens — not build phases;
   - `constraint #N` and other in-repo cross-refs that resolve in the shipped tree;
-  - the live dependency `spec-ops` (`write-spec`/`refine-spec`/`verify-spec`) and a
-    CONSUMER's own per-issue `deep spec` / `specs/<slug>.md`;
+  - a real in-tree dependency the artifact legitimately names (e.g. a sibling package);
   - `AC-id`, `AC-group`, an Acceptance-Criteria table, and `AC-1`/`AC-N` placeholders a
-    consumer fills in (issue-body / deep-spec / ISSUE_TEMPLATE / PR template);
-  - a setup runbook's own `Phase 0.x` section structure (GOLDEN-TEMPLATE-SETUP / README);
-  - the live regression-guard assertion that a deleted predecessor stays out of a manifest.
+    template / issue body / rubric file fills in;
+  - a setup/onboarding runbook's own section numbering (e.g. `Phase 0.x` in a README/SETUP);
+  - a regression-guard assertion that a deleted predecessor stays out of a manifest.
 
 Scope & limits — this is the deterministic *first* pass, tuned for precision (no false
 positives) over recall. It finds the greppable patterns above; it deliberately does NOT
@@ -38,7 +37,7 @@ judge two classes that need reading comprehension — verify-spec's hygiene swee
 those as a judgment pass:
   - identifier: a function / variable / class / test *named after* the spec, a build
     phase, or a predecessor rather than after what it does. Only the obvious `AC<digits>_`
-    and `Phase<digit>` forms are caught here; an arbitrary one (`pm0002_fields`,
+    and `Phase<digit>` forms are caught here; an arbitrary one (`spec07_fields`,
     `legacy_dispatch`) is project-specific and not greppable in general.
   - background: a comment/docstring carrying inert historical context (what the code used
     to be, alternatives considered and rejected) as opposed to the load-bearing rationale
@@ -74,17 +73,25 @@ TEXT_EXTS = {".py", ".md", ".sh", ".yml", ".yaml", ".json", ".txt", ".cfg", ".to
 EXTRA_NAMES = {"CODEOWNERS", ".gitignore"}
 SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", "node_modules", ".venv"}
 
-# Files where `AC-1`/`AC-N` and an Acceptance-Criteria table are the CONSUMER's own
-# contract format (the shipped product's vocabulary), not this artifact's build spec.
-# The ac-id rule is suppressed for these so we don't flag the product working as designed.
+# Files where `AC-1`/`AC-N` and an Acceptance-Criteria table are a CONSUMER's own fill-in
+# contract format (a template / issue body / rubric), not this artifact's build spec — so
+# the ac-id rule is suppressed for them. Matched by GENERAL template/issue/rubric naming,
+# never one project's filenames.
 CONSUMER_AC_FILES = re.compile(
-    r"(issue-body\.md$|deep-spec\.md$|/ISSUE_TEMPLATE/|PULL_REQUEST_TEMPLATE\.md$|"
-    r"/ac-rubric\.md$)"
+    r"ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE"
+    r"|[._-]template\.\w+$|\.tmpl$"
+    r"|issue[-_]?body|deep[-_]spec|[-_]rubric\.md$",
+    re.IGNORECASE,
 )
 
-# A setup/admin runbook's own `Phase 0.x` section structure is legitimate doc scaffolding
-# (Create the App -> Build the template -> Onboard org), not the build spec's phasing.
-RUNBOOK_FILES = re.compile(r"(GOLDEN-TEMPLATE-SETUP\.md$|/README\.md$|^README\.md$)")
+# A setup/onboarding runbook's own `Phase 0.x` section numbering is doc scaffolding (its
+# own ordered steps), not the build spec's phasing. Matched by GENERAL runbook/readme
+# naming, never one project's filenames.
+RUNBOOK_FILES = re.compile(
+    r"readme\.md$|setup[^/]*\.md$|[-_]setup\.md$|install[^/]*\.md$"
+    r"|runbook|getting[-_]started|onboarding",
+    re.IGNORECASE,
+)
 
 # --------------------------------------------------------------------------- #
 # Detection patterns.
@@ -100,49 +107,56 @@ RE_PHASE = re.compile(r"\bPhase[\s-]?\d+(?:\.\d+)?\b", re.IGNORECASE)
 RE_PHASE_SECTION = re.compile(r"§\s?\d+|\bP1\.\d\b")
 
 # spec-ref: a pointer to the build spec itself. STRONG signals are unambiguous build-doc
-# markers; a bare PM-#### id is split out because the product's OWN PM-#### allocator
-# emits ids too (e.g. `prints PM-0042`), so a bare id is flagged only with build context.
+# markers. A bare spec/ticket id is split out because a product's OWN id allocator (and
+# standards tokens like UTF-8 / SHA-256) share the shape, so a bare id flags only with
+# build context.
 RE_SPEC_STRONG = re.compile(
-    r"[\w-]+\.spec\.md\b"
-    r"|\bspec hard-limits\b"
-    r"|\bspec view \d\b"
-    r"|\bout of scope for PM-\d"
-    r"|research/pm-task-management"
-    r"|the specs?\b[^.\n]{0,40}\bdrifted\b"
-    r"|\bLocked decisions\b",
+    r"[\w./-]+\.spec\.md\b"                                # a spec filename
+    r"|\bthe build spec\b|\bbuild contract\b"              # explicit build-doc nouns
+    r"|\bthe specs?\b[^.\n]{0,40}\bdrift(?:ed|s|ing)?\b"   # "the spec ... drifted"
+    r"|\bLocked decisions?\b"                              # a spec's locked-decisions log
+    r"|\bout of scope for\s+[A-Z][A-Z0-9]{1,5}-\d",        # "out of scope for <SPEC-ID>"
     re.IGNORECASE,
 )
-RE_PM_ID = re.compile(r"\bPM-\d{4}\b")
-# A bare PM-#### is a build-spec reference (not a product example) only alongside one of
-# these: spec/AC/section/research/phase context.
-RE_PM_BUILD_CTX = re.compile(
+# A generic spec/ticket id: an uppercase prefix + digits — SPEC-12, RFC-42, ENG-456,
+# ADR-7, JIRA-1234. Any scheme, not one project's.
+RE_SPEC_ID = re.compile(r"\b[A-Z][A-Z0-9]{1,5}-\d{1,6}\b")
+# A bare id is a build-spec reference (not a product example or a standards token) only
+# alongside spec/AC/section/research/phase context.
+RE_SPEC_BUILD_CTX = re.compile(
     r"\bspecs?\b|§|\bACs?\b|\bAC-\d|research/|out of scope|\bPhase\b|\bLocked\b"
-    r"|acceptance criteria|build contract",
+    r"|acceptance criteria|build contract|build spec",
     re.IGNORECASE,
 )
 
-# provenance: where code came from / a predecessor's lifecycle.
+# provenance: where code came from / a predecessor's lifecycle. General verbs + "from the
+# <X> <kind>" phrasing — no project name hardcoded (the "<verb> from <whatever>" pattern
+# catches a named predecessor on its own).
 RE_PROVENANCE = re.compile(
-    r"\bpm-ops\b|pm-ops-archive"
-    r"|\b(?:Salvaged|Collapsed|Ported|Adapted|Extracted|Trimmed)\s+from\b"
-    r"|\bfrom the [\w-]+ engine'?s?\b",
+    r"\b(?:Salvaged|Collapsed|Ported|Adapted|Extracted|Trimmed|Migrated|Lifted)\s+from\b"
+    r"|\bcarried over from\b"
+    r"|\bfrom the [\w-]+ (?:engine|plugin|module|service|library|component|codebase|predecessor)'?s?\b"
+    r"|\b(?:its|the) predecessor\b",
     re.IGNORECASE,
 )
 
 # temporal: framing relative to the moment of building. Kept tight — bare "new" is too
-# noisy ("new item", "new PR"), so only unambiguous build-increment words are flagged.
+# noisy ("new item", "new PR"), so only unambiguous build-increment phrasings are flagged.
 RE_TEMPORAL = re.compile(
-    r"\bnewly\b|\bnow adds?\b|\bwas already\b|\bstill on\b|\bused to\b"
-    r"|\bpreviously\b|\boriginally\b|\bdown[ -]payment\b|\bthis leaf\b"
-    r"|\bNEW_SKILLS\b|\btest_new_skills\b",
+    r"\bnewly\b|\bnow (?:adds?|returns?|uses?|exposes?)\b"
+    r"|\bwas (?:already|previously|formerly)\b|\bstill (?:on|uses?)\b"
+    r"|\bused to\b|\bpreviously\b|\boriginally\b|\bformerly\b|\bno longer\b"
+    r"|\bin the (?:old|previous|prior|former)\b",
     re.IGNORECASE,
 )
 
-# Two-phase-write protocol tokens: when `Phase 1/2` sits near these it labels a runtime
-# step in a documented protocol (add item / update + read-back), not a build phase — KEEP.
+# Two-phase protocol tokens: when `Phase 1/2` sits near these (or both Phase 1 AND Phase 2
+# co-occur on the line) it labels a step in a documented runtime protocol — a write +
+# read-back / handshake — not a build phase, so it is KEEP. General protocol words, no
+# project API names.
 RE_TWO_PHASE_CTX = re.compile(
-    r"addProjectV2ItemById|updateProjectV2ItemFieldValue|read[ -]back|read back"
-    r"|add item|item id|two-phase",
+    r"\btwo-phase\b|\btwo-step\b|read[ -]back|write protocol|commit protocol"
+    r"|handshake|round[ -]trip",
     re.IGNORECASE,
 )
 
@@ -226,7 +240,12 @@ def scan_line(path, lineno, raw):
     if mphase:
         token = mphase.group(0)
         is_phase0 = re.match(r"(?i)phase[\s-]?0\b", token)
-        two_phase = bool(RE_TWO_PHASE_CTX.search(line)) and re.match(r"(?i)phase[\s-]?[12]\b", token)
+        # Phase 1/2 is a protocol STEP (KEEP) when a protocol token is near, or when both
+        # Phase 1 and Phase 2 appear on the line (two steps named together).
+        both_phases = (bool(re.search(r"(?i)phase[\s-]?1\b", line))
+                       and bool(re.search(r"(?i)phase[\s-]?2\b", line)))
+        two_phase = ((bool(RE_TWO_PHASE_CTX.search(line)) or both_phases)
+                     and re.match(r"(?i)phase[\s-]?[12]\b", token))
         if two_phase:
             pass  # KEEP — two-phase write protocol step.
         elif is_runbook and is_phase0:
@@ -243,17 +262,22 @@ def scan_line(path, lineno, raw):
         out.append(Finding(path, lineno, "build-phase", "normal", stripped, False, ""))
 
     # --- spec-ref ---------------------------------------------------------- #
-    # A strong build-doc marker always flags. A bare PM-#### flags only with build
+    # A strong build-doc marker always flags. A bare spec/ticket id flags only with build
     # context (else it is the product's own allocator output, a KEEP).
-    if RE_SPEC_STRONG.search(line) or (RE_PM_ID.search(line) and RE_PM_BUILD_CTX.search(line)):
+    # A bare id flags only with build context AROUND it — strip the id tokens first so an
+    # id like `SPEC-0042` can't self-satisfy the context via its own `SPEC` prefix.
+    if RE_SPEC_STRONG.search(line) or (
+        RE_SPEC_ID.search(line) and RE_SPEC_BUILD_CTX.search(RE_SPEC_ID.sub("", line))
+    ):
         out.append(Finding(path, lineno, "spec-ref", "normal", stripped, False, ""))
 
     # --- provenance -------------------------------------------------------- #
     if RE_PROVENANCE.search(line):
-        # The live guard assertion (a deleted predecessor must stay out of a manifest)
-        # is KEEP; only its build-history justification comment is leakage.
-        guard = ("assertnotin" in line.lower() or "assert_not" in line.lower()
-                 or ("marketplace" in line.lower() and "assert" in line.lower()))
+        # The live guard assertion (a deleted predecessor must stay out of a manifest) is
+        # KEEP; only its build-history justification comment is leakage. A general
+        # "assert ... not in" covers any manifest, not one project's file.
+        low = line.lower()
+        guard = "assert" in low and ("notin" in low or "not in" in low or "not_in" in low)
         if not guard:
             out.append(Finding(path, lineno, "provenance", "judgment", stripped, False, ""))
 
