@@ -1,5 +1,5 @@
 {
-  "_comment": "Golden-template Project VIEW CATALOG (gh-projects). The 8 saved views are built BY HAND once on the golden-template Project (before any scaffold copy) and replicate via copyProjectV2 — ProjectV2 views are NOT API-mutable (no create/edit). They ARE, however, API-READABLE (the projectV2.views connection: name/layout/filter/groupByFields/verticalGroupByFields), so scaffold-repo verifies the copy carries all 8 by name (the 'view catalog' half) AND that each view RESOLVES its documented filter/group/slice without error (verify_views). A missing view or an unresolved filter/group/slice is a template/copy defect: fix it on the golden template and re-copy — never hand-add to a scaffolded project (it would drift). Full per-view sort/card specs live in views.md; this file is the minimal machine-checkable catalog. Each view declares: name, layout, the expected raw `filter` string (substring qualifiers that MUST be present in the copied view's resolved filter), `group` (the field name the view groups its columns/rows by, must resolve to a real project/issue field — empty for ungrouped), and `slice` (the verticalGroupBy / slice-panel field name, must resolve to a real field — empty when the view has no slice). Resolution = the field referenced by group/slice exists on the copy (re-resolved from the COPY, never the template) and every filter qualifier the catalog declares is present in the live view's filter string.",
+  "_comment": "Golden-template Project VIEW CATALOG (gh-projects). The 8 saved views are created as SHELLS by lib/setup_board.py (REST POST .../views — name + layout + filter + visible_fields) and then have their grouping/slice/sort finished by hand in the UI (the create API takes no group/sort/slice; there is no view-update API). They replicate via copyProjectV2. scaffold-repo verifies the copy carries all 8 by name AND that each resolves its documented filter/group/slice (verify_views) — a missing view or unresolved filter/group/slice is a template/copy defect: fix it on the golden template and re-copy, never hand-add to a scaffolded project. Each view declares: name, layout, the expected raw `filter` string (substring qualifiers that MUST be present in the copied view's resolved filter), `group` (the field the view groups columns/rows by, must resolve to a real project/issue field — empty for ungrouped), `slice` (the verticalGroupBy/slice-panel field — empty when none), and `fields` (the visible columns/card fields BY NAME, in display order — table & board only, empty for roadmap). setup_board resolves `fields` names to field IDs against the live project and sets `visible_fields` at create; the org issue fields (Priority / Start date / Target date) don't auto-appear as project columns, so setup_board adds them first via POST .../fields {issue_field_id} and then resolves them like any other field (any name still absent is skipped with a warning). Note: the `Type` issue-type field can NOT be a `visible_fields` column — GitHub silently drops issue_type from visible_fields — so it is surfaced via a view's `slice`, never listed in `fields`. Full sort/card detail lives in views.md.",
   "_field_qualifiers": {
     "_comment": "Maps a filter qualifier KEYWORD (left of the colon in a saved-search filter, e.g. `status:Ready`) to the project/issue FIELD NAME it resolves against. A declared filter qualifier 'resolves' when its keyword maps here AND the mapped field exists on the copy. Native GitHub qualifiers (is, assignee, no) need no field and are listed as native.",
     "iteration": "Sprint",
@@ -10,7 +10,8 @@
     "milestone": "Milestone",
     "is": "__native__",
     "assignee": "__native__",
-    "no": "__native__"
+    "no": "__native__",
+    "has": "__native__"
   },
   "views": [
     {
@@ -18,56 +19,64 @@
       "layout": "BOARD_LAYOUT",
       "filter": "iteration:@current is:open",
       "group": "Status",
-      "slice": ""
+      "slice": "",
+      "fields": ["Assignees", "Size", "Priority", "Blocked"]
     },
     {
       "name": "My work",
       "layout": "TABLE_LAYOUT",
       "filter": "assignee:@me is:open",
       "group": "Status",
-      "slice": ""
+      "slice": "",
+      "fields": ["Status", "Priority", "Sprint", "Target date", "Blocked"]
     },
     {
       "name": "Ready queue",
       "layout": "TABLE_LAYOUT",
       "filter": "status:Ready is:open",
       "group": "Priority",
-      "slice": ""
+      "slice": "",
+      "fields": ["Priority", "Size", "Target date", "Blocked"]
     },
     {
       "name": "Critical Path Board",
       "layout": "BOARD_LAYOUT",
       "filter": "is:open",
       "group": "Schedule health",
-      "slice": "Decision needed"
+      "slice": "Decision needed",
+      "fields": ["Target date", "Assignees", "Blast radius", "Parent issue", "Blocked"]
     },
     {
       "name": "Schedule Risk Table",
       "layout": "TABLE_LAYOUT",
-      "filter": "is:open schedule-health:Overdue,Blocked,At-risk",
+      "filter": "is:open schedule-health:Overdue,Blocked,\"At risk\"",
       "group": "Milestone",
-      "slice": "Impact level"
+      "slice": "Impact level",
+      "fields": ["Schedule health", "Target date", "Slippage", "Impact level", "Decision needed", "Milestone"]
     },
     {
       "name": "Epic Hierarchy",
       "layout": "TABLE_LAYOUT",
       "filter": "",
       "group": "Milestone",
-      "slice": ""
+      "slice": "",
+      "fields": ["Sub-issues progress", "Target date", "Schedule health", "Impact level"]
     },
     {
       "name": "Intake & Hygiene",
       "layout": "TABLE_LAYOUT",
       "filter": "is:open",
       "group": "Status",
-      "slice": "Type"
+      "slice": "Type",
+      "fields": ["Status", "Assignees", "Priority", "Target date", "Sprint"]
     },
     {
       "name": "Release Train Roadmap",
       "layout": "ROADMAP_LAYOUT",
-      "filter": "target-date:*",
+      "filter": "has:target-date",
       "group": "Milestone",
-      "slice": ""
+      "slice": "",
+      "fields": []
     }
   ]
 }

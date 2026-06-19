@@ -18,7 +18,8 @@ creds — every round-trip goes through the injectable `gh.RUN` seam). Keep it g
 
 - `lib/` — the deterministic engine; **stdlib only**, exit codes `0/2/3/1`. `gh.py`
   (GraphQL/REST core + all write verbs), `sprint.py`, `scaffold.py`, `dag.py`,
-  `pm.py`, `engine.sh` (the dry-by-default rail), `lib/tests/`.
+  `pm.py`, `setup_board.py` (one-shot golden-template builder, run by the user — not
+  the App), `engine.sh` (the dry-by-default rail), `lib/tests/`.
 - `skills/` — six **thin** SKILL.md orchestrators over the engine. Put no decision
   logic in prose; every load-bearing step is a checked-in engine verb.
 - `templates/` — golden-template `project/*` + per-repo `github/*`. `hooks/guard.sh`,
@@ -69,10 +70,13 @@ both together or the suite fails.
 
 ## Platform constraints (don't fight these)
 
-- Saved views + Insights charts are **not API-creatable** → golden template +
-  `copyProjectV2`. Copy is documented to carry **fields + views only** (not charts) →
-  scaffold verifies field/view presence; **charts may not survive the copy** and can
-  need rebuilding per project (Insights has no API to create *or* read a chart).
+- **Field creation is scriptable** via the REST Projects API (`X-GitHub-Api-Version:
+  2026-03-10`): `setup_board.py` makes all project fields incl. the **iteration**
+  field, the org issue type + issue fields, and **view shells** (name/layout/filter).
+  Still **no API** (UI-only, done once on the template, carried by `copyProjectV2`): a
+  view's **grouping/sort/slice/swimlane**, the built-in **Status** options, the
+  **Insights charts**, and the **Make-template** flag. Copy is documented to carry
+  fields + views; **charts may not survive it** → verify per board.
 - A Project's org **base role is UI-only** (no API) → emit it as a manual step.
 - There is **no built-in Auto-add API** → install `actions/add-to-project`, SHA-pinned.
 - `projects_v2_item` has **no repo-workflow trigger** → drive Status from

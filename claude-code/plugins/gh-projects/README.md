@@ -39,6 +39,9 @@ or a periodic digest. No metered AI: every moving part is plain Python + GraphQL
 
 ### 2. A GitHub App (one-time, org admin) — *required*
 
+> **Step-by-step:** [`GOLDEN-TEMPLATE-SETUP.md`](GOLDEN-TEMPLATE-SETUP.md) §"Phase 0.0
+> — Create the GitHub App" walks the full create → permissions → install → secrets flow.
+
 `GITHUB_TOKEN` **cannot write Projects v2 fields** — a GitHub App installation
 token is the only credential that can. Create an **org-owned GitHub App** with:
 
@@ -53,20 +56,32 @@ output.)
 
 ### 3. A golden-template Project (one-time, by hand) — *required*
 
-`scaffold-repo` replicates a board by **copying** a golden template — it does not
-build one from scratch (saved views and Insights charts have no creation API). So
-build **one** org Project once:
+> **Full walkthrough:** [`GOLDEN-TEMPLATE-SETUP.md`](GOLDEN-TEMPLATE-SETUP.md) — the
+> step-by-step build with API recipes and a clear map of what can vs. can't be
+> automated. The summary below is the short version.
 
-1. Apply the field schema from [`templates/project/fields.json`](templates/project/fields.json)
-   and add the **Iteration** field (these *can* be API-created to speed it up).
-2. **Hand-build the 8 saved views** ([`templates/project/views.md`](templates/project/views.md))
-   and the **9 Insights charts** ([`templates/project/insights.md`](templates/project/insights.md))
-   — the irreducibly manual step.
-3. Mark the Project an **org template**.
+Build **one** org Project once (it must be an **org** — `Type`/`Priority`/dates are
+org-only features — and **private**). A script does most of it:
 
-`scaffold-repo`'s `copyProjectV2` then replicates fields + views + chart config to
-every scaffolded project. It can verify field/view *presence* after copying but not
-the charts (Insights has no API) — confirm those by eye once.
+1. `gh auth refresh -s project,admin:org`, then run
+   [`lib/setup_board.py`](lib/setup_board.py) `--org <org> --title "…" --apply`. From
+   `templates/project/*.json` it creates the private Project, the `Type` Issue Type,
+   the Priority/Start/Target Issue Fields, **every project field including the `Sprint`
+   iteration**, adds the org fields as columns, creates the **8 views with their visible
+   columns**, and **marks it the org template** — dry-by-default, idempotent.
+2. **Finish in the UI** (the script prints this list): edit the built-in **Status**
+   options to the 6 stages · finish each view's grouping/slice/sort per
+   [`views.md`](templates/project/views.md) · build the **9 Insights charts**
+   ([`insights.md`](templates/project/insights.md)). These three have no API.
+
+`scaffold-repo`'s `copyProjectV2` then carries the **fields and views** to every
+scaffolded project — GitHub documents a project copy as preserving *"views and custom
+fields."* **Insights charts are the exception:** they have no creation API *and*
+GitHub does not document them as carried by a copy, so a scaffolded project may need
+its charts rebuilt by hand from [`templates/project/insights.md`](templates/project/insights.md).
+`scaffold-repo` verifies field/view *presence* after copying but cannot see charts
+(Insights has no API) — confirm those by eye on each new project and recreate any that
+didn't carry over.
 
 ### 4. The App token in your environment (for running the skills)
 
@@ -95,7 +110,7 @@ auto-add workflow, the `board-status` deploy action, `release.yml`, CODEOWNERS, 
 board README).
 
 ```
-scaffold-repo --org <login> --template "<golden template title>" \
+scaffold-repo --org <login> --template "GitHub Projects Golden Template" \
               --title "<new project title>" [--repo owner/name] [--team <slug>]
 ```
 
