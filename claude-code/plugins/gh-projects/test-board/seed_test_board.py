@@ -62,6 +62,12 @@ SPRINTS = [
 # (the API rejects the project path for issue-field-backed columns).
 ISSUE_FIELDS = {"Priority", "Start date", "Target date"}
 
+# Assign active work to a real login so the assignee-filtered views ("My work" =
+# assignee:@me, plus Sprint-board cards) populate. Backlog items are left
+# unassigned on purpose (realistic, and exercises the unassigned-hygiene views).
+ASSIGNEE = "zakattack9"
+ASSIGN_WHEN_STATUS = {"Ready", "In Progress", "In Review", "On Staging", "Done"}
+
 # --------------------------------------------------------------------------- #
 # The mock backlog. `key` is internal (parent / blocked_by references only).
 # Fields left unset are simply skipped. Dates are coherent with the sprint above.
@@ -399,6 +405,10 @@ def set_issue_field(issue_node: str, fnode: dict, value):
         i=issue_node)
 
 
+def set_assignee(number: int, login: str):
+    run(["issue", "edit", str(number), "--repo", REPO, "--add-assignee", login])
+
+
 def add_sub_issue(parent_node: str, child_node: str):
     gql("mutation($p:ID!,$c:ID!){addSubIssue(input:{issueId:$p,subIssueId:$c}){issue{id}}}",
         p=parent_node, c=child_node)
@@ -466,6 +476,8 @@ def seed(dry_run: bool):
         for fname in ISSUE_FIELDS:
             if fname in spec:
                 set_issue_field(issue["node_id"], ifields[fname], spec[fname])
+        if spec.get("Status") in ASSIGN_WHEN_STATUS:
+            set_assignee(issue["number"], ASSIGNEE)
         print(f"  #{issue['number']:>4}  {spec['type']:7} {spec['Status']:11} {spec['title']}")
 
     # Relationships (after every issue exists)
