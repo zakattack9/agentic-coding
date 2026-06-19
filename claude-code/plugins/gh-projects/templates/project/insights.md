@@ -8,7 +8,12 @@ charts on each copy and rebuild any that didn't carry** (`scaffold-repo` can't s
 them). **Chart history accrues per project from its own start, is never backfilled, and
 is never copied** → define Status + Sprint day one and don't archive in-flight items.
 
-## What the chart UI can and can't do (the rules that decide each chart)
+**Just three charts.** Everything a snapshot chart would show — the spread of Status,
+Schedule health, Blocked, or work mix — the **Views already convey at a glance**, so a
+chart for it is redundant. These three earn their place by showing what a *view* can't:
+a **trend**, a **rollup**, and a **quantified total**.
+
+## What the chart UI can and can't do (the rules behind each chart)
 
 A chart's **mode** + a **field's value type** decide what's allowed:
 
@@ -17,48 +22,39 @@ A chart's **mode** + a **field's value type** decide what's allowed:
   items *or* the **sum / average / min / max of a number field**.
 - **Historical chart** (state over time): set **X-axis to "Time."** It tracks the
   built-in item states — Open / Completed / Closed-PR / Not-planned — over time.
-  **There is NO custom Group-by on a historical chart** (Group-by is a *current*-chart
-  option), so you **cannot** stack a time series by Status, Blast radius, etc.
+  **There is NO custom Group-by on a historical chart.**
 - **X-axis / Group-by need a *categorical* field:** single-select, iteration,
   milestone, assignees, labels. A **number** field isn't categorical → it belongs on
   the **Y-axis** (sum/avg/min/max). Text/date fields don't chart as categories.
-- **`Type` (issue type)** as an X-axis / Group-by is **unverified** — issue-type is a
-  special field (it can't be a view column, for instance). Confirm it in the UI; if a
-  chart rejects it, swap to a single-select.
-- **Filters:** use `has:FIELD` for "has any value" — `FIELD:*` is rejected (same as in
-  view filters).
+- **Filters:** use `has:FIELD` for "has any value" — `FIELD:*` is rejected.
 
 ## The charts
 
-`✓` = creatable as written · `⚠️` = verify the flagged field in the UI once.
+All three are creatable as written (no special-field caveats).
 
-| # | Chart | Mode · config | Filter | | Audience |
-|---|---|---|---|---|---|
-| 1 | **Sprint burn-up** | historical · X=Time · Y=count | `sprint:@current` | ✓ | devs+PM |
-| 2 | **Throughput** | current column · X=Sprint · Y=count | `status:Done` | ✓ | PM+founder |
-| 3 | **Status distribution** | current column · X=Status · Y=count | `is:open` | ✓ | standups |
-| 4 | **Work mix by Size × Tier** | current stacked column · X=Size · Group=Tier | `is:open` | ✓ | PM+lead |
-| 5 | **Schedule-health distribution** | current column · X=Schedule health · Y=count | `is:open` | ✓ | standups+founder |
-| 6 | **Blocked trend** | historical · X=Time · Y=count | `blocked:yes is:open` | ✓ | lead+PM |
-| 7 | **Release / Milestone progress** | current stacked column · X=Milestone · Group=Status | `has:milestone` | ✓ | stakeholders |
-| 8 | **Slippage-days sum** | current column · X=Schedule health · Y=**sum(Slippage-days)** | `is:open` | ✓ | PM — quantified lateness |
-| 9 | **Work mix by Type** | current column · X=Type · Y=count | `is:open` | ⚠️ X=Type | PM+founder |
+| # | Chart | Mode · config | Filter | Audience — what it shows |
+|---|---|---|---|---|
+| 1 | **Throughput** | current column · X=Sprint · Y=count of items | `status:Done` | PM+founder — items shipped per sprint (the trend no view shows) |
+| 2 | **Milestone progress** | current **stacked** column · X=Milestone · Group by=Status | `has:milestone` | stakeholders — each milestone's done/in-flight split |
+| 3 | **Slippage days sum** | current column · X=Schedule health · **Y-axis = Sum of a field → `Slippage days`** | `is:open` | PM — total quantified lateness |
 
-## What changed from the first draft (and why)
+**Slippage days sum — exact Y-axis setup:** in the chart config, set the **Y-axis**
+dropdown to **"Sum of a field,"** then set the **field** to **`Slippage days`** (the
+auto number field). Leave **X = Schedule health** so the total lateness lands in the
+At risk / Overdue buckets — or swap X to **Milestone** / **Sprint** if you'd rather see
+*which release or sprint* is slipping most.
 
-- **Cut "Cumulative flow"** (X=Time, Group=Status) and **"Blocked over time"** (X=Time,
-  Group=Blast radius): a historical chart has **no custom group-by**, so neither
-  stack-over-time can be built. Replaced by **Status distribution** (#3 — a current
-  snapshot by Status) and **Blocked trend** (#6 — a historical *count* of blocked items,
-  no group).
-- **Work mix by Size** now groups by **Tier** (both single-select) instead of `Type`,
-  to avoid the issue-type group-by risk.
-- **Release / Milestone progress** filter fixed: `milestone:*` → **`has:milestone`**.
-- **Work mix by Type** (#9) is kept but **flagged**: confirm `Type` is accepted as an
-  X-axis. If it's rejected, **cut it** — Size × Tier (#4) already covers the work-mix
-  need. (If `Type` *is* accepted, it's a nice one-glance feature/bug/chore split.)
+## Why only these three (the rest are covered by the Views)
+
+- **Status / Schedule-health / Blocked / work-mix distributions** are already the daily
+  **Sprint / Triage / Blockers / Grooming** views — a snapshot chart just duplicates them.
+- **Throughput** stays: no view shows a per-sprint *shipped trend*.
+- **Milestone progress** stays: no view rolls items up *by milestone* with a done split
+  (Roadmap shows dates, not completion).
+- **Slippage days sum** stays: a view shows *each* item's slippage bucket, but only a
+  chart **sums the days into one "how late are we, total" number**.
 
 ## Post-scaffold human checklist
 
-- [ ] **Confirm the charts are present** on the copied Project (Insights has no API).
-- [ ] **Verify chart #9** (X=`Type`) builds in the UI; cut it if `Type` is rejected.
+- [ ] **Confirm the 3 charts are present** on the copied Project (Insights has no API);
+      rebuild any that didn't carry from this file.

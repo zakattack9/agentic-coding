@@ -179,8 +179,8 @@ class ViewsTestBase(unittest.TestCase):
 # --------------------------------------------------------------------------- #
 class TestViewsCatalog(ViewsTestBase):
     EXPECTED = [
-        "Sprint", "My Tasks", "Ready Queue", "Triage",
-        "Schedule Risk", "Epics", "Grooming",
+        "Sprint", "My Tasks", "Ready", "Blockers",
+        "Triage", "Epics", "Grooming",
         "Roadmap",
     ]
 
@@ -236,8 +236,8 @@ class TestVerifyViewsPasses(ViewsTestBase):
         # health field; target-date: -> Target date issue field. All resolve.
         runner = ViewsRunner()
         res = self._verify(runner)
-        self.assertTrue(res["views"]["Ready Queue"]["filter_ok"])
-        self.assertTrue(res["views"]["Schedule Risk"]["filter_ok"])
+        self.assertTrue(res["views"]["Ready"]["filter_ok"])
+        self.assertTrue(res["views"]["Blockers"]["filter_ok"])
         self.assertTrue(res["views"]["Roadmap"]["filter_ok"])
 
     def test_raise_for_views_is_noop_when_ok(self):
@@ -315,13 +315,13 @@ class TestVerifyViewsFailsLoudly(ViewsTestBase):
         # mapping returns None -> unresolved -> FAIL.
         nodes = _views_detail_nodes(scaffold.load_views_schema())
         for n in nodes:
-            if n["name"] == "Ready Queue":
+            if n["name"] == "Ready":
                 n["filter"] = "bogusqual:Whatever is:open"
         runner = ViewsRunner(views_override=nodes)
         res = self._verify(runner)
         self.assertFalse(res["ok"])
-        self.assertFalse(res["views"]["Ready Queue"]["filter_ok"])
-        self.assertIn("bogusqual", res["views"]["Ready Queue"]["unresolved_qualifiers"])
+        self.assertFalse(res["views"]["Ready"]["filter_ok"])
+        self.assertIn("bogusqual", res["views"]["Ready"]["unresolved_qualifiers"])
 
     def test_filter_qualifier_mapping_to_absent_field_fails(self):
         # A qualifier that maps to a field NOT present on the copy is unresolved.
@@ -337,9 +337,9 @@ class TestVerifyViewsFailsLoudly(ViewsTestBase):
             ORG, COPY_NUMBER, views_schema=scaffold.load_views_schema(),
             fields_schema=fields_schema, copy_proj=proj)
         self.assertFalse(res["ok"])
-        # Ready Queue (status:Ready) and Sprint's group (Status) both break.
-        self.assertFalse(res["views"]["Ready Queue"]["filter_ok"])
-        self.assertIn("status", res["views"]["Ready Queue"]["unresolved_qualifiers"])
+        # Ready (status:Ready) and Sprint's group (Status) both break.
+        self.assertFalse(res["views"]["Ready"]["filter_ok"])
+        self.assertIn("status", res["views"]["Ready"]["unresolved_qualifiers"])
         self.assertFalse(res["views"]["Sprint"]["group_ok"])
 
 

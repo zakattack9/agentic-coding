@@ -59,8 +59,8 @@ BLAST_ONE = "Blocks 1"
 BLAST_MANY = "Blocks many"
 BLAST_RELEASE = "Blocks release"
 
-BLOCKED_YES = "yes"
-BLOCKED_NO = "no"
+BLOCKED_YES = "Blocked"
+BLOCKED_NO = "Unblocked"
 
 # Rollup status enum values (the GraphQL ProjectV2StatusUpdateStatus enum).
 ROLLUP_ON_TRACK = "ON_TRACK"
@@ -482,10 +482,10 @@ def _write_value(project_id: str, item_id: str, field: dict, value) -> None:
 _FIELD_MAP = [
     ("Blocked", "blocked"),
     ("Blast radius", "blast_radius"),
-    ("Blast-count", "blast_count"),
+    ("Blast count", "blast_count"),
     ("Schedule health", "schedule_health"),
     ("Slippage", "slippage"),
-    ("Slippage-days", "slippage_days"),
+    ("Slippage days", "slippage_days"),
 ]
 
 

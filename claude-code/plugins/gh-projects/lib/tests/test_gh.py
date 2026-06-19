@@ -42,7 +42,7 @@ PROJECT_RESOLVE = {
                          ]},
                         {"__typename": "ProjectV2FieldCommon", "id": "F_pmid", "name": "PM-ID",
                          "dataType": "TEXT"},
-                        {"__typename": "ProjectV2FieldCommon", "id": "F_blast", "name": "Blast-count",
+                        {"__typename": "ProjectV2FieldCommon", "id": "F_blast", "name": "Blast count",
                          "dataType": "NUMBER"},
                         {"__typename": "ProjectV2IterationField", "id": "F_sprint", "name": "Sprint",
                          "configuration": {
@@ -203,7 +203,7 @@ class TestTwoPhaseWrite(GhTestBase):
         gh.RUN = runner
         proj = gh.Project("acme", 7).resolve()
         item = gh.add_item(proj.id, "content")
-        res = gh.set_field(proj, item, "Blast-count", 3)
+        res = gh.set_field(proj, item, "Blast count", 3)
         self.assertTrue(res["verified"])
         self.assertEqual(res["value"], 3.0)
 

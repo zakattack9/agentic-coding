@@ -36,11 +36,18 @@ class TestIssueTypes(unittest.TestCase):
         names = [t["name"] for t in self.types]
         self.assertEqual(names, ["Feature", "Bug", "Chore", "Infra", "Epic"])
 
+    _ISSUE_COLORS = {"gray", "blue", "green", "yellow", "orange", "red", "pink", "purple"}
+
     def test_each_has_required_fields_and_lowercase_color(self):
         for t in self.types:
             self.assertTrue(t["name"] and t["description"])
             self.assertIs(t["is_enabled"], True)
-            self.assertEqual(t["color"], "gray")  # issue-types enum is lowercase
+            # per-option color from fields.json, lowercased for the issue-types enum
+            self.assertIn(t["color"], self._ISSUE_COLORS)
+        by_name = {t["name"]: t["color"] for t in self.types}
+        self.assertEqual(by_name["Feature"], "green")
+        self.assertEqual(by_name["Bug"], "red")
+        self.assertEqual(by_name["Epic"], "purple")
 
 
 class TestIssueFields(unittest.TestCase):
@@ -50,12 +57,16 @@ class TestIssueFields(unittest.TestCase):
     def test_three_org_issue_fields(self):
         self.assertEqual([f["name"] for f in self.fields], ["Priority", "Start date", "Target date"])
 
-    def test_priority_is_single_select_with_options_and_no_color(self):
+    def test_priority_is_single_select_with_lowercase_color(self):
         prio = next(f for f in self.fields if f["name"] == "Priority")
         self.assertEqual(prio["data_type"], "single_select")
-        self.assertEqual([o["name"] for o in prio["single_select_options"]], ["P0", "P1", "P2", "P3"])
-        # issue-field options carry no color (REST issue-fields API doesn't take one)
-        self.assertNotIn("color", prio["single_select_options"][0])
+        opts = prio["single_select_options"]
+        self.assertEqual([o["name"] for o in opts], ["P0", "P1", "P2", "P3"])
+        # issue-fields DO take a per-option color, lowercased from fields.json
+        colors = {o["name"]: o["color"] for o in opts}
+        self.assertEqual(colors["P0"], "pink")
+        self.assertEqual(colors["P1"], "red")
+        self.assertTrue(all(o["color"].islower() for o in opts))
 
     def test_dates_are_date_type(self):
         for name in ("Start date", "Target date"):
@@ -74,19 +85,27 @@ class TestProjectFields(unittest.TestCase):
 
     def test_includes_expected_thirteen(self):
         self.assertEqual(len(self.pf), 13)
-        for n in ("Size", "Tier", "Blocked", "Schedule health", "Slippage", "Slippage-days",
-                  "Blast radius", "Blast-count", "Impact level", "Decision needed",
+        for n in ("Size", "Tier", "Blocked", "Schedule health", "Slippage", "Slippage days",
+                  "Blast radius", "Blast count", "Impact level", "Decision needed",
                   "PM-ID", "Spec", "Sprint"):
             self.assertIn(n, self.names)
 
     def test_single_select_options_carry_color(self):
-        size = next(f for f in self.pf if f["name"] == "Size")
-        self.assertEqual(size["data_type"], "single_select")
-        colors = {o["name"]: o["color"] for o in size["single_select_options"]}
-        self.assertEqual(colors["S"], "BLUE")  # from the fields.json color scheme
+        # a signal field carries a meaningful UPPERCASE projectsV2 color
+        bl = next(f for f in self.pf if f["name"] == "Blast radius")
+        self.assertEqual(bl["data_type"], "single_select")
+        colors = {o["name"]: o["color"] for o in bl["single_select_options"]}
+        self.assertEqual(colors["Blocks release"], "RED")  # from the fields.json color scheme
         # projectsV2 option color must be the UPPERCASE enum
-        self.assertTrue(all(o["color"].isupper() for o in size["single_select_options"]))
-        self.assertTrue(size["single_select_options"][0]["description"])
+        self.assertTrue(all(o["color"].isupper() for o in bl["single_select_options"]))
+        self.assertTrue(bl["single_select_options"][0]["description"])
+
+    def test_descriptive_fields_are_all_gray(self):
+        # color is reserved for signal; Size/Tier are intentionally all-GRAY (not littered)
+        for name in ("Size", "Tier"):
+            f = next(f for f in self.pf if f["name"] == name)
+            self.assertTrue(all(o["color"] == "GRAY" for o in f["single_select_options"]),
+                            f"{name} options must all be GRAY (descriptive, not a signal)")
 
     def test_health_field_colors_from_scheme(self):
         sh = next(f for f in self.pf if f["name"] == "Schedule health")
@@ -130,21 +149,23 @@ class TestVisibleFields(unittest.TestCase):
                     "Sprint": 6, "Target date": 7, "Type": 8, "Milestone": 9,
                     "Schedule health": 10, "Slippage": 11, "Impact level": 12,
                     "Decision needed": 13, "Blast radius": 14, "Parent issue": 15,
-                    "Sub-issues progress": 16}
+                    "Sub-issues progress": 16, "Blast count": 17, "Tier": 18}
 
     def _by_name(self, field_ids=None):
         return {v["name"]: v for v in sb.view_payloads(self.views, field_ids=field_ids)}
 
     def test_visible_fields_resolved_in_order(self):
         sprint = self._by_name(self.ids)["Sprint"]
-        self.assertEqual(sprint["visible_fields"], [1, 2, 3, 4])  # Assignees, Size, Priority, Blocked
+        # Priority, Size, Target date, Assignees, Blocked
+        self.assertEqual(sprint["visible_fields"], [3, 2, 7, 1, 4])
 
     def test_roadmap_gets_no_visible_fields(self):
         self.assertNotIn("visible_fields", self._by_name(self.ids)["Roadmap"])
 
     def test_absent_field_is_skipped_keeping_order(self):
         ids = dict(self.ids); del ids["Priority"]
-        self.assertEqual(self._by_name(ids)["Sprint"]["visible_fields"], [1, 2, 4])
+        # Priority dropped → Size, Target date, Assignees, Blocked
+        self.assertEqual(self._by_name(ids)["Sprint"]["visible_fields"], [2, 7, 1, 4])
 
     def test_no_field_ids_means_no_visible_fields(self):
         self.assertTrue(all("visible_fields" not in p for p in sb.view_payloads(self.views)))
@@ -161,12 +182,12 @@ class TestVisibleFields(unittest.TestCase):
         self.assertEqual(sb.resolve_field_ids("o", 7, run=run), {"Status": 360, "Size": 361})
 
     def test_stale_view_flagged_when_missing_a_column(self):
-        # Sprint wants Assignees/Size/Priority/Blocked; current lacks Priority+Blocked
+        # Sprint wants Priority/Size/Target date/Assignees/Blocked; current lacks most
         current = {"Sprint": ["Title", "Assignees", "Size"]}
         self.assertIn("Sprint", sb.stale_views(self.views, self.ids, current))
 
     def test_view_not_stale_when_all_columns_present(self):
-        current = {"Sprint": ["Title", "Assignees", "Size", "Priority", "Blocked"]}
+        current = {"Sprint": ["Title", "Priority", "Size", "Target date", "Assignees", "Blocked"]}
         self.assertNotIn("Sprint", sb.stale_views(self.views, self.ids, current))
 
     def test_absent_view_is_not_stale(self):
@@ -182,6 +203,28 @@ class TestPunchList(unittest.TestCase):
         self.assertIn("group by Status", text)    # a view grouping to finish
         self.assertIn("Insights charts", text)
         self.assertNotIn("Make template", text)   # now automated via markProjectV2AsTemplate
+
+    def test_lists_the_ui_only_ordering_steps(self):
+        text = "\n".join(sb.punch_list(sb.load_fields(), sb.load_views()))
+        self.assertIn("global field order", text)             # field_display_order step
+        self.assertIn("Overdue → Blocked", text)              # Triage board column order (group_order)
+        self.assertIn("show column(s) by hand", text)         # Grooming Type (ui_columns)
+
+
+class TestFieldDisplayOrder(unittest.TestCase):
+    def setUp(self):
+        self.schema = sb.load_fields()
+
+    def test_every_field_appears_in_display_order(self):
+        order = self.schema.get("field_display_order")
+        self.assertTrue(order, "fields.json must declare a field_display_order")
+        names = {f["name"] for f in self.schema["fields"]}
+        missing = names - set(order)
+        self.assertEqual(set(), missing, f"fields absent from field_display_order: {missing}")
+
+    def test_display_order_has_no_duplicates(self):
+        order = self.schema["field_display_order"]
+        self.assertEqual(len(order), len(set(order)), "field_display_order has duplicates")
 
 
 class _FakeRun:

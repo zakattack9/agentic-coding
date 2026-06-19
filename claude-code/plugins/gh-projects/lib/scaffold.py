@@ -984,7 +984,7 @@ def build_plan(*, org: str, template_title: str, repo: str | None,
         "repo_link": repo_link,           # repo→Project link (diff/skip)
         "team_link": team_link,           # Project→team link + base-role manual step
         "base_role_manual": (team_link or {}).get("base_role_manual") if team_link else None,
-        "human_checklist": ["confirm the 9 Insights charts are present (Insights has no API)"]
+        "human_checklist": ["confirm the 3 Insights charts are present (Insights has no API)"]
         + ([(team_link or {}).get("base_role_manual")] if team_link else []),
     }
 

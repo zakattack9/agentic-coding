@@ -71,7 +71,7 @@ org-only features — and **private**). A script does most of it:
    columns**, and **marks it the org template** — dry-by-default, idempotent.
 2. **Finish in the UI** (the script prints this list): edit the built-in **Status**
    options to the 6 stages · finish each view's grouping/slice/sort per
-   [`views.md`](templates/project/views.md) · build the **9 Insights charts**
+   [`views.md`](templates/project/views.md) · build the **3 Insights charts**
    ([`insights.md`](templates/project/insights.md)). These three have no API.
 
 `scaffold-repo`'s `copyProjectV2` then carries the **fields and views** to every
@@ -135,7 +135,7 @@ All skills are thin orchestrators over the deterministic engine (`lib/`), run on
 | `plan-sprint` | Assign issues to the current Iteration + Milestone, set Start/Target dates, show working-day capacity vs. assigned load (warns on over-allocation), and reorder the Ready queue. Dry-by-default. | Explicit |
 | `route-issue` | Project one issue onto the board, populate its intake-time fields (Type/Size/Tier/PM-ID/Spec/Priority/Status), optionally self-assign, and cut its authoritative linked branch. Monotonic Status, dry-by-default, guard-scoped. | Explicit |
 | `promote-pr` | Open/update the issue-linked PR (non-closing `Relates to #N`), advance board Status across the PR lifecycle, surface the PR's check state, and offer a **non-squash** merge only when checks are green. Dry-by-default, guard-scoped. | Explicit |
-| `sync-signals` | Recompute the auto Gantt signals (Schedule health, Slippage, Slippage-days, Blast radius, Blast-count, **Blocked**) from the blocked-by graph and post the project Status update. Also runs automatically via `signals-sync.yml` on events + cron. | Explicit |
+| `sync-signals` | Recompute the auto Gantt signals (Schedule health, Slippage, Slippage days, Blast radius, Blast count, **Blocked**) from the blocked-by graph and post the project Status update. Also runs automatically via `signals-sync.yml` on events + cron. | Explicit |
 
 ---
 
@@ -218,7 +218,7 @@ replayed event is a no-op; only an explicit reopen moves Status back. Issues are
     team link verbs, diff-gated schema mutations, App-token minting.
   - `sprint.py` — working-day capacity + Ready-order recommendation.
   - `scaffold.py` — golden-template copy + idempotent file install.
-  - `dag.py` — blocked-by graph → Blocked / Blast radius / Blast-count.
+  - `dag.py` — blocked-by graph → Blocked / Blast radius / Blast count.
   - `pm.py` — `PM-####` id allocator + flow-style front-matter I/O.
   - `engine.sh` — the dry-by-default / `--force` rail the skills call.
 - `templates/` — the golden-template `project/*` and the per-repo `github/*` files

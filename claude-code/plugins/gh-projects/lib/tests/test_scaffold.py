@@ -77,7 +77,7 @@ def _project_fields_payload(id_suffix: str, *, with_iterations: bool):
             ],
         })
     # Number + text + parent fields.
-    for fname, dtype in [("Slippage-days", "NUMBER"), ("Blast-count", "NUMBER"),
+    for fname, dtype in [("Slippage days", "NUMBER"), ("Blast count", "NUMBER"),
                          ("PM-ID", "TEXT"), ("Spec", "TEXT"), ("Parent issue", "PARENT")]:
         nodes.append({"__typename": "ProjectV2FieldCommon",
                       "id": f"F_{fname.replace(' ', '_')}_{id_suffix}",

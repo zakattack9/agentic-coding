@@ -27,7 +27,7 @@ There are two distinct artifacts — don't conflate them:
   - **`Priority` / `Start date` / `Target date`** are org **custom Issue Fields**
     (org-level, and **only supported in private projects**).
 
-  Five of the eight views depend on those fields (Priority/Target sorting, Type
+  Most of the eight views depend on those fields (Priority/Target sorting, Type
   slicing, the Roadmap's Start→Target bars), so a personal account literally can't
   build them. **The Project must also be private** — issue fields don't work on public
   projects.
@@ -56,15 +56,20 @@ REST Projects API at `X-GitHub-Api-Version: 2026-03-10` for fields, views, issue
 | **Org fields as project columns** | ✅ scripted | ✅ copy carries | REST `POST .../fields {"issue_field_id": …}` |
 | **8 views + their visible columns** | ✅ scripted | ✅ copy carries | REST `POST .../views` with `visible_fields` (resolved from `views.json` `fields`) |
 | **8 views — grouping / slice / sort / swimlanes** | ❌ UI | ✅ copy carries the finished view | view-create takes name/layout/filter/visible_fields only; no view-update API |
-| **Built-in Status options** (the 6 stages) | ❌ UI | ✅ copy carries | no API to set a field's options |
-| **9 Insights charts** | ❌ UI | ⚠️ docs promise only views + fields; may **not** carry → verify per board | no API to create *or* read a chart |
+| **Board column order** (e.g. Triage's Schedule health columns) | ❌ UI | ✅ copy carries | board columns follow the field's option order; reorder by drag — no API (`group_order` in views.json is the reminder) |
+| **`Type` as a view column** (Grooming) | ❌ UI | ⚠️ carries but scaffold can't verify | `issue_type` is silently dropped from `visible_fields`; toggle the column on by hand (`ui_columns` in views.json) |
+| **Global field order** (Settings → Fields) | ❌ UI | ✅ copy carries | no `position` attribute / PATCH on the fields API — drag once (`field_display_order` in fields.json is the source of truth) |
+| **Built-in Status options + colors** (the 6 stages) | ❌ UI | ✅ copy carries | no API to set a built-in field's options or colors |
+| **3 Insights charts** | ❌ UI | ⚠️ docs promise only views + fields; may **not** carry → verify per board | no API to create *or* read a chart |
 | **Mark as org template** | ✅ scripted | n/a | GraphQL `markProjectV2AsTemplate` |
 
 **Bottom line:** one script (`setup_board.py`) builds the project, all fields
-(including `Sprint`), the org issue type + fields, the org columns, and the 8 views
-**with their visible columns**, and **marks it the org template**. A short UI pass
-finishes only the **view grouping**, the **Status options**, and the **9 charts** —
-once, on the canonical template; every other org inherits it all by `copyProjectV2`.
+(including `Sprint`, **with their option colors**), the org issue type + fields, the org
+columns, and the 8 views **with their visible columns + tab order**, and **marks it the
+org template**. A short UI pass finishes the rest — the **Status options + colors**, each
+view's **grouping / slice / sort / board-column order**, the **Grooming `Type` column**,
+the **global field order**, and the **3 charts** — once, on the canonical template; every
+other org inherits it all by `copyProjectV2`. **The script prints the exact punch-list.**
 
 ---
 
@@ -75,7 +80,7 @@ The board splits fields across three "homes" (see
 
 - **`project`** — lives *in* the Project, created on the template, **carried by the
   copy.** (Status, Size, Tier, Sprint, Parent issue, PM-ID, Spec, Blocked, Schedule
-  health, Slippage, Slippage-days, Blast radius, Blast-count, Impact level, Decision
+  health, Slippage, Slippage days, Blast radius, Blast count, Impact level, Decision
   needed.)
 - **`issue_type`** — `Type` is an **org-wide Issue Type**, not a project field, so it
   is *not* in the copy. Created once per org.
@@ -270,22 +275,31 @@ fields/columns/views that already exist.
 
 The script prints these at the end; do them once, on the template:
 
-1. **Status options.** Edit the built-in **Status** field's options to exactly
-   `Backlog · Ready · In Progress · In Review · On Staging · Done` — in that order
-   (it's the monotonic automation key). There is no API to set a field's options, and
-   the built-in Status ships with `Todo / In Progress / Done`. Copy option names
+1. **Status options + colors.** Edit the built-in **Status** field's options **and set
+   each option's color** to exactly `Backlog (gray) · Ready (blue) · In Progress (yellow)
+   · In Review (pink) · On Staging (orange) · Done (green)` — in that order (it's the
+   monotonic automation key). There is no API to set a built-in field's options or colors,
+   and the built-in Status ships with `Todo / In Progress / Done`. Copy option names
    **verbatim** from [`fields.json`](templates/project/fields.json) — the views'
    filters, `lib/dag`, and `signals-sync` write these names back, so a typo silently
    breaks the automation.
-2. **View grouping / slice / sort / swimlanes.** The script already set every view's
-   **columns** (`visible_fields` — including the org `Priority` / `Target date` columns,
-   which it adds to the project for you) and its filter. What the view-create API has
-   **no parameter** for — and there's no view-update API — is each view's grouping /
-   slice / sort / swimlanes, so finish those per
-   [`views.md`](templates/project/views.md) (e.g. *Sprint* → columns by Status;
-   *Triage* → group Schedule health, slice Decision needed). `scaffold-repo`
-   later **verifies** each view resolves its group/slice.
-3. **The 9 Insights charts.** No API at all — build per
+2. **View grouping / slice / sort / swimlanes / column order.** The script already set
+   every view's **columns** (`visible_fields` — including the org `Priority` / `Target
+   date` columns) and its filter. What the view-create API has **no parameter** for — and
+   there's no view-update API — is each view's grouping / slice / sort / swimlanes and a
+   board's **column order**, so finish those per [`views.md`](templates/project/views.md).
+   The script prints the per-view list; highlights: *Sprint* → columns by Status; *Triage*
+   → group Schedule health (drag the columns to **Overdue→Blocked→At risk→On track→Done** —
+   the field's option order stays put), slice Decision needed, sort **Priority↑ then Blast
+   radius↓**; *Ready* → sort **Target↑ then Size↓**; *Epics* → sort **Schedule health↓ then
+   Impact level↑**; *Grooming* → **also toggle the `Type` column on by hand** (`issue_type`
+   can't be set via `visible_fields`). `scaffold-repo` later **verifies** each view resolves
+   its group/slice.
+3. **Global field order.** Drag the project's fields (**Settings → Fields**) into the
+   canonical order in [`fields.json`](templates/project/fields.json) `field_display_order`
+   — there's no field-position API. It governs the field palette and any non-customized
+   view; each view's own columns already override it. Carried by `copyProjectV2`.
+4. **The 3 Insights charts.** No API at all — build per
    [`insights.md`](templates/project/insights.md). Chart **history accrues per board
    from day one, is never backfilled, and is never copied**, so define Status + Sprint
    before adding items or the historical charts start blank.
@@ -332,7 +346,7 @@ Then, in `acme`:
    The Issue-Field-dependent views only resolve once the org fields exist;
    `scaffold-repo`'s `verify_views` **fails loudly** otherwise, so do this before
    scaffolding a board in acme.
-2. **Eyeball the 9 charts** (Insights has no API to verify; rebuild any that didn't
+2. **Eyeball the 3 charts** (Insights has no API to verify; rebuild any that didn't
    carry from `insights.md`).
 
 The project fields + the 8 views carry across in the copy; only the org-level taxonomy
@@ -402,7 +416,7 @@ item, not the issue** — so a recreated board resets them.
 | Data | Where it lives | On board delete |
 |---|---|---|
 | the issue · labels · assignees · **Milestone** · **Type** · **Priority / Start date / Target date** (org issue fields) · linked branch/PR · parent/sub-issue · blocked-by edges | the **issue** | ✅ survives |
-| `Schedule health` · `Slippage(-days)` · `Blast radius`/`-count` · `Blocked` | project values, **auto-derived** | ♻️ recompute with `sync-signals` |
+| `Schedule health` · `Slippage` / `Slippage days` · `Blast radius` / `Blast count` · `Blocked` | project values, **auto-derived** | ♻️ recompute with `sync-signals` |
 | **`Status` · `Size` · `Tier` · `Sprint` · `Impact level` · `Decision needed` · `PM-ID` · `Spec`** | project item values only | ❌ **lost** |
 | draft issues · **Insights chart history** · manual rank/order · archive state | the board only | ❌ **lost** |
 
@@ -434,13 +448,13 @@ won't repopulate.
 - [ ] App **secrets** stored (`GH_APP_ID` + `GH_APP_PRIVATE_KEY`) — **org-level** (paid: Path A) **or** **per private repo** (Free: Path B); board *variables* come after the board exists
 - [ ] `gh auth refresh -s project,admin:org` (as a **zilarent owner**)
 - [ ] `setup_board.py --org zilarent --title "…" --apply` → project (private) + `Type` + issue fields + all project fields incl. **Sprint** + org columns + 8 views with visible columns + **marks it the template**
-- [ ] **UI punch-list** (Phase 0.2 Step 2): edit **Status** options (6 stages) · finish view grouping/slice/sort per `views.md` · build **9 Insights charts**
+- [ ] **UI punch-list** (Phase 0.2 Step 2): edit **Status** options **+ colors** (6 stages) · finish view grouping/slice/sort/**column-order** per `views.md` (incl. Triage's Schedule-health column order + the Grooming **Type** column) · set the **global field order** (`field_display_order`) · build **3 Insights charts**
 
 **Once per additional org (e.g. acme):**
 - [ ] **GitHub App** created + installed on the new org, secrets/variables stored (Phase 0.0 — the App is per-org)
 - [ ] `copyProjectV2` zilarent template → the new org (as your org-owner auth)
 - [ ] `setup_board.py --org <new> --project-number <copied#> --apply` → org `Type` + fields + columns + **marks the copy a template** (skips copied fields/views)
-- [ ] **Eyeball the 9 charts**; rebuild any that didn't carry
+- [ ] **Eyeball the 3 charts**; rebuild any that didn't carry
 
 **Per repo/board:**
 - [ ] `scaffold-repo --org <org> --template "…" … --force` (creates the board + installs workflow files; uses the org's App token)

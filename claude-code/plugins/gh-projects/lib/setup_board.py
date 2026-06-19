@@ -20,7 +20,7 @@ WHAT NO API CAN DO — printed as a punch-list to finish in the UI, once:
   * edit the built-in Status field's options to the 6-stage lifecycle (no field-update API)
   * finish each view's grouping / slice / sort / swimlane (view-create takes
     name/layout/filter/visible_fields only; no group/sort param, no view-update API)
-  * build the 9 Insights charts (no API at all)
+  * build the 3 Insights charts (no API at all)
 
 Run it as YOURSELF: `gh auth` granting the `project` AND `admin:org` scopes
 (`gh auth refresh -s project,admin:org`). Dry-by-default — prints the full plan and
@@ -42,10 +42,11 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).resolve().parent.parent / "templates" / "project"
 API_VERSION = "2026-03-10"
 
-# Single-select option color is required by both APIs. Project fields take a per-option
-# `color` from fields.json; these are the fallbacks. Casing differs per API (REST quirk).
-PROJECT_OPTION_COLOR = "GRAY"   # projectsV2 fields fallback: UPPERCASE enum
-ISSUE_TYPE_COLOR = "gray"       # issue-types: lowercase enum
+# Single-select option color. fields.json stores the UPPERCASE projectsV2 enum; the
+# issue-type and issue-field REST APIs take the same name lowercased. setup_board sends
+# the per-option `color` and converts case per API; this is the fallback when a fields.json
+# option omits one.
+PROJECT_OPTION_COLOR = "GRAY"   # UPPERCASE for projectsV2 fields; .lower() for the issue APIs
 
 _VIEW_LAYOUT = {"BOARD_LAYOUT": "board", "TABLE_LAYOUT": "table", "ROADMAP_LAYOUT": "roadmap"}
 # Project-field types the REST create endpoint accepts.
@@ -86,7 +87,7 @@ def issue_type_payloads(fields_schema: dict) -> list[dict]:
                 out.append({
                     "name": o["name"],
                     "description": o.get("description", ""),
-                    "color": ISSUE_TYPE_COLOR,
+                    "color": o.get("color", PROJECT_OPTION_COLOR).lower(),  # issue-types enum is lowercase
                     "is_enabled": True,
                 })
     return out
@@ -101,7 +102,8 @@ def issue_field_payloads(fields_schema: dict) -> list[dict]:
         body = {"name": f["name"], "data_type": f["type"]}
         if f.get("type") == "single_select":
             body["single_select_options"] = [
-                {"name": o["name"], "description": o.get("description", "")}
+                {"name": o["name"], "description": o.get("description", ""),
+                 "color": o.get("color", PROJECT_OPTION_COLOR).lower()}  # issue-fields enum is lowercase
                 for o in f.get("options", [])
             ]
         out.append(body)
@@ -205,9 +207,10 @@ def stale_views(views_schema: dict, field_ids: dict, current_columns: dict) -> l
 def punch_list(fields_schema: dict, views_schema: dict) -> list[str]:
     """The residual UI steps no API can perform."""
     status = next((f for f in fields_schema.get("fields", []) if f.get("name") == "Status"), {})
-    status_opts = " · ".join(o["name"] for o in status.get("options", []))
+    status_opts = " · ".join(f"{o['name']} ({o.get('color', PROJECT_OPTION_COLOR)})"
+                             for o in status.get("options", []))
     lines = [
-        f"Edit the built-in **Status** field's options to: {status_opts}  (no API to set options).",
+        f"Edit the built-in **Status** field's options + colors to: {status_opts}  (no API to set options).",
         "Finish each view's grouping / slice / sort / swimlane in the UI — the view-create API "
         "takes name/layout/filter/visible_fields only (no group/sort param). Per views.json:",
     ]
@@ -217,9 +220,17 @@ def punch_list(fields_schema: dict, views_schema: dict) -> list[str]:
             bits.append(f"group by {v['group']}")
         if v.get("slice"):
             bits.append(f"slice by {v['slice']}")
+        if v.get("group_order"):
+            bits.append(f"order the {v.get('group', 'group')} columns as " + " → ".join(v["group_order"]))
+        if v.get("ui_columns"):
+            bits.append("also show column(s) by hand (not API-settable): " + ", ".join(v["ui_columns"]))
         if bits:
             lines.append(f"   - {v['name']}: {', '.join(bits)} (+ sort/cards per views.md)")
-    lines.append("Build the 9 Insights charts (no API) — see templates/project/insights.md.")
+    order = fields_schema.get("field_display_order")
+    if order:
+        lines.append("Set the global field order (Settings → Fields — no position API) to: "
+                     + " · ".join(order) + ".")
+    lines.append("Build the 3 Insights charts (no API) — see templates/project/insights.md.")
     return lines
 
 

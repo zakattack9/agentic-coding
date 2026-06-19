@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for lib/dag.py — Blocked / Blast radius / Blast-count derived
+"""Offline tests for lib/dag.py — Blocked / Blast radius / Blast count derived
 from native blocked-by edges, matched against a HAND-CHECKED fixture.
 
 Fixture graph (edge `blocked_by[A]=[B]` means "B blocks A"):

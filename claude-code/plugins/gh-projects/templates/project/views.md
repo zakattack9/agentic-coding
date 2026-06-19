@@ -28,17 +28,20 @@ in place).
 8 saved views over the **one issue set**. `is:open` defines "active"; raw `target-date`
 math gives a live backstop if the `signals-sync` cron stalls. **`*` marks an org issue
 field** (Priority/Start/Target) — setup_board adds these to the project automatically.
+A view **never repeats its group field as a visible column** — the grouped section header
+already shows it (so the Status-grouped and Priority-grouped tables omit Status/Priority
+from `fields`). Sort keys need not be visible columns either; sort resolves on any field.
 
 | # | View | Layout | Filter | Group / Slice | Sort | Visible columns (`fields`) | Audience — job |
 |---|---|---|---|---|---|---|---|
-| 1 | **Sprint** | Board | `sprint:@current -status:Backlog` | cols = Status · **count ON** | Priority↑ then Size↑ | Assignees, Size, Priority\*, Blocked | Devs — pull from Ready, WIP=1 |
-| 2 | **My Tasks** | Table | `assignee:@me is:open` | group = Status | Priority↑ then Target↑ | Status, Priority\*, Sprint, Target date\*, Blocked | Devs — cross-sprint personal list |
-| 3 | **Ready Queue** | Table (manual rank) | `status:Ready is:open` | group = Priority | manual | Priority\*, Size, Target date\*, Blocked | Lead — owns the gate & ordering |
-| 4 | **Triage** | Board | `is:open` | cols = Schedule health · swimlane = Impact (Release blocker→Low) · **slice = Decision needed** | manual | Target date\*, Assignees, Blast radius, Parent issue, Blocked | Standup — what's on fire now |
-| 5 | **Schedule Risk** | Table | `is:open schedule-health:Overdue,Blocked,"At risk"` (backstop `target-date:<@today,@today..@today+14d`) | group = Milestone **count ON** · **slice = Impact** | Milestone↑ then Target↑ | Schedule health, Target date\*, Slippage, Impact level, Decision needed, Milestone | PM/founder — what to decide & what it breaks |
-| 6 | **Epics** | Table **Show hierarchy ON** (preview; flat `type:Epic` fallback) | `type:Epic` | — *(no grouping — the epic→sub-issue tree is the structure)* | manual | Sub-issues progress, Target date\*, Schedule health, Impact level | PM — epic rollup |
-| 7 | **Grooming** | Table | `is:open` | group = Status · **slice = Type** · ad-hoc hygiene filters (type into the bar — GitHub has no saved-search slot): `status:Backlog no:assignee` · `no:target-date` · `no:sprint` · `status:Blocked` | manual | Status, Assignees, Priority\*, Target date\*, Sprint (Type is the slice — issue_type can't be a column) | PM — intake + trustworthy data |
-| 8 | **Roadmap** | Roadmap **Truncate title ON** | `has:target-date` | date = Start→Target · group = Milestone · **markers = Milestone + Sprint** | Target↑ · zoom = Quarter | — *(roadmap: no `visible_fields`; date bars span Start date\* → Target date\*)* | Stakeholders — live timeline |
+| 1 | **Sprint** | Board | `sprint:@current -status:Backlog` | cols = Status · **count ON** | Priority↑ then Size↑ | Priority\*, Size, Target date\*, Assignees, Blocked | Devs — pull from Ready, WIP=1 |
+| 2 | **My Tasks** | Table | `assignee:@me is:open` | group = Status | Priority↑ then Target↑ | Priority\*, Target date\*, Sprint, Size, Blocked | Devs — cross-sprint personal list |
+| 3 | **Ready** | Table | `status:Ready is:open` | group = Priority | Target↑ then Size↓ | Target date\*, Size, Blocked, Tier | Lead — owns the gate & ordering (Tier flags T3s needing a deep spec) |
+| 4 | **Blockers** | Table | `-blast-radius:None is:open` | group = Blast radius (None→Blocks release) | Blast count↓ | Blast count, Blocked, Status, Assignees, Target date\*, Parent issue | Lead — what to unblock first |
+| 5 | **Triage** | Board | `is:open -schedule-health:Done` | cols = Schedule health (drag column order → Overdue→Blocked→At risk→On track; options unchanged — the `Done` column is filtered out since open items are never health:Done) · swimlane = Impact (Release blocker→Low) · **slice = Decision needed** | Priority↑ then Blast radius↓ | Priority\*, Status, Target date\*, Slippage, Milestone, Assignees, Blast radius, Blocked | Standup — what's on fire now |
+| 6 | **Epics** | Table **Show hierarchy ON** (preview; flat `type:Epic is:open` fallback) | `type:Epic is:open` | — *(no grouping — the epic→sub-issue tree is the structure)* | Schedule health↓ then Impact level↑ | Sub-issues progress, Status, Schedule health, Target date\*, Impact level | PM — epic rollup |
+| 7 | **Grooming** | Table | `is:open` | group = Status · **slice = Type** · ad-hoc hygiene filters (type into the bar — GitHub has no saved-search slot): `status:Backlog no:assignee` · `no:target-date` · `no:sprint` · `blocked:Blocked` | manual | Tier, Size, Priority\*, Assignees, Target date\*, Sprint, **Type** (Type is the slice **and** a hand-added column — issue_type can't be in `visible_fields`, so toggle the Type column on in the UI) | PM — intake + trustworthy data |
+| 8 | **Roadmap** | Roadmap **Truncate title ON** | `has:target-date is:open` | date = Start→Target · group = Milestone · **markers = Milestone + Sprint** | Target↑ · zoom = Quarter | — *(roadmap: no `visible_fields`; date bars span Start date\* → Target date\*)* | Stakeholders — live timeline |
 
 **Platform gaps (view playbook):**
 - No `no:blocked-by` qualifier → the "blocked w/ no blocker" check stays a `lib/dag` scan.
@@ -47,6 +50,16 @@ field** (Priority/Start/Target) — setup_board adds these to the project automa
   grouping and the rest are set at create or in the UI, and ship onward via `copyProjectV2`.
 - **Org issue fields aren't auto-added to a project** → setup_board adds Priority/Start/
   Target via `POST .../fields {"issue_field_id": …}` so their columns (`*`) resolve.
+- **Board column order** follows the grouped field's *option* order; a per-view reorder
+  (Triage's Schedule health → Overdue→Blocked→At risk→On track→Done) is a **UI drag** —
+  no API, and it leaves the field's options untouched (`group_order` in views.json = the reminder).
+- **`issue_type` can't be a `visible_fields` column** → show **Type** as a hand-toggled
+  UI column (`ui_columns` in views.json); it carries via copy but scaffold can't verify it.
+- **No field-position API** → the project's **global field order** (Settings → Fields,
+  `field_display_order` in fields.json) is a one-time UI drag, carried by `copyProjectV2`.
+- **View tab order = creation order** (the order in `views.json`); there's no view-reorder
+  API, so changing the order on an existing board is a UI tab-drag (the template gets it
+  right at create, and the order carries via copy).
 
 **Fallback (template edit, never per-project):** if a view needs changing, change it on the
 golden-template Project (delete + recreate, or edit in the UI) and re-copy so every project

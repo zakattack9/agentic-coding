@@ -87,7 +87,7 @@ The engine prints the full **change manifest** to stderr:
   is given, plus the **base-role manual step** — setting the org base role to
   *Read* is **UI-only with no API**, so the engine emits it as a manual
   checklist item rather than attempting a mutation,
-- the human checklist (confirm the 9 Insights charts — Insights has no API; and
+- the human checklist (confirm the 3 Insights charts — Insights has no API; and
   the base-role manual step when `--team` was given).
 
 Show the user this manifest verbatim. The machine-readable result JSON on stdout
@@ -118,7 +118,7 @@ re-copy), the iteration decision (skipped vs
 diff-added), files installed (including `add-to-project.yml`), Issue Types/Fields
 ensured, the no-squash setting, the **repo→Project link** (`link`/`skip`) and the
 **Project→team link** when `--team` was given, and the **human checklist** items
-(eyeball the 9 Insights charts — the engine cannot verify them, Insights has no
+(eyeball the 3 Insights charts — the engine cannot verify them, Insights has no
 API; and set the org base role to *Read* in the UI when `--team` was given —
 base role has no API). If you re-ran on an already-scaffolded repo, confirm
 it was a no-op (empty install manifest, zero iteration mutations, repo link

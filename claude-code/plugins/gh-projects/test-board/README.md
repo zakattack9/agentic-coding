@@ -34,8 +34,7 @@ Auth: run as **yourself** with `gh auth` granting `project` + `admin:org` (same 
 - **2 Epics** with sub-issues (feeds the Sub-issues % rollup) and a **blocked-by
   DAG** (feeds `Blocked` / `Blast radius` / the Critical-Path view).
 - **3 release milestones** (`v1.0`/`v1.1`/`v1.2`) with due dates and ~21 issues
-  assigned — feeds the Milestone-grouped views (Epics, Schedule Risk
-  Table, Roadmap). A couple of issues are left unmilestoned on
+  assigned — feeds the Milestone-grouped Roadmap view. A couple of issues are left unmilestoned on
   purpose.
 - **Assignees** on every active (non-Backlog) issue so `My Tasks` populates.
 - The repo is **linked** to the board (surfaces it in the repo's Projects tab).
@@ -48,9 +47,9 @@ labels, and any pre-existing issue are never touched.
 
 - The org `Status` options, view grouping/slice/sort, and the Insights charts are
   inherited from #7 by the copy (they are UI-only, per `GOLDEN-TEMPLATE-SETUP.md`).
-- **Charts accrue history per board from day one and are never backfilled** — a
-  freshly-seeded board's historical/burn-up charts will look sparse until time
-  passes; the snapshot-style charts populate immediately.
+- **All 3 Insights charts are current/snapshot-style** (Throughput, Milestone progress,
+  Slippage days sum), so they populate immediately on a seeded board — no historical
+  (time-axis) chart remains, so nothing looks sparse waiting for history to accrue.
 - Org **issue fields** (`Priority` / `Start date` / `Target date`) are written via
   the `updateIssueFieldValue` mutation (the project-item path rejects them); the
   other fields use `updateProjectV2ItemFieldValue`. Both paths are in

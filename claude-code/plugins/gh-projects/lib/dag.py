@@ -4,10 +4,10 @@
 Input: the native blocked-by edges GitHub exposes (issue dependencies). From
 them this derives, per item, the three board signals:
 
-  * Blocked      — yes/no: does the item have >=1 OPEN blocker?
+  * Blocked      — Blocked / Unblocked: does the item have >=1 OPEN blocker?
   * Blast radius — None / Blocks 1 / Blocks many / Blocks release:
                    what breaks if THIS item slips, by downstream reach.
-  * Blast-count  — # of DISTINCT downstream items transitively blocked by it.
+  * Blast count  — # of DISTINCT downstream items transitively blocked by it.
 
 "Blocks release" wins when any transitively-blocked item is a release blocker
 (its `release_blocker` flag, e.g. milestone/impact = Release blocker). All math

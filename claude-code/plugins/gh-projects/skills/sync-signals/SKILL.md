@@ -1,6 +1,6 @@
 ---
 name: sync-signals
-description: On-demand recompute of the gh-projects board's deterministic Gantt-signals (Schedule health, Slippage, Slippage-days, Blast radius, Blast-count, Blocked) and post the project Status update — the same computation signals-sync.yml runs on events/cron, triggered by hand. Use when the user asks to "refresh the board signals", "recompute slippage/blast/blocked", "repost the project status update", or to force a signal refresh outside the cron. Dry-by-default — previews the exact plan, writes only on explicit --apply. NO AI/model call (pure date math + blocked-by DAG). Does NOT author specs (spec-ops) or move Status columns (board-sync/board-status).
+description: On-demand recompute of the gh-projects board's deterministic Gantt-signals (Schedule health, Slippage, Slippage days, Blast radius, Blast count, Blocked) and post the project Status update — the same computation signals-sync.yml runs on events/cron, triggered by hand. Use when the user asks to "refresh the board signals", "recompute slippage/blast/blocked", "repost the project status update", or to force a signal refresh outside the cron. Dry-by-default — previews the exact plan, writes only on explicit --apply. NO AI/model call (pure date math + blocked-by DAG). Does NOT author specs (spec-ops) or move Status columns (board-sync/board-status).
 disable-model-invocation: true
 model: claude-opus-4-8
 effort: low
@@ -26,10 +26,10 @@ need a GitHub **App installation token** in `GH_APP_TOKEN` — **never**
 |---|---|
 | **Blocked** | `yes` if the item has ≥1 OPEN blocker (native blocked-by DAG) |
 | **Blast radius** | `None / Blocks 1 / Blocks many / Blocks release` — downstream reach |
-| **Blast-count** | # distinct downstream items transitively blocked |
+| **Blast count** | # distinct downstream items transitively blocked |
 | **Schedule health** | `Done`(closed) › `Overdue`(open, past Target) › `Blocked` › `At risk`(Target ≤ window) › `On track` |
 | **Slippage** | bucketed days past Target — `Not late / 1–2d / 3–5d / 1+wk / 2+wk` |
-| **Slippage-days** | whole days past Target (0 if not late) |
+| **Slippage days** | whole days past Target (0 if not late) |
 | **Project Status update** | rolled-up health (`ON_TRACK/AT_RISK/OFF_TRACK/COMPLETE`) + a one-line body |
 
 **Rollup:** any `Overdue` or any `Blocked`-item-that-blocks-release ⇒

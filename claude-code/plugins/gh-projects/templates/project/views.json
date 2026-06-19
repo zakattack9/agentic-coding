@@ -1,11 +1,12 @@
 {
-  "_comment": "Golden-template Project VIEW CATALOG (gh-projects). The 8 saved views are created as SHELLS by lib/setup_board.py (REST POST .../views — name + layout + filter + visible_fields) and then have their grouping/slice/sort finished by hand in the UI (the create API takes no group/sort/slice; there is no view-update API). They replicate via copyProjectV2. scaffold-repo verifies the copy carries all 8 by name AND that each resolves its documented filter/group/slice (verify_views) — a missing view or unresolved filter/group/slice is a template/copy defect: fix it on the golden template and re-copy, never hand-add to a scaffolded project. Each view declares: name, layout, the expected raw `filter` string (substring qualifiers that MUST be present in the copied view's resolved filter), `group` (the field the view groups columns/rows by, must resolve to a real project/issue field — empty for ungrouped), `slice` (the verticalGroupBy/slice-panel field — empty when none), and `fields` (the visible columns/card fields BY NAME, in display order — table & board only, empty for roadmap). setup_board resolves `fields` names to field IDs against the live project and sets `visible_fields` at create; the org issue fields (Priority / Start date / Target date) don't auto-appear as project columns, so setup_board adds them first via POST .../fields {issue_field_id} and then resolves them like any other field (any name still absent is skipped with a warning). Note: the `Type` issue-type field can NOT be a `visible_fields` column — GitHub silently drops issue_type from visible_fields — so it is surfaced via a view's `slice`, never listed in `fields`. Full sort/card detail lives in views.md.",
+  "_comment": "Golden-template Project VIEW CATALOG (gh-projects). The 8 saved views are created as SHELLS by lib/setup_board.py (REST POST .../views — name + layout + filter + visible_fields) and then have their grouping/slice/sort finished by hand in the UI (the create API takes no group/sort/slice; there is no view-update API). They replicate via copyProjectV2. scaffold-repo verifies the copy carries all 8 by name AND that each resolves its documented filter/group/slice (verify_views) — a missing view or unresolved filter/group/slice is a template/copy defect: fix it on the golden template and re-copy, never hand-add to a scaffolded project. Each view declares: name, layout, the expected raw `filter` string (substring qualifiers that MUST be present in the copied view's resolved filter), `group` (the field the view groups columns/rows by, must resolve to a real project/issue field — empty for ungrouped), `slice` (the verticalGroupBy/slice-panel field — empty when none), and `fields` (the visible columns/card fields BY NAME, in display order — table & board only, empty for roadmap). setup_board resolves `fields` names to field IDs against the live project and sets `visible_fields` at create; the org issue fields (Priority / Start date / Target date) don't auto-appear as project columns, so setup_board adds them first via POST .../fields {issue_field_id} and then resolves them like any other field (any name still absent is skipped with a warning). Note: the `Type` issue-type field can NOT be a `visible_fields` column — GitHub silently drops issue_type from visible_fields — so it is surfaced via a view's `slice` and, when a view also wants it shown inline, listed in `ui_columns` (toggle on by hand), never in `fields`. Two optional UI-only hint keys are reminders emitted in setup_board's punch-list and are sent to NO API and checked by NEITHER verify nor stale: `group_order` (for a board-grouped view, the left-to-right column order to set by hand — board columns otherwise follow the field's option order) and `ui_columns` (columns to toggle on by hand that visible_fields can't set, e.g. issue_type). Full sort/card detail lives in views.md.",
   "_field_qualifiers": {
     "_comment": "Maps a filter qualifier KEYWORD (left of the colon in a saved-search filter, e.g. `status:Ready`) to the project/issue FIELD NAME it resolves against. A declared filter qualifier 'resolves' when its keyword maps here AND the mapped field exists on the copy. Native GitHub qualifiers (is, assignee, no) need no field and are listed as native.",
     "sprint": "Sprint",
     "status": "Status",
     "schedule-health": "Schedule health",
     "target-date": "Target date",
+    "blast-radius": "Blast radius",
     "type": "Type",
     "milestone": "Milestone",
     "is": "__native__",
@@ -20,7 +21,7 @@
       "filter": "sprint:@current -status:Backlog",
       "group": "Status",
       "slice": "",
-      "fields": ["Assignees", "Size", "Priority", "Blocked"]
+      "fields": ["Priority", "Size", "Target date", "Assignees", "Blocked"]
     },
     {
       "name": "My Tasks",
@@ -28,39 +29,40 @@
       "filter": "assignee:@me is:open",
       "group": "Status",
       "slice": "",
-      "fields": ["Status", "Priority", "Sprint", "Target date", "Blocked"]
+      "fields": ["Priority", "Target date", "Sprint", "Size", "Blocked"]
     },
     {
-      "name": "Ready Queue",
+      "name": "Ready",
       "layout": "TABLE_LAYOUT",
       "filter": "status:Ready is:open",
       "group": "Priority",
       "slice": "",
-      "fields": ["Priority", "Size", "Target date", "Blocked"]
+      "fields": ["Target date", "Size", "Blocked", "Tier"]
+    },
+    {
+      "name": "Blockers",
+      "layout": "TABLE_LAYOUT",
+      "filter": "-blast-radius:None is:open",
+      "group": "Blast radius",
+      "slice": "",
+      "fields": ["Blast count", "Blocked", "Status", "Assignees", "Target date", "Parent issue"]
     },
     {
       "name": "Triage",
       "layout": "BOARD_LAYOUT",
-      "filter": "is:open",
+      "filter": "is:open -schedule-health:Done",
       "group": "Schedule health",
       "slice": "Decision needed",
-      "fields": ["Target date", "Assignees", "Blast radius", "Parent issue", "Blocked"]
-    },
-    {
-      "name": "Schedule Risk",
-      "layout": "TABLE_LAYOUT",
-      "filter": "is:open schedule-health:Overdue,Blocked,\"At risk\"",
-      "group": "Milestone",
-      "slice": "Impact level",
-      "fields": ["Schedule health", "Target date", "Slippage", "Impact level", "Decision needed", "Milestone"]
+      "group_order": ["Overdue", "Blocked", "At risk", "On track"],
+      "fields": ["Priority", "Status", "Target date", "Slippage", "Milestone", "Assignees", "Blast radius", "Blocked"]
     },
     {
       "name": "Epics",
       "layout": "TABLE_LAYOUT",
-      "filter": "type:Epic",
+      "filter": "type:Epic is:open",
       "group": "",
       "slice": "",
-      "fields": ["Sub-issues progress", "Target date", "Schedule health", "Impact level"]
+      "fields": ["Sub-issues progress", "Status", "Schedule health", "Target date", "Impact level"]
     },
     {
       "name": "Grooming",
@@ -68,12 +70,13 @@
       "filter": "is:open",
       "group": "Status",
       "slice": "Type",
-      "fields": ["Status", "Assignees", "Priority", "Target date", "Sprint"]
+      "ui_columns": ["Type"],
+      "fields": ["Tier", "Size", "Priority", "Assignees", "Target date", "Sprint"]
     },
     {
       "name": "Roadmap",
       "layout": "ROADMAP_LAYOUT",
-      "filter": "has:target-date",
+      "filter": "has:target-date is:open",
       "group": "Milestone",
       "slice": "",
       "fields": []

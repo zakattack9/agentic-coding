@@ -1,6 +1,14 @@
 {
-  "_comment": "Golden-template Project field schema (gh-projects). Hand-built once on the golden-template Project (before any scaffold copy), then replicated to every scaffolded project via copyProjectV2. scaffold-repo uses this as the EXPECTED schema to diff the COPY against — it never re-PUTs an option list or iterationConfiguration without a prior diff. Every single-select carries an option `description` documenting its derivation and a `color` (UPPERCASE projectsV2 enum) for the board UI; setup_board sends these at field create (the REST fields API has no update, so recolor existing fields in the UI). Org Issue Fields (Priority/Start date/Target date) and Issue Types (Type) live OUTSIDE the project copy (see fields with home != project) and are ensured by scaffold against the org.",
+  "_comment": "Golden-template Project field schema (gh-projects). Hand-built once on the golden-template Project (before any scaffold copy), then replicated to every scaffolded project via copyProjectV2. scaffold-repo uses this as the EXPECTED schema to diff the COPY against — it never re-PUTs an option list or iterationConfiguration without a prior diff. Every single-select option carries a `description` (what the option means relative to the field) and a `color` stored as the UPPERCASE projectsV2 enum; setup_board sends it at field create and lowercases the same name for the issue-type and issue-field APIs (their enum is identical but lowercase). No create API has an update, so recolor/rename existing options in the UI. COLOR IS RESERVED FOR SIGNAL: only risk/urgency/health fields are colored (Schedule health, Slippage, Blast radius, Blocked, Impact level, Priority, Status); descriptive/categorical fields (Size, Tier) are intentionally all-GRAY so the views aren't littered with color — do not 'helpfully' recolor them. Org Issue Fields (Priority/Start date/Target date) and Issue Types (Type) live OUTSIDE the project copy (see fields with home != project) and are ensured by scaffold against the org. Field display names avoid hyphens (e.g. 'Blast count', not 'Blast count') so they read cleanly as columns/pills; 'PM-ID' is the one exception — its hyphen mirrors the 'PM-####' value it holds.",
   "status_order": ["Backlog", "Ready", "In Progress", "In Review", "On Staging", "Done"],
+  "_field_display_order_comment": "Canonical global field order for the project (Settings -> Fields). There is no API to set field position (the REST fields API has no position attribute and no PATCH; verified 2026-03-10), so this is applied once by hand in the UI on the golden template and carried by copyProjectV2. It governs the field palette and any view that hasn't set its own column order; each view's own `fields` list in views.json overrides it per-view (purpose-first). Includes the native built-ins (Assignees / Parent issue / Sub-issues progress / Milestone) at their intended slots; Title stays pinned first by GitHub.",
+  "field_display_order": [
+    "Status", "Priority", "Size", "Tier", "Type", "Sprint",
+    "Start date", "Target date", "Milestone",
+    "Schedule health", "Slippage", "Slippage days", "Blast radius", "Blast count", "Blocked",
+    "Impact level", "Decision needed",
+    "Assignees", "Parent issue", "Sub-issues progress", "PM-ID", "Spec"
+  ],
   "fields": [
     {
       "name": "Status",
@@ -8,14 +16,14 @@
       "home": "project",
       "builtin": true,
       "set_by": "automation+human",
-      "purpose": "Lifecycle column & automation key",
+      "purpose": "Lifecycle stage of the work; the key board automation reads and writes",
       "options": [
-        {"name": "Backlog", "description": "Captured, not yet committed."},
-        {"name": "Ready", "description": "AC-complete and gated by the lead; pull from here."},
-        {"name": "In Progress", "description": "A linked branch has been pushed; WIP."},
-        {"name": "In Review", "description": "A non-draft PR is open against the issue."},
-        {"name": "On Staging", "description": "Merged to main and deployed to staging; item stays open."},
-        {"name": "Done", "description": "Deployed to prod; closed by board-status, Release cut."}
+        {"name": "Backlog", "description": "Captured but not yet committed to.", "color": "GRAY"},
+        {"name": "Ready", "description": "Acceptance criteria complete and lead-gated — pull from here.", "color": "BLUE"},
+        {"name": "In Progress", "description": "A linked branch has been pushed; work is underway.", "color": "YELLOW"},
+        {"name": "In Review", "description": "A non-draft PR is open against the issue.", "color": "PINK"},
+        {"name": "On Staging", "description": "Merged to main and deployed to staging; the item stays open.", "color": "ORANGE"},
+        {"name": "Done", "description": "Deployed to prod and closed.", "color": "GREEN"}
       ]
     },
     {
@@ -25,11 +33,11 @@
       "set_by": "intake",
       "purpose": "Work taxonomy (org-wide Issue Type, not a project field)",
       "options": [
-        {"name": "Feature", "description": "New user-facing capability."},
-        {"name": "Bug", "description": "A defect in existing behavior."},
-        {"name": "Chore", "description": "Maintenance / housekeeping with no user-facing change."},
-        {"name": "Infra", "description": "Infrastructure / config-as-contract change."},
-        {"name": "Epic", "description": "A parent that splits into per-AC-group sub-issues."}
+        {"name": "Feature", "description": "New user-facing capability.", "color": "GREEN"},
+        {"name": "Bug", "description": "A defect in existing behavior.", "color": "RED"},
+        {"name": "Chore", "description": "Maintenance with no user-facing change.", "color": "ORANGE"},
+        {"name": "Infra", "description": "Infrastructure or config-as-contract change.", "color": "BLUE"},
+        {"name": "Epic", "description": "A parent that splits into per-AC-group sub-issues.", "color": "PURPLE"}
       ]
     },
     {
@@ -37,11 +45,11 @@
       "type": "single_select",
       "home": "project",
       "set_by": "intake (suggest) + human",
-      "purpose": "S/M/L appetite (not points); suggested from AC-group count",
+      "purpose": "Appetite (not story points); suggested from the AC-group count",
       "options": [
-        {"name": "S", "description": "1 AC group; trivial appetite.", "color": "BLUE"},
-        {"name": "M", "description": "2-3 AC groups; standard appetite.", "color": "YELLOW"},
-        {"name": "L", "description": "4+ AC groups; large appetite (recommends an Epic split).", "color": "ORANGE"}
+        {"name": "S", "description": "1 AC group; trivial appetite.", "color": "GRAY"},
+        {"name": "M", "description": "2-3 AC groups; standard appetite.", "color": "GRAY"},
+        {"name": "L", "description": "4+ AC groups; large appetite — consider an Epic split.", "color": "GRAY"}
       ]
     },
     {
@@ -49,11 +57,11 @@
       "type": "single_select",
       "home": "project",
       "set_by": "intake",
-      "purpose": "Drives write-spec rigor (T1->light, T2->standard, T3->full+refine); T3 requires a linked deep spec",
+      "purpose": "Sets spec rigor: T1 light, T2 standard, T3 full rigor + a linked deep spec",
       "options": [
         {"name": "T1", "description": "Trivial; light rigor; AC table only.", "color": "GRAY"},
-        {"name": "T2", "description": "Standard; standard rigor; TL;DR + AC + boundaries.", "color": "BLUE"},
-        {"name": "T3", "description": "Complex; full rigor + refine-spec; linked deep spec required.", "color": "PURPLE"}
+        {"name": "T2", "description": "Standard rigor; TL;DR + AC + boundaries.", "color": "GRAY"},
+        {"name": "T3", "description": "Complex; full rigor + refine; a linked deep spec is required.", "color": "GRAY"}
       ]
     },
     {
@@ -61,7 +69,7 @@
       "type": "iteration",
       "home": "project",
       "set_by": "plan-sprint",
-      "purpose": "2-week cadence; filter @current/@next/@previous",
+      "purpose": "2-week iteration; filter with @current / @next / @previous",
       "iterations_ref": "iterations.json"
     },
     {
@@ -77,24 +85,24 @@
       "type": "text",
       "home": "project",
       "set_by": "intake",
-      "purpose": "Stable PM-#### threading spec->issue->PR"
+      "purpose": "Stable PM-#### identifier threading spec -> issue -> PR"
     },
     {
       "name": "Spec",
       "type": "text",
       "home": "project",
       "set_by": "intake",
-      "purpose": "Link to T3 deep spec; empty for T1/T2"
+      "purpose": "Link to the T3 deep spec; empty for T1/T2"
     },
     {
       "name": "Blocked",
       "type": "single_select",
       "home": "project",
       "set_by": "auto (signals-sync from blocked-by DAG)",
-      "purpose": "yes/no flag-state derived from native dependencies, not hand-set",
+      "purpose": "Derived flag — does an open blocked-by dependency hold this item? Not hand-set",
       "options": [
-        {"name": "no", "description": "No unresolved blocked-by dependency.", "color": "GREEN"},
-        {"name": "yes", "description": "At least one open blocked-by dependency (derived by lib/dag from native blocked-by edges).", "color": "RED"}
+        {"name": "Unblocked", "description": "No open blocked-by dependency.", "color": "GRAY"},
+        {"name": "Blocked", "description": "At least one open blocked-by dependency (derived by lib/dag from the native edges).", "color": "RED"}
       ]
     },
     {
@@ -102,12 +110,12 @@
       "type": "single_select",
       "home": "issue_field",
       "set_by": "PM/lead",
-      "purpose": "P0-P3; orders Ready (org Issue Field, surfaced as a project column on private projects)",
+      "purpose": "P0-P3 urgency; orders the Ready queue (org Issue Field, shown as a project column on private projects)",
       "options": [
-        {"name": "P0", "description": "Drop everything."},
-        {"name": "P1", "description": "Next up."},
-        {"name": "P2", "description": "Soon."},
-        {"name": "P3", "description": "Eventually."}
+        {"name": "P0", "description": "Drop everything.", "color": "PINK"},
+        {"name": "P1", "description": "Next up.", "color": "RED"},
+        {"name": "P2", "description": "Soon.", "color": "YELLOW"},
+        {"name": "P3", "description": "Eventually.", "color": "BLUE"}
       ]
     },
     {
@@ -122,18 +130,18 @@
       "type": "date",
       "home": "issue_field",
       "set_by": "plan-sprint/lead",
-      "purpose": "Roadmap target / deadline; feeds Schedule health & Slippage (org Issue Field)"
+      "purpose": "Deadline; feeds Schedule health & Slippage (org Issue Field)"
     },
     {
       "name": "Schedule health",
       "type": "single_select",
       "home": "project",
       "set_by": "auto",
-      "purpose": "Rolled-up schedule status",
+      "purpose": "Rolled-up schedule status of the item",
       "options": [
         {"name": "On track", "description": "Not past Target and not blocking a release.", "color": "GREEN"},
-        {"name": "At risk", "description": "Target within the warning window or a soft slip.", "color": "YELLOW"},
-        {"name": "Blocked", "description": "An open blocked-by dependency holds it.", "color": "ORANGE"},
+        {"name": "At risk", "description": "Target is within the warning window, or a soft slip.", "color": "YELLOW"},
+        {"name": "Blocked", "description": "Held by an open blocked-by dependency.", "color": "ORANGE"},
         {"name": "Overdue", "description": "Past Target date and still open.", "color": "RED"},
         {"name": "Done", "description": "Shipped to prod.", "color": "PURPLE"}
       ]
@@ -143,7 +151,7 @@
       "type": "single_select",
       "home": "project",
       "set_by": "auto",
-      "purpose": "Bucketed lateness past Target",
+      "purpose": "Bucketed lateness past Target date",
       "options": [
         {"name": "Not late", "description": "At or before Target date.", "color": "GREEN"},
         {"name": "1-2d", "description": "1 to 2 days past Target.", "color": "YELLOW"},
@@ -153,18 +161,18 @@
       ]
     },
     {
-      "name": "Slippage-days",
+      "name": "Slippage days",
       "type": "number",
       "home": "project",
       "set_by": "auto",
-      "purpose": "Days past Target (unlocks Insights sum/avg, numeric sort/range)"
+      "purpose": "Exact days past Target (unlocks Insights sum/avg and numeric sort)"
     },
     {
       "name": "Blast radius",
       "type": "single_select",
       "home": "project",
       "set_by": "auto (lib/dag)",
-      "purpose": "How much this item blocks downstream",
+      "purpose": "How much this item blocks downstream work",
       "options": [
         {"name": "None", "description": "Blocks nothing downstream.", "color": "GRAY"},
         {"name": "Blocks 1", "description": "Blocks exactly one downstream item.", "color": "YELLOW"},
@@ -173,23 +181,23 @@
       ]
     },
     {
-      "name": "Blast-count",
+      "name": "Blast count",
       "type": "number",
       "home": "project",
       "set_by": "auto (lib/dag)",
-      "purpose": "# downstream items blocked (Insights sum/sort)"
+      "purpose": "Number of downstream items blocked (Insights sum/sort)"
     },
     {
       "name": "Impact level",
       "type": "single_select",
       "home": "project",
       "set_by": "human",
-      "purpose": "Deliberate PM/lead impact call",
+      "purpose": "Deliberate impact call by the PM/lead",
       "options": [
         {"name": "Release blocker", "description": "A release cannot ship without it.", "color": "RED"},
         {"name": "High", "description": "Significant consequence if late.", "color": "ORANGE"},
         {"name": "Medium", "description": "Noticeable consequence if late.", "color": "YELLOW"},
-        {"name": "Low", "description": "Minor; little consequence if late.", "color": "GRAY"}
+        {"name": "Low", "description": "Minor consequence if late.", "color": "GRAY"}
       ]
     },
     {
@@ -197,7 +205,7 @@
       "type": "single_select",
       "home": "project",
       "set_by": "human",
-      "purpose": "Deliberate PM/lead decision call",
+      "purpose": "The pending PM/lead decision on a stuck item",
       "options": [
         {"name": "No", "description": "No decision pending.", "color": "GRAY"},
         {"name": "Move date", "description": "Push the Target date.", "color": "ORANGE"},

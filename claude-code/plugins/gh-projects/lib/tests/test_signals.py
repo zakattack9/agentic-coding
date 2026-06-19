@@ -3,7 +3,7 @@
 
 Covers:
   * the vendored signals computer derives Schedule health / Slippage /
-    Slippage-days / Blast radius / Blast-count / Blocked DETERMINISTICALLY from a
+    Slippage days / Blast radius / Blast count / Blocked DETERMINISTICALLY from a
     fixture board (expected values) — and ZERO AI calls exist (grep the workflow
     + the vendored script for anthropic/claude/model API calls -> none).
   * rollup fixtures -> expected health enum (the documented rules).
@@ -73,11 +73,11 @@ class TestSignalValues(unittest.TestCase):
 
     def test_blocked_flag(self):
         # #2,#3,#4 have OPEN blockers; #1,#5 do not.
-        self.assertEqual(self.sig["1"]["blocked"], "no")
-        self.assertEqual(self.sig["2"]["blocked"], "yes")
-        self.assertEqual(self.sig["3"]["blocked"], "yes")
-        self.assertEqual(self.sig["4"]["blocked"], "yes")
-        self.assertEqual(self.sig["5"]["blocked"], "no")
+        self.assertEqual(self.sig["1"]["blocked"], "Unblocked")
+        self.assertEqual(self.sig["2"]["blocked"], "Blocked")
+        self.assertEqual(self.sig["3"]["blocked"], "Blocked")
+        self.assertEqual(self.sig["4"]["blocked"], "Blocked")
+        self.assertEqual(self.sig["5"]["blocked"], "Unblocked")
 
     def test_blast_radius_and_count(self):
         # #1 transitively blocks {2,3,4}; 4 is a release blocker -> Blocks release.
@@ -134,8 +134,8 @@ class TestSignalValues(unittest.TestCase):
         b = board_fixture()
         b["1"]["state"] = "closed"
         s = signals.compute_signals(b, today=TODAY)
-        self.assertEqual(s["2"]["blocked"], "no")
-        self.assertEqual(s["4"]["blocked"], "no")
+        self.assertEqual(s["2"]["blocked"], "Unblocked")
+        self.assertEqual(s["4"]["blocked"], "Unblocked")
 
 
 # --------------------------------------------------------------------------- #
@@ -197,7 +197,7 @@ class TestRollup(unittest.TestCase):
         }
         sig = signals.compute_signals(board, today=TODAY)
         # #1 is blocked AND its blast radius is Blocks release.
-        self.assertEqual(sig["1"]["blocked"], "yes")
+        self.assertEqual(sig["1"]["blocked"], "Blocked")
         self.assertEqual(sig["1"]["blast_radius"], "Blocks release")
         # No item is Overdue here.
         self.assertFalse(any(s["schedule_health"] == "Overdue" for s in sig.values()))
@@ -385,12 +385,12 @@ class FakeRunner:
             return {"__typename": "ProjectV2FieldCommon", "id": f"F_{name}",
                     "name": name, "dataType": "NUMBER"}
         fields = [
-            ss("Blocked", ["yes", "no"]),
+            ss("Blocked", ["Unblocked", "Blocked"]),
             ss("Blast radius", ["None", "Blocks 1", "Blocks many", "Blocks release"]),
-            num("Blast-count"),
+            num("Blast count"),
             ss("Schedule health", ["On track", "At risk", "Blocked", "Overdue", "Done"]),
             ss("Slippage", ["Not late", "1–2d", "3–5d", "1+wk", "2+wk"]),
-            num("Slippage-days"),
+            num("Slippage days"),
         ]
         return {"data": {"organization": {"projectV2": {"id": "PVT_proj1",
                 "fields": {"nodes": fields}}}}}
