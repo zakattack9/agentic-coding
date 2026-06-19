@@ -3,4 +3,4 @@ __pycache__/
 *.pyo
 
 # Dev-only mock test board: track the scripts + README, ignore run state
-test-board/manifest.json
+mock-board/manifest.json

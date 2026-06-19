@@ -1,4 +1,4 @@
-# test-board — disposable mock board (dev-only)
+# mock-board — disposable mock board (dev-only)
 
 Stands up a throwaway copy of the golden-template Project (#7) filled with a
 coherent backlog of mock issues in `Zilarent/cars.bdv`, so you can eyeball how the
@@ -8,7 +8,7 @@ views / fields / charts look with live-ish data. **Not part of the shipped plugi
 ## Use
 
 ```bash
-cd claude-code/plugins/gh-projects/test-board
+cd claude-code/plugins/gh-projects/mock-board
 
 python3 seed_test_board.py --dry-run   # preview the plan + data distribution
 python3 seed_test_board.py             # create the board + ~23 mock issues
