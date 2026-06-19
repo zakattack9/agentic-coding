@@ -186,10 +186,10 @@
       "set_by": "human",
       "purpose": "Deliberate PM/lead impact call",
       "options": [
-        {"name": "Low", "description": "Minor; little consequence if late.", "color": "GRAY"},
-        {"name": "Medium", "description": "Noticeable consequence if late.", "color": "YELLOW"},
+        {"name": "Release blocker", "description": "A release cannot ship without it.", "color": "RED"},
         {"name": "High", "description": "Significant consequence if late.", "color": "ORANGE"},
-        {"name": "Release blocker", "description": "A release cannot ship without it.", "color": "RED"}
+        {"name": "Medium", "description": "Noticeable consequence if late.", "color": "YELLOW"},
+        {"name": "Low", "description": "Minor; little consequence if late.", "color": "GRAY"}
       ]
     },
     {

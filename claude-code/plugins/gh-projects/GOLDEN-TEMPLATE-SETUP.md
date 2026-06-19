@@ -282,8 +282,8 @@ The script prints these at the end; do them once, on the template:
    which it adds to the project for you) and its filter. What the view-create API has
    **no parameter** for — and there's no view-update API — is each view's grouping /
    slice / sort / swimlanes, so finish those per
-   [`views.md`](templates/project/views.md) (e.g. *Sprint board* → columns by Status;
-   *Critical Path Board* → group Schedule health, slice Decision needed). `scaffold-repo`
+   [`views.md`](templates/project/views.md) (e.g. *Sprint* → columns by Status;
+   *Triage* → group Schedule health, slice Decision needed). `scaffold-repo`
    later **verifies** each view resolves its group/slice.
 3. **The 9 Insights charts.** No API at all — build per
    [`insights.md`](templates/project/insights.md). Chart **history accrues per board

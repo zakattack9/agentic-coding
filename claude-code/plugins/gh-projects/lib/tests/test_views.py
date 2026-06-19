@@ -179,9 +179,9 @@ class ViewsTestBase(unittest.TestCase):
 # --------------------------------------------------------------------------- #
 class TestViewsCatalog(ViewsTestBase):
     EXPECTED = [
-        "Sprint board", "My work", "Ready queue", "Critical Path Board",
-        "Schedule Risk Table", "Epic Hierarchy", "Intake & Hygiene",
-        "Release Train Roadmap",
+        "Sprint", "My Tasks", "Ready Queue", "Triage",
+        "Schedule Risk", "Epics", "Grooming",
+        "Roadmap",
     ]
 
     def test_catalog_has_exactly_8_named_views(self):
@@ -219,15 +219,15 @@ class TestVerifyViewsPasses(ViewsTestBase):
             self.assertEqual(vr["errors"], [])
 
     def test_documented_group_and_slice_are_resolved_for_sliced_views(self):
-        # Critical Path Board groups by Schedule health, slices by Decision needed;
-        # Intake & Hygiene groups by Status, slices by Type. Both must resolve.
+        # Triage groups by Schedule health, slices by Decision needed;
+        # Grooming groups by Status, slices by Type. Both must resolve.
         runner = ViewsRunner()
         res = self._verify(runner)
-        cpb = res["views"]["Critical Path Board"]
+        cpb = res["views"]["Triage"]
         self.assertEqual(cpb["group"], "Schedule health")
         self.assertEqual(cpb["slice"], "Decision needed")
         self.assertTrue(cpb["group_ok"] and cpb["slice_ok"])
-        intake = res["views"]["Intake & Hygiene"]
+        intake = res["views"]["Grooming"]
         self.assertEqual(intake["slice"], "Type")
         self.assertTrue(intake["slice_ok"])
 
@@ -236,9 +236,9 @@ class TestVerifyViewsPasses(ViewsTestBase):
         # health field; target-date: -> Target date issue field. All resolve.
         runner = ViewsRunner()
         res = self._verify(runner)
-        self.assertTrue(res["views"]["Ready queue"]["filter_ok"])
-        self.assertTrue(res["views"]["Schedule Risk Table"]["filter_ok"])
-        self.assertTrue(res["views"]["Release Train Roadmap"]["filter_ok"])
+        self.assertTrue(res["views"]["Ready Queue"]["filter_ok"])
+        self.assertTrue(res["views"]["Schedule Risk"]["filter_ok"])
+        self.assertTrue(res["views"]["Roadmap"]["filter_ok"])
 
     def test_raise_for_views_is_noop_when_ok(self):
         runner = ViewsRunner()
@@ -266,22 +266,22 @@ class TestVerifyViewsFailsLoudly(ViewsTestBase):
         return [n for n in nodes if n["name"] != drop_name]
 
     def test_missing_view_fails_and_is_listed(self):
-        override = self._detail_minus("Sprint board")
+        override = self._detail_minus("Sprint")
         runner = ViewsRunner(views_override=override)
         res = self._verify(runner)
         self.assertFalse(res["ok"], "a missing view must FAIL verification")
-        self.assertIn("Sprint board", res["missing"])
-        self.assertFalse(res["views"]["Sprint board"]["present"])
+        self.assertIn("Sprint", res["missing"])
+        self.assertFalse(res["views"]["Sprint"]["present"])
         self.assertTrue(any("MISSING" in e for e in res["errors"]))
 
     def test_missing_view_raises_loudly_exit_3(self):
-        override = self._detail_minus("Release Train Roadmap")
+        override = self._detail_minus("Roadmap")
         runner = ViewsRunner(views_override=override)
         res = self._verify(runner)
         with self.assertRaises(scaffold.ScaffoldError) as ctx:
             scaffold.raise_for_views(res)
         self.assertEqual(ctx.exception.code, 3)
-        self.assertIn("Release Train Roadmap", str(ctx.exception))
+        self.assertIn("Roadmap", str(ctx.exception))
         self.assertIn("re-copy", str(ctx.exception))
 
     def test_unresolved_group_fails_when_live_view_groups_by_nothing(self):
@@ -289,39 +289,39 @@ class TestVerifyViewsFailsLoudly(ViewsTestBase):
         # (empty groupByFields) — an unresolved group, must FAIL loudly.
         nodes = _views_detail_nodes(scaffold.load_views_schema())
         for n in nodes:
-            if n["name"] == "Sprint board":
+            if n["name"] == "Sprint":
                 n["groupByFields"] = {"nodes": []}  # platform resolved no column field
         runner = ViewsRunner(views_override=nodes)
         res = self._verify(runner)
         self.assertFalse(res["ok"])
-        self.assertFalse(res["views"]["Sprint board"]["group_ok"])
-        self.assertTrue(any("group" in e and "Sprint board" in e for e in res["errors"]))
+        self.assertFalse(res["views"]["Sprint"]["group_ok"])
+        self.assertTrue(any("group" in e and "Sprint" in e for e in res["errors"]))
         with self.assertRaises(scaffold.ScaffoldError):
             scaffold.raise_for_views(res)
 
     def test_unresolved_slice_fails_when_live_view_slices_by_nothing(self):
         nodes = _views_detail_nodes(scaffold.load_views_schema())
         for n in nodes:
-            if n["name"] == "Critical Path Board":
+            if n["name"] == "Triage":
                 n["verticalGroupByFields"] = {"nodes": []}  # slice didn't resolve
         runner = ViewsRunner(views_override=nodes)
         res = self._verify(runner)
         self.assertFalse(res["ok"])
-        self.assertFalse(res["views"]["Critical Path Board"]["slice_ok"])
-        self.assertTrue(any("slice" in e and "Critical Path Board" in e for e in res["errors"]))
+        self.assertFalse(res["views"]["Triage"]["slice_ok"])
+        self.assertTrue(any("slice" in e and "Triage" in e for e in res["errors"]))
 
     def test_unknown_filter_qualifier_fails(self):
         # Corrupt one view's filter to carry an unknown qualifier keyword — the
         # mapping returns None -> unresolved -> FAIL.
         nodes = _views_detail_nodes(scaffold.load_views_schema())
         for n in nodes:
-            if n["name"] == "Ready queue":
+            if n["name"] == "Ready Queue":
                 n["filter"] = "bogusqual:Whatever is:open"
         runner = ViewsRunner(views_override=nodes)
         res = self._verify(runner)
         self.assertFalse(res["ok"])
-        self.assertFalse(res["views"]["Ready queue"]["filter_ok"])
-        self.assertIn("bogusqual", res["views"]["Ready queue"]["unresolved_qualifiers"])
+        self.assertFalse(res["views"]["Ready Queue"]["filter_ok"])
+        self.assertIn("bogusqual", res["views"]["Ready Queue"]["unresolved_qualifiers"])
 
     def test_filter_qualifier_mapping_to_absent_field_fails(self):
         # A qualifier that maps to a field NOT present on the copy is unresolved.
@@ -337,10 +337,10 @@ class TestVerifyViewsFailsLoudly(ViewsTestBase):
             ORG, COPY_NUMBER, views_schema=scaffold.load_views_schema(),
             fields_schema=fields_schema, copy_proj=proj)
         self.assertFalse(res["ok"])
-        # Ready queue (status:Ready) and Sprint board's group (Status) both break.
-        self.assertFalse(res["views"]["Ready queue"]["filter_ok"])
-        self.assertIn("status", res["views"]["Ready queue"]["unresolved_qualifiers"])
-        self.assertFalse(res["views"]["Sprint board"]["group_ok"])
+        # Ready Queue (status:Ready) and Sprint's group (Status) both break.
+        self.assertFalse(res["views"]["Ready Queue"]["filter_ok"])
+        self.assertIn("status", res["views"]["Ready Queue"]["unresolved_qualifiers"])
+        self.assertFalse(res["views"]["Sprint"]["group_ok"])
 
 
 # --------------------------------------------------------------------------- #
@@ -386,7 +386,7 @@ class TestVerifyViewsInPlan(ViewsTestBase):
 
     def test_force_apply_raises_loudly_when_a_view_is_missing(self):
         override = [n for n in _views_detail_nodes(scaffold.load_views_schema())
-                    if n["name"] != "My work"]
+                    if n["name"] != "My Tasks"]
         base, run = self._plan_runner(views_override=override)
         gh.RUN = run
         with tempfile.TemporaryDirectory() as d:
@@ -405,7 +405,7 @@ class TestVerifyViewsInPlan(ViewsTestBase):
         # A dry run reports the defect but mutates nothing and does not raise
         # (the loud raise gates the --force apply, not the read-only preview).
         override = [n for n in _views_detail_nodes(scaffold.load_views_schema())
-                    if n["name"] != "My work"]
+                    if n["name"] != "My Tasks"]
         base, run = self._plan_runner(views_override=override)
         gh.RUN = run
         with tempfile.TemporaryDirectory() as d:

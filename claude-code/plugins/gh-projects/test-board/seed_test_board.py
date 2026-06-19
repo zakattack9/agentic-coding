@@ -62,14 +62,14 @@ SPRINTS = [
 # (the API rejects the project path for issue-field-backed columns).
 ISSUE_FIELDS = {"Priority", "Start date", "Target date"}
 
-# Assign active work to a real login so the assignee-filtered views ("My work" =
+# Assign active work to a real login so the assignee-filtered views ("My Tasks" =
 # assignee:@me, plus Sprint-board cards) populate. Backlog items are left
 # unassigned on purpose (realistic, and exercises the unassigned-hygiene views).
 ASSIGNEE = "zakattack9"
 ASSIGN_WHEN_STATUS = {"Ready", "In Progress", "In Review", "On Staging", "Done"}
 
 # Release milestones (repo-level). Several views group by Milestone (Schedule Risk
-# Table, Epic Hierarchy, Intake & Hygiene, Release Train Roadmap), so without these
+# Table, Epics, Grooming, Roadmap), so without these
 # everything sits under "No milestone". `keys` lists the issues in each milestone;
 # a few issues are deliberately left off (realistic unscheduled backlog).
 MILESTONES = [

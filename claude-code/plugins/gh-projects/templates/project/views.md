@@ -31,14 +31,14 @@ field** (Priority/Start/Target) — setup_board adds these to the project automa
 
 | # | View | Layout | Filter | Group / Slice | Sort | Visible columns (`fields`) | Audience — job |
 |---|---|---|---|---|---|---|---|
-| 1 | **Sprint board** | Board | `sprint:@current is:open` | cols = Status · **count ON** | manual rank | Assignees, Size, Priority\*, Blocked | Devs — pull from Ready, WIP=1 |
-| 2 | **My work** | Table | `assignee:@me is:open` | group = Status | Priority↑ then Target↑ | Status, Priority\*, Sprint, Target date\*, Blocked | Devs — cross-sprint personal list |
-| 3 | **Ready queue** | Table (manual rank) | `status:Ready is:open` | group = Priority | manual | Priority\*, Size, Target date\*, Blocked | Lead — owns the gate & ordering |
-| 4 | **Critical Path Board** | Board | `is:open` | cols = Schedule health · swimlane = Impact · **slice = Decision needed** | manual | Target date\*, Assignees, Blast radius, Parent issue, Blocked | Standup — what's on fire now |
-| 5 | **Schedule Risk Table** | Table | `is:open schedule-health:Overdue,Blocked,"At risk"` (backstop `target-date:<@today,@today..@today+14d`) | group = Milestone **count ON** · **slice = Impact** | Milestone↑ then Target↑ | Schedule health, Target date\*, Slippage, Impact level, Decision needed, Milestone | PM/founder — what to decide & what it breaks |
-| 6 | **Epic Hierarchy** | Table **Show hierarchy ON** (preview; flat `type:Epic` fallback) | `type:Epic` | — *(no grouping — the epic→sub-issue tree is the structure)* | manual | Sub-issues progress, Target date\*, Schedule health, Impact level | PM — epic rollup |
-| 7 | **Intake & Hygiene** | Table | `is:open` | group = Status · **slice = Type** · ad-hoc hygiene filters (type into the bar — GitHub has no saved-search slot): `status:Backlog no:assignee` · `no:target-date` · `no:sprint` · `status:Blocked` | manual | Status, Assignees, Priority\*, Target date\*, Sprint (Type is the slice — issue_type can't be a column) | PM — intake + trustworthy data |
-| 8 | **Release Train Roadmap** | Roadmap | `has:target-date` | date = Start→Target · group = Milestone · **markers = Milestone + Sprint** | zoom = Quarter | — *(roadmap: no `visible_fields`; date bars span Start date\* → Target date\*)* | Stakeholders — live timeline |
+| 1 | **Sprint** | Board | `sprint:@current -status:Backlog` | cols = Status · **count ON** | Priority↑ then Size↑ | Assignees, Size, Priority\*, Blocked | Devs — pull from Ready, WIP=1 |
+| 2 | **My Tasks** | Table | `assignee:@me is:open` | group = Status | Priority↑ then Target↑ | Status, Priority\*, Sprint, Target date\*, Blocked | Devs — cross-sprint personal list |
+| 3 | **Ready Queue** | Table (manual rank) | `status:Ready is:open` | group = Priority | manual | Priority\*, Size, Target date\*, Blocked | Lead — owns the gate & ordering |
+| 4 | **Triage** | Board | `is:open` | cols = Schedule health · swimlane = Impact (Release blocker→Low) · **slice = Decision needed** | manual | Target date\*, Assignees, Blast radius, Parent issue, Blocked | Standup — what's on fire now |
+| 5 | **Schedule Risk** | Table | `is:open schedule-health:Overdue,Blocked,"At risk"` (backstop `target-date:<@today,@today..@today+14d`) | group = Milestone **count ON** · **slice = Impact** | Milestone↑ then Target↑ | Schedule health, Target date\*, Slippage, Impact level, Decision needed, Milestone | PM/founder — what to decide & what it breaks |
+| 6 | **Epics** | Table **Show hierarchy ON** (preview; flat `type:Epic` fallback) | `type:Epic` | — *(no grouping — the epic→sub-issue tree is the structure)* | manual | Sub-issues progress, Target date\*, Schedule health, Impact level | PM — epic rollup |
+| 7 | **Grooming** | Table | `is:open` | group = Status · **slice = Type** · ad-hoc hygiene filters (type into the bar — GitHub has no saved-search slot): `status:Backlog no:assignee` · `no:target-date` · `no:sprint` · `status:Blocked` | manual | Status, Assignees, Priority\*, Target date\*, Sprint (Type is the slice — issue_type can't be a column) | PM — intake + trustworthy data |
+| 8 | **Roadmap** | Roadmap **Truncate title ON** | `has:target-date` | date = Start→Target · group = Milestone · **markers = Milestone + Sprint** | Target↑ · zoom = Quarter | — *(roadmap: no `visible_fields`; date bars span Start date\* → Target date\*)* | Stakeholders — live timeline |
 
 **Platform gaps (view playbook):**
 - No `no:blocked-by` qualifier → the "blocked w/ no blocker" check stays a `lib/dag` scan.

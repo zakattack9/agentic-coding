@@ -34,10 +34,10 @@ Auth: run as **yourself** with `gh auth` granting `project` + `admin:org` (same 
 - **2 Epics** with sub-issues (feeds the Sub-issues % rollup) and a **blocked-by
   DAG** (feeds `Blocked` / `Blast radius` / the Critical-Path view).
 - **3 release milestones** (`v1.0`/`v1.1`/`v1.2`) with due dates and ~21 issues
-  assigned — feeds the Milestone-grouped views (Epic Hierarchy, Schedule Risk
-  Table, Release Train Roadmap). A couple of issues are left unmilestoned on
+  assigned — feeds the Milestone-grouped views (Epics, Schedule Risk
+  Table, Roadmap). A couple of issues are left unmilestoned on
   purpose.
-- **Assignees** on every active (non-Backlog) issue so `My work` populates.
+- **Assignees** on every active (non-Backlog) issue so `My Tasks` populates.
 - The repo is **linked** to the board (surfaces it in the repo's Projects tab).
 
 Everything created is recorded in `manifest.json` (also gitignored). Teardown reads

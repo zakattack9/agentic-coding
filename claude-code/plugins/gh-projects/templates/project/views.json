@@ -15,15 +15,15 @@
   },
   "views": [
     {
-      "name": "Sprint board",
+      "name": "Sprint",
       "layout": "BOARD_LAYOUT",
-      "filter": "sprint:@current is:open",
+      "filter": "sprint:@current -status:Backlog",
       "group": "Status",
       "slice": "",
       "fields": ["Assignees", "Size", "Priority", "Blocked"]
     },
     {
-      "name": "My work",
+      "name": "My Tasks",
       "layout": "TABLE_LAYOUT",
       "filter": "assignee:@me is:open",
       "group": "Status",
@@ -31,7 +31,7 @@
       "fields": ["Status", "Priority", "Sprint", "Target date", "Blocked"]
     },
     {
-      "name": "Ready queue",
+      "name": "Ready Queue",
       "layout": "TABLE_LAYOUT",
       "filter": "status:Ready is:open",
       "group": "Priority",
@@ -39,7 +39,7 @@
       "fields": ["Priority", "Size", "Target date", "Blocked"]
     },
     {
-      "name": "Critical Path Board",
+      "name": "Triage",
       "layout": "BOARD_LAYOUT",
       "filter": "is:open",
       "group": "Schedule health",
@@ -47,7 +47,7 @@
       "fields": ["Target date", "Assignees", "Blast radius", "Parent issue", "Blocked"]
     },
     {
-      "name": "Schedule Risk Table",
+      "name": "Schedule Risk",
       "layout": "TABLE_LAYOUT",
       "filter": "is:open schedule-health:Overdue,Blocked,\"At risk\"",
       "group": "Milestone",
@@ -55,7 +55,7 @@
       "fields": ["Schedule health", "Target date", "Slippage", "Impact level", "Decision needed", "Milestone"]
     },
     {
-      "name": "Epic Hierarchy",
+      "name": "Epics",
       "layout": "TABLE_LAYOUT",
       "filter": "type:Epic",
       "group": "",
@@ -63,7 +63,7 @@
       "fields": ["Sub-issues progress", "Target date", "Schedule health", "Impact level"]
     },
     {
-      "name": "Intake & Hygiene",
+      "name": "Grooming",
       "layout": "TABLE_LAYOUT",
       "filter": "is:open",
       "group": "Status",
@@ -71,7 +71,7 @@
       "fields": ["Status", "Assignees", "Priority", "Target date", "Sprint"]
     },
     {
-      "name": "Release Train Roadmap",
+      "name": "Roadmap",
       "layout": "ROADMAP_LAYOUT",
       "filter": "has:target-date",
       "group": "Milestone",

@@ -158,13 +158,14 @@ def filter_qualifier_field(schema: dict, qualifier: str) -> str | None:
 
 def _parse_filter_qualifiers(filter_str: str) -> list[str]:
     """Extract the qualifier KEYWORDS (left of the colon) from a saved-search
-    filter string. `sprint:@current is:open` -> ["sprint", "is"]. A bare
-    token with no colon (a free-text term) is ignored. Stable, order-preserving,
-    de-duplicated."""
+    filter string. `sprint:@current -status:Backlog` -> ["sprint", "status"]. A
+    leading `-` (negation, e.g. `-status:Backlog`) is stripped so the keyword
+    resolves to the same field. A bare token with no colon (a free-text term) is
+    ignored. Stable, order-preserving, de-duplicated."""
     out: list[str] = []
     for tok in str(filter_str or "").split():
         if ":" in tok:
-            key = tok.split(":", 1)[0].strip().lower()
+            key = tok.split(":", 1)[0].strip().lstrip("-").lower()
             if key and key not in out:
                 out.append(key)
     return out

@@ -109,13 +109,13 @@ class TestViews(unittest.TestCase):
     def test_eight_views_layouts_lowercased(self):
         self.assertEqual(len(self.views), 8)
         layouts = {v["name"]: v["layout"] for v in self.views}
-        self.assertEqual(layouts["Sprint board"], "board")
-        self.assertEqual(layouts["My work"], "table")
-        self.assertEqual(layouts["Release Train Roadmap"], "roadmap")
+        self.assertEqual(layouts["Sprint"], "board")
+        self.assertEqual(layouts["My Tasks"], "table")
+        self.assertEqual(layouts["Roadmap"], "roadmap")
 
     def test_filter_present_only_when_nonempty(self):
-        sprint = next(v for v in self.views if v["name"] == "Sprint board")
-        self.assertEqual(sprint["filter"], "sprint:@current is:open")
+        sprint = next(v for v in self.views if v["name"] == "Sprint")
+        self.assertEqual(sprint["filter"], "sprint:@current -status:Backlog")
         # an empty filter is omitted from the POST body (every shipped view now carries
         # one, so assert the rule on a synthetic view)
         empty = sb.view_payloads({"views": [{"name": "X", "layout": "TABLE_LAYOUT", "filter": ""}]})[0]
@@ -136,15 +136,15 @@ class TestVisibleFields(unittest.TestCase):
         return {v["name"]: v for v in sb.view_payloads(self.views, field_ids=field_ids)}
 
     def test_visible_fields_resolved_in_order(self):
-        sprint = self._by_name(self.ids)["Sprint board"]
+        sprint = self._by_name(self.ids)["Sprint"]
         self.assertEqual(sprint["visible_fields"], [1, 2, 3, 4])  # Assignees, Size, Priority, Blocked
 
     def test_roadmap_gets_no_visible_fields(self):
-        self.assertNotIn("visible_fields", self._by_name(self.ids)["Release Train Roadmap"])
+        self.assertNotIn("visible_fields", self._by_name(self.ids)["Roadmap"])
 
     def test_absent_field_is_skipped_keeping_order(self):
         ids = dict(self.ids); del ids["Priority"]
-        self.assertEqual(self._by_name(ids)["Sprint board"]["visible_fields"], [1, 2, 4])
+        self.assertEqual(self._by_name(ids)["Sprint"]["visible_fields"], [1, 2, 4])
 
     def test_no_field_ids_means_no_visible_fields(self):
         self.assertTrue(all("visible_fields" not in p for p in sb.view_payloads(self.views)))
@@ -152,8 +152,8 @@ class TestVisibleFields(unittest.TestCase):
     def test_unresolved_view_fields_reports_missing(self):
         ids = dict(self.ids); del ids["Target date"]
         miss = sb.unresolved_view_fields(self.views, ids)
-        self.assertIn("Target date", miss.get("My work", []))
-        self.assertNotIn("Release Train Roadmap", miss)  # roadmap excluded
+        self.assertIn("Target date", miss.get("My Tasks", []))
+        self.assertNotIn("Roadmap", miss)  # roadmap excluded
 
     def test_resolve_field_ids_parses_rest_list(self):
         rows = [{"id": 360, "name": "Status"}, {"id": 361, "name": "Size"}]
@@ -161,13 +161,13 @@ class TestVisibleFields(unittest.TestCase):
         self.assertEqual(sb.resolve_field_ids("o", 7, run=run), {"Status": 360, "Size": 361})
 
     def test_stale_view_flagged_when_missing_a_column(self):
-        # Sprint board wants Assignees/Size/Priority/Blocked; current lacks Priority+Blocked
-        current = {"Sprint board": ["Title", "Assignees", "Size"]}
-        self.assertIn("Sprint board", sb.stale_views(self.views, self.ids, current))
+        # Sprint wants Assignees/Size/Priority/Blocked; current lacks Priority+Blocked
+        current = {"Sprint": ["Title", "Assignees", "Size"]}
+        self.assertIn("Sprint", sb.stale_views(self.views, self.ids, current))
 
     def test_view_not_stale_when_all_columns_present(self):
-        current = {"Sprint board": ["Title", "Assignees", "Size", "Priority", "Blocked"]}
-        self.assertNotIn("Sprint board", sb.stale_views(self.views, self.ids, current))
+        current = {"Sprint": ["Title", "Assignees", "Size", "Priority", "Blocked"]}
+        self.assertNotIn("Sprint", sb.stale_views(self.views, self.ids, current))
 
     def test_absent_view_is_not_stale(self):
         # a view not yet on the project will be created fresh — not "stale"
@@ -217,18 +217,18 @@ class TestApplyIdempotent(unittest.TestCase):
     def test_ensure_accepts_precomputed_present(self):
         fr = _FakeRun()  # views have no REST list — present is passed in, no GET
         rows = sb.ensure("/orgs/o/projectsV2/7/views",
-                         [{"name": "Sprint board"}, {"name": "My work"}],
-                         run=fr, present={"Sprint board"})
+                         [{"name": "Sprint"}, {"name": "My Tasks"}],
+                         run=fr, present={"Sprint"})
         self.assertEqual({r["name"]: r["action"] for r in rows},
-                         {"Sprint board": "skip", "My work": "create"})
-        self.assertEqual([p["name"] for p in fr.posts], ["My work"])
+                         {"Sprint": "skip", "My Tasks": "create"})
+        self.assertEqual([p["name"] for p in fr.posts], ["My Tasks"])
 
     def test_existing_view_names_reads_graphql(self):
         payload = {"data": {"organization": {"projectV2": {"views": {"nodes": [
-            {"name": "Sprint board"}, {"name": "My work"},
+            {"name": "Sprint"}, {"name": "My Tasks"},
         ]}}}}}
         run = lambda args, stdin=None: json.dumps(payload)
-        self.assertEqual(sb.existing_view_names("o", 7, run=run), {"Sprint board", "My work"})
+        self.assertEqual(sb.existing_view_names("o", 7, run=run), {"Sprint", "My Tasks"})
 
     def test_project_meta_parses(self):
         run = lambda a, stdin=None: json.dumps({"node_id": "PVT_x", "is_template": True})
