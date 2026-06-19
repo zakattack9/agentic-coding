@@ -385,12 +385,45 @@ gh variable set GH_PROJECT_URL    --repo "$R" --body "https://github.com/orgs/zi
 
 ---
 
-## Maintenance — edit the template, never the copies
+## Maintenance — change the template, then propagate per board
 
-If a field, view, or chart needs to change, change it on the **canonical template
-(zilarent)** and re-copy (org→org for other orgs; `scaffold-repo`/re-copy within an
-org). Keep the repo's `templates/project/*` definition in sync as the source of truth.
-Per-board edits drift the board out of parity and are forbidden.
+The template is the source of truth: make a field/view/chart change on the **canonical
+template** (and keep `templates/project/*` in sync) — never edit a board ad-hoc, which
+drifts it out of parity. But a template change does **not** auto-update existing boards
+(`copyProjectV2` is a one-time copy, and views are create-only). How you propagate it
+depends on whether the board holds real data.
+
+### A board is NOT just a projection of its issues — deleting it loses data
+
+Some data lives on the **issue** (survives a board deletion); some lives **only on the
+board** (gone with it). The `home: project` fields store their **values on the project
+item, not the issue** — so a recreated board resets them.
+
+| Data | Where it lives | On board delete |
+|---|---|---|
+| the issue · labels · assignees · **Milestone** · **Type** · **Priority / Start date / Target date** (org issue fields) · linked branch/PR · parent/sub-issue · blocked-by edges | the **issue** | ✅ survives |
+| `Schedule health` · `Slippage(-days)` · `Blast radius`/`-count` · `Blocked` | project values, **auto-derived** | ♻️ recompute with `sync-signals` |
+| **`Status` · `Size` · `Tier` · `Sprint` · `Impact level` · `Decision needed` · `PM-ID` · `Spec`** | project item values only | ❌ **lost** |
+| draft issues · **Insights chart history** · manual rank/order · archive state | the board only | ❌ **lost** |
+
+`Status` is the sharpest edge: a recreated board resets every item to `Backlog`, and
+`board-sync` only re-fires on *new* push/PR events — so already-merged or in-flight work
+won't repopulate.
+
+### Propagating a template change
+
+- **The template itself, or an empty/brand-new board** → **delete + recreate freely**
+  (no data to lose).
+- **An active board with real issues** → **don't nuke it. Apply the delta in place:**
+  1. New / changed fields or columns — re-run the script against the board (idempotent +
+     additive, preserves existing values):
+     `python3 "$SB" --org <org> --project-number <board#> --apply`
+  2. Changed views only — delete **just those views** in the UI, then re-run the script
+     to recreate them (views hold no data; the script flags which are stale).
+  3. `sync-signals` to recompute the auto signals.
+
+  That adopts the new schema/views while keeping `Status`/`Size`/`Tier`/`Sprint`/`Impact`/
+  `Decision`, draft issues, and chart history.
 
 ---
 
