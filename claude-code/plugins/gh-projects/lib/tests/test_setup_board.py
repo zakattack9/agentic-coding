@@ -79,11 +79,20 @@ class TestProjectFields(unittest.TestCase):
                   "PM-ID", "Spec", "Sprint"):
             self.assertIn(n, self.names)
 
-    def test_single_select_options_carry_uppercase_color(self):
+    def test_single_select_options_carry_color(self):
         size = next(f for f in self.pf if f["name"] == "Size")
         self.assertEqual(size["data_type"], "single_select")
-        self.assertEqual(size["single_select_options"][0]["color"], "GRAY")  # projectsV2 enum UPPERCASE
+        colors = {o["name"]: o["color"] for o in size["single_select_options"]}
+        self.assertEqual(colors["S"], "BLUE")  # from the fields.json color scheme
+        # projectsV2 option color must be the UPPERCASE enum
+        self.assertTrue(all(o["color"].isupper() for o in size["single_select_options"]))
         self.assertTrue(size["single_select_options"][0]["description"])
+
+    def test_health_field_colors_from_scheme(self):
+        sh = next(f for f in self.pf if f["name"] == "Schedule health")
+        colors = {o["name"]: o["color"] for o in sh["single_select_options"]}
+        self.assertEqual(colors["On track"], "GREEN")
+        self.assertEqual(colors["Overdue"], "RED")
 
     def test_sprint_iteration_carries_configuration(self):
         sprint = next(f for f in self.pf if f["name"] == "Sprint")
@@ -106,9 +115,11 @@ class TestViews(unittest.TestCase):
 
     def test_filter_present_only_when_nonempty(self):
         sprint = next(v for v in self.views if v["name"] == "Sprint board")
-        self.assertEqual(sprint["filter"], "iteration:@current is:open")
-        epic = next(v for v in self.views if v["name"] == "Epic Hierarchy")
-        self.assertNotIn("filter", epic)  # views.json has an empty filter here
+        self.assertEqual(sprint["filter"], "sprint:@current is:open")
+        # an empty filter is omitted from the POST body (every shipped view now carries
+        # one, so assert the rule on a synthetic view)
+        empty = sb.view_payloads({"views": [{"name": "X", "layout": "TABLE_LAYOUT", "filter": ""}]})[0]
+        self.assertNotIn("filter", empty)
 
 
 class TestVisibleFields(unittest.TestCase):

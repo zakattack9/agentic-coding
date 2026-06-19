@@ -2,7 +2,7 @@
   "_comment": "Golden-template Project VIEW CATALOG (gh-projects). The 8 saved views are created as SHELLS by lib/setup_board.py (REST POST .../views — name + layout + filter + visible_fields) and then have their grouping/slice/sort finished by hand in the UI (the create API takes no group/sort/slice; there is no view-update API). They replicate via copyProjectV2. scaffold-repo verifies the copy carries all 8 by name AND that each resolves its documented filter/group/slice (verify_views) — a missing view or unresolved filter/group/slice is a template/copy defect: fix it on the golden template and re-copy, never hand-add to a scaffolded project. Each view declares: name, layout, the expected raw `filter` string (substring qualifiers that MUST be present in the copied view's resolved filter), `group` (the field the view groups columns/rows by, must resolve to a real project/issue field — empty for ungrouped), `slice` (the verticalGroupBy/slice-panel field — empty when none), and `fields` (the visible columns/card fields BY NAME, in display order — table & board only, empty for roadmap). setup_board resolves `fields` names to field IDs against the live project and sets `visible_fields` at create; the org issue fields (Priority / Start date / Target date) don't auto-appear as project columns, so setup_board adds them first via POST .../fields {issue_field_id} and then resolves them like any other field (any name still absent is skipped with a warning). Note: the `Type` issue-type field can NOT be a `visible_fields` column — GitHub silently drops issue_type from visible_fields — so it is surfaced via a view's `slice`, never listed in `fields`. Full sort/card detail lives in views.md.",
   "_field_qualifiers": {
     "_comment": "Maps a filter qualifier KEYWORD (left of the colon in a saved-search filter, e.g. `status:Ready`) to the project/issue FIELD NAME it resolves against. A declared filter qualifier 'resolves' when its keyword maps here AND the mapped field exists on the copy. Native GitHub qualifiers (is, assignee, no) need no field and are listed as native.",
-    "iteration": "Sprint",
+    "sprint": "Sprint",
     "status": "Status",
     "schedule-health": "Schedule health",
     "target-date": "Target date",
@@ -17,7 +17,7 @@
     {
       "name": "Sprint board",
       "layout": "BOARD_LAYOUT",
-      "filter": "iteration:@current is:open",
+      "filter": "sprint:@current is:open",
       "group": "Status",
       "slice": "",
       "fields": ["Assignees", "Size", "Priority", "Blocked"]
@@ -57,8 +57,8 @@
     {
       "name": "Epic Hierarchy",
       "layout": "TABLE_LAYOUT",
-      "filter": "",
-      "group": "Milestone",
+      "filter": "type:Epic",
+      "group": "",
       "slice": "",
       "fields": ["Sub-issues progress", "Target date", "Schedule health", "Impact level"]
     },

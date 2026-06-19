@@ -1,5 +1,5 @@
 {
-  "_comment": "Golden-template Project field schema (gh-projects). Hand-built once on the golden-template Project (before any scaffold copy), then replicated to every scaffolded project via copyProjectV2. scaffold-repo uses this as the EXPECTED schema to diff the COPY against — it never re-PUTs an option list or iterationConfiguration without a prior diff. Every signal single-select carries an option `description` documenting its derivation. Org Issue Fields (Priority/Start date/Target date) and Issue Types (Type) live OUTSIDE the project copy (see fields with home != project) and are ensured by scaffold against the org.",
+  "_comment": "Golden-template Project field schema (gh-projects). Hand-built once on the golden-template Project (before any scaffold copy), then replicated to every scaffolded project via copyProjectV2. scaffold-repo uses this as the EXPECTED schema to diff the COPY against — it never re-PUTs an option list or iterationConfiguration without a prior diff. Every single-select carries an option `description` documenting its derivation and a `color` (UPPERCASE projectsV2 enum) for the board UI; setup_board sends these at field create (the REST fields API has no update, so recolor existing fields in the UI). Org Issue Fields (Priority/Start date/Target date) and Issue Types (Type) live OUTSIDE the project copy (see fields with home != project) and are ensured by scaffold against the org.",
   "status_order": ["Backlog", "Ready", "In Progress", "In Review", "On Staging", "Done"],
   "fields": [
     {
@@ -39,9 +39,9 @@
       "set_by": "intake (suggest) + human",
       "purpose": "S/M/L appetite (not points); suggested from AC-group count",
       "options": [
-        {"name": "S", "description": "1 AC group; trivial appetite."},
-        {"name": "M", "description": "2-3 AC groups; standard appetite."},
-        {"name": "L", "description": "4+ AC groups; large appetite (recommends an Epic split)."}
+        {"name": "S", "description": "1 AC group; trivial appetite.", "color": "BLUE"},
+        {"name": "M", "description": "2-3 AC groups; standard appetite.", "color": "YELLOW"},
+        {"name": "L", "description": "4+ AC groups; large appetite (recommends an Epic split).", "color": "ORANGE"}
       ]
     },
     {
@@ -51,9 +51,9 @@
       "set_by": "intake",
       "purpose": "Drives write-spec rigor (T1->light, T2->standard, T3->full+refine); T3 requires a linked deep spec",
       "options": [
-        {"name": "T1", "description": "Trivial; light rigor; AC table only."},
-        {"name": "T2", "description": "Standard; standard rigor; TL;DR + AC + boundaries."},
-        {"name": "T3", "description": "Complex; full rigor + refine-spec; linked deep spec required."}
+        {"name": "T1", "description": "Trivial; light rigor; AC table only.", "color": "GRAY"},
+        {"name": "T2", "description": "Standard; standard rigor; TL;DR + AC + boundaries.", "color": "BLUE"},
+        {"name": "T3", "description": "Complex; full rigor + refine-spec; linked deep spec required.", "color": "PURPLE"}
       ]
     },
     {
@@ -93,8 +93,8 @@
       "set_by": "auto (signals-sync from blocked-by DAG)",
       "purpose": "yes/no flag-state derived from native dependencies, not hand-set",
       "options": [
-        {"name": "no", "description": "No unresolved blocked-by dependency."},
-        {"name": "yes", "description": "At least one open blocked-by dependency (derived by lib/dag from native blocked-by edges)."}
+        {"name": "no", "description": "No unresolved blocked-by dependency.", "color": "GREEN"},
+        {"name": "yes", "description": "At least one open blocked-by dependency (derived by lib/dag from native blocked-by edges).", "color": "RED"}
       ]
     },
     {
@@ -131,11 +131,11 @@
       "set_by": "auto",
       "purpose": "Rolled-up schedule status",
       "options": [
-        {"name": "On track", "description": "Not past Target and not blocking a release."},
-        {"name": "At risk", "description": "Target within the warning window or a soft slip."},
-        {"name": "Blocked", "description": "An open blocked-by dependency holds it."},
-        {"name": "Overdue", "description": "Past Target date and still open."},
-        {"name": "Done", "description": "Shipped to prod."}
+        {"name": "On track", "description": "Not past Target and not blocking a release.", "color": "GREEN"},
+        {"name": "At risk", "description": "Target within the warning window or a soft slip.", "color": "YELLOW"},
+        {"name": "Blocked", "description": "An open blocked-by dependency holds it.", "color": "ORANGE"},
+        {"name": "Overdue", "description": "Past Target date and still open.", "color": "RED"},
+        {"name": "Done", "description": "Shipped to prod.", "color": "PURPLE"}
       ]
     },
     {
@@ -145,11 +145,11 @@
       "set_by": "auto",
       "purpose": "Bucketed lateness past Target",
       "options": [
-        {"name": "Not late", "description": "At or before Target date."},
-        {"name": "1-2d", "description": "1 to 2 days past Target."},
-        {"name": "3-5d", "description": "3 to 5 days past Target."},
-        {"name": "1+wk", "description": "6 to 13 days past Target."},
-        {"name": "2+wk", "description": "14 or more days past Target."}
+        {"name": "Not late", "description": "At or before Target date.", "color": "GREEN"},
+        {"name": "1-2d", "description": "1 to 2 days past Target.", "color": "YELLOW"},
+        {"name": "3-5d", "description": "3 to 5 days past Target.", "color": "ORANGE"},
+        {"name": "1+wk", "description": "6 to 13 days past Target.", "color": "RED"},
+        {"name": "2+wk", "description": "14 or more days past Target.", "color": "RED"}
       ]
     },
     {
@@ -166,10 +166,10 @@
       "set_by": "auto (lib/dag)",
       "purpose": "How much this item blocks downstream",
       "options": [
-        {"name": "None", "description": "Blocks nothing downstream."},
-        {"name": "Blocks 1", "description": "Blocks exactly one downstream item."},
-        {"name": "Blocks many", "description": "Blocks two or more downstream items."},
-        {"name": "Blocks release", "description": "On the critical path to a release milestone."}
+        {"name": "None", "description": "Blocks nothing downstream.", "color": "GRAY"},
+        {"name": "Blocks 1", "description": "Blocks exactly one downstream item.", "color": "YELLOW"},
+        {"name": "Blocks many", "description": "Blocks two or more downstream items.", "color": "ORANGE"},
+        {"name": "Blocks release", "description": "On the critical path to a release milestone.", "color": "RED"}
       ]
     },
     {
@@ -186,10 +186,10 @@
       "set_by": "human",
       "purpose": "Deliberate PM/lead impact call",
       "options": [
-        {"name": "Low", "description": "Minor; little consequence if late."},
-        {"name": "Medium", "description": "Noticeable consequence if late."},
-        {"name": "High", "description": "Significant consequence if late."},
-        {"name": "Release blocker", "description": "A release cannot ship without it."}
+        {"name": "Low", "description": "Minor; little consequence if late.", "color": "GRAY"},
+        {"name": "Medium", "description": "Noticeable consequence if late.", "color": "YELLOW"},
+        {"name": "High", "description": "Significant consequence if late.", "color": "ORANGE"},
+        {"name": "Release blocker", "description": "A release cannot ship without it.", "color": "RED"}
       ]
     },
     {
@@ -199,13 +199,13 @@
       "set_by": "human",
       "purpose": "Deliberate PM/lead decision call",
       "options": [
-        {"name": "No", "description": "No decision pending."},
-        {"name": "Move date", "description": "Push the Target date."},
-        {"name": "Reduce scope", "description": "Cut scope to hold the date."},
-        {"name": "Reassign", "description": "Move to another owner."},
-        {"name": "Split", "description": "Break into smaller items."},
-        {"name": "Unblock", "description": "Resolve a dependency."},
-        {"name": "Defer", "description": "Drop from the current plan."}
+        {"name": "No", "description": "No decision pending.", "color": "GRAY"},
+        {"name": "Move date", "description": "Push the Target date.", "color": "ORANGE"},
+        {"name": "Reduce scope", "description": "Cut scope to hold the date.", "color": "YELLOW"},
+        {"name": "Reassign", "description": "Move to another owner.", "color": "BLUE"},
+        {"name": "Split", "description": "Break into smaller items.", "color": "PURPLE"},
+        {"name": "Unblock", "description": "Resolve a dependency.", "color": "RED"},
+        {"name": "Defer", "description": "Drop from the current plan.", "color": "PINK"}
       ]
     }
   ]

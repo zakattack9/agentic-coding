@@ -158,7 +158,7 @@ def filter_qualifier_field(schema: dict, qualifier: str) -> str | None:
 
 def _parse_filter_qualifiers(filter_str: str) -> list[str]:
     """Extract the qualifier KEYWORDS (left of the colon) from a saved-search
-    filter string. `iteration:@current is:open` -> ["iteration", "is"]. A bare
+    filter string. `sprint:@current is:open` -> ["sprint", "is"]. A bare
     token with no colon (a free-text term) is ignored. Stable, order-preserving,
     de-duplicated."""
     out: list[str] = []

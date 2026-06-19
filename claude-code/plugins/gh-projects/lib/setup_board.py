@@ -42,9 +42,9 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).resolve().parent.parent / "templates" / "project"
 API_VERSION = "2026-03-10"
 
-# Single-select option color is required by both APIs but absent from the schema;
-# default to neutral. NOTE the casing differs per API (REST quirk).
-PROJECT_OPTION_COLOR = "GRAY"   # projectsV2 fields: UPPERCASE enum
+# Single-select option color is required by both APIs. Project fields take a per-option
+# `color` from fields.json; these are the fallbacks. Casing differs per API (REST quirk).
+PROJECT_OPTION_COLOR = "GRAY"   # projectsV2 fields fallback: UPPERCASE enum
 ISSUE_TYPE_COLOR = "gray"       # issue-types: lowercase enum
 
 _VIEW_LAYOUT = {"BOARD_LAYOUT": "board", "TABLE_LAYOUT": "table", "ROADMAP_LAYOUT": "roadmap"}
@@ -118,7 +118,8 @@ def _project_field_body(f: dict, iterations_schema: dict) -> dict:
     body = {"name": f["name"], "data_type": f["type"]}
     if f["type"] == "single_select":
         body["single_select_options"] = [
-            {"name": o["name"], "description": o.get("description", ""), "color": PROJECT_OPTION_COLOR}
+            {"name": o["name"], "description": o.get("description", ""),
+             "color": o.get("color", PROJECT_OPTION_COLOR)}
             for o in f.get("options", [])
         ]
     elif f["type"] == "iteration":
