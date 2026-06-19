@@ -5,7 +5,7 @@ Input: the native blocked-by edges GitHub exposes (issue dependencies). From
 them this derives, per item, the three board signals:
 
   * Blocked      — Blocked / Unblocked: does the item have >=1 OPEN blocker?
-  * Blast radius — None / Blocks 1 / Blocks many / Blocks release:
+  * Blast radius — Blocks none / Blocks 1 / Blocks many / Blocks release:
                    what breaks if THIS item slips, by downstream reach.
   * Blast count  — # of DISTINCT downstream items transitively blocked by it.
 
@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 import sys
 
-BLAST_NONE = "None"
+BLAST_NONE = "Blocks none"
 BLAST_ONE = "Blocks 1"
 BLAST_MANY = "Blocks many"
 BLAST_RELEASE = "Blocks release"

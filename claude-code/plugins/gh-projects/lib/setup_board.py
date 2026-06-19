@@ -224,6 +224,8 @@ def punch_list(fields_schema: dict, views_schema: dict) -> list[str]:
             bits.append(f"order the {v.get('group', 'group')} columns as " + " → ".join(v["group_order"]))
         if v.get("ui_columns"):
             bits.append("also show column(s) by hand (not API-settable): " + ", ".join(v["ui_columns"]))
+        if "hierarchy" in v:
+            bits.append("Show hierarchy " + ("ON" if v["hierarchy"] else "OFF"))
         if bits:
             lines.append(f"   - {v['name']}: {', '.join(bits)} (+ sort/cards per views.md)")
     order = fields_schema.get("field_display_order")

@@ -36,13 +36,13 @@ All three are creatable as written (no special-field caveats).
 |---|---|---|---|---|
 | 1 | **Throughput** | current column · X=Sprint · Y=count of items | `status:Done` | PM+founder — items shipped per sprint (the trend no view shows) |
 | 2 | **Milestone progress** | current **stacked** column · X=Milestone · Group by=Status | `has:milestone` | stakeholders — each milestone's done/in-flight split |
-| 3 | **Slippage days sum** | current column · X=Schedule health · **Y-axis = Sum of a field → `Slippage days`** | `is:open` | PM — total quantified lateness |
+| 3 | **Slippage days sum** | current **stacked** column · X=Schedule health · Group by=Impact level · **Y-axis = Sum of a field → `Slippage days`** | `is:open` | PM — total quantified lateness, split by impact |
 
-**Slippage days sum — exact Y-axis setup:** in the chart config, set the **Y-axis**
-dropdown to **"Sum of a field,"** then set the **field** to **`Slippage days`** (the
-auto number field). Leave **X = Schedule health** so the total lateness lands in the
-At risk / Overdue buckets — or swap X to **Milestone** / **Sprint** if you'd rather see
-*which release or sprint* is slipping most.
+**Slippage days sum — exact config:** Layout **Stacked column** · X-axis **Schedule
+health** · Group by **Impact level** · Y-axis **"Sum of a field"** → Y-axis field
+**`Slippage days`** (the auto number field) · filter `is:open`. The stack shows, within
+each health bucket, how much of the total lateness sits on Release-blocker vs High/Medium/Low
+work — so an Overdue column that's mostly Release-blocker is the one to act on.
 
 ## Why only these three (the rest are covered by the Views)
 

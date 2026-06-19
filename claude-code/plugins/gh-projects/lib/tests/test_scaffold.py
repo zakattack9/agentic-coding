@@ -59,7 +59,7 @@ def _project_fields_payload(id_suffix: str, *, with_iterations: bool):
         ("Blocked", ["no", "yes"]),
         ("Schedule health", ["On track", "At risk", "Blocked", "Overdue", "Done"]),
         ("Slippage", ["Not late", "1-2d", "3-5d", "1+wk", "2+wk"]),
-        ("Blast radius", ["None", "Blocks 1", "Blocks many", "Blocks release"]),
+        ("Blast radius", ["Blocks none", "Blocks 1", "Blocks many", "Blocks release"]),
         ("Impact level", ["Low", "Medium", "High", "Release blocker"]),
         ("Decision needed", ["No", "Move date", "Reduce scope", "Reassign", "Split", "Unblock", "Defer"]),
     ]

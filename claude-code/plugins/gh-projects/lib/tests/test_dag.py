@@ -19,10 +19,10 @@ Downstream (transitive "blocks") sets:
     B: {A, REL}      -> count 2, reaches release blocker -> "Blocks release"
     C: {A, REL}      -> count 2, reaches release blocker -> "Blocks release"
     A: {REL}         -> count 1, REL is release blocker  -> "Blocks release"
-    REL: {}          -> count 0                          -> "None"
-    D: {}            -> count 0                          -> "None"
-    E: {}            -> count 0                          -> "None"
-    F: {} (closed)   -> count 0                          -> "None"
+    REL: {}          -> count 0                          -> "Blocks none"
+    D: {}            -> count 0                          -> "Blocks none"
+    E: {}            -> count 0                          -> "Blocks none"
+    F: {} (closed)   -> count 0                          -> "Blocks none"
 
 Blocked (>=1 OPEN blocker):
     A: blocked_by [B,C] both open  -> yes
@@ -54,13 +54,13 @@ FIXTURE = {
 }
 
 EXPECTED = {
-    "REL": {"blocked": True, "blast_radius": "None", "blast_count": 0},
+    "REL": {"blocked": True, "blast_radius": "Blocks none", "blast_count": 0},
     "A": {"blocked": True, "blast_radius": "Blocks release", "blast_count": 1},
     "B": {"blocked": False, "blast_radius": "Blocks release", "blast_count": 2},
     "C": {"blocked": False, "blast_radius": "Blocks release", "blast_count": 2},
-    "D": {"blocked": False, "blast_radius": "None", "blast_count": 0},
-    "E": {"blocked": False, "blast_radius": "None", "blast_count": 0},
-    "F": {"blocked": False, "blast_radius": "None", "blast_count": 0},
+    "D": {"blocked": False, "blast_radius": "Blocks none", "blast_count": 0},
+    "E": {"blocked": False, "blast_radius": "Blocks none", "blast_count": 0},
+    "F": {"blocked": False, "blast_radius": "Blocks none", "blast_count": 0},
 }
 
 
@@ -109,7 +109,7 @@ class TestDagFixture(unittest.TestCase):
     def test_unknown_blocker_id_ignored(self):
         g = {"A": {"blocked_by": ["GHOST"], "state": "open"}}
         self.assertEqual(dag.signals_for("A", g),
-                         {"blocked": False, "blast_radius": "None", "blast_count": 0})
+                         {"blocked": False, "blast_radius": "Blocks none", "blast_count": 0})
 
     def test_no_ai_in_source(self):
         # Deterministic: no model call, no network import.

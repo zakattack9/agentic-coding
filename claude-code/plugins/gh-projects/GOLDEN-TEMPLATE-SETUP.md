@@ -278,8 +278,9 @@ The script prints these at the end; do them once, on the template:
 1. **Status options + colors.** Edit the built-in **Status** field's options **and set
    each option's color** to exactly `Backlog (gray) · Ready (blue) · In Progress (yellow)
    · In Review (pink) · On Staging (orange) · Done (green)` — in that order (it's the
-   monotonic automation key). There is no API to set a built-in field's options or colors,
-   and the built-in Status ships with `Todo / In Progress / Done`. Copy option names
+   monotonic automation key). There is no API for this: **delete the 3 options it ships
+   with (`Todo / In Progress / Done`) and add the 6 above in order**, then set **`Backlog`
+   as the default** option (the status new items land in). Copy option names
    **verbatim** from [`fields.json`](templates/project/fields.json) — the views'
    filters, `lib/dag`, and `signals-sync` write these names back, so a typo silently
    breaks the automation.
@@ -448,7 +449,7 @@ won't repopulate.
 - [ ] App **secrets** stored (`GH_APP_ID` + `GH_APP_PRIVATE_KEY`) — **org-level** (paid: Path A) **or** **per private repo** (Free: Path B); board *variables* come after the board exists
 - [ ] `gh auth refresh -s project,admin:org` (as a **zilarent owner**)
 - [ ] `setup_board.py --org zilarent --title "…" --apply` → project (private) + `Type` + issue fields + all project fields incl. **Sprint** + org columns + 8 views with visible columns + **marks it the template**
-- [ ] **UI punch-list** (Phase 0.2 Step 2): edit **Status** options **+ colors** (6 stages) · finish view grouping/slice/sort/**column-order** per `views.md` (incl. Triage's Schedule-health column order + the Grooming **Type** column) · set the **global field order** (`field_display_order`) · build **3 Insights charts**
+- [ ] **UI punch-list** (Phase 0.2 Step 2): replace **Status** options **+ colors** (delete the shipped 3, add the 6, default = `Backlog`) · finish view grouping/slice/sort/**column-order** per `views.md` (incl. Triage's Schedule-health column order + the Grooming **Type** column) · set the **global field order** (`field_display_order`) · build **3 Insights charts**
 
 **Once per additional org (e.g. acme):**
 - [ ] **GitHub App** created + installed on the new org, secrets/variables stored (Phase 0.0 — the App is per-org)

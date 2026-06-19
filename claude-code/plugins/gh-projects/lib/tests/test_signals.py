@@ -87,9 +87,9 @@ class TestSignalValues(unittest.TestCase):
         self.assertEqual(self.sig["2"]["blast_radius"], "Blocks 1")
         self.assertEqual(self.sig["2"]["blast_count"], 1)
         # #3,#4,#5 block nothing.
-        self.assertEqual(self.sig["3"]["blast_radius"], "None")
+        self.assertEqual(self.sig["3"]["blast_radius"], "Blocks none")
         self.assertEqual(self.sig["3"]["blast_count"], 0)
-        self.assertEqual(self.sig["4"]["blast_radius"], "None")
+        self.assertEqual(self.sig["4"]["blast_radius"], "Blocks none")
         self.assertEqual(self.sig["5"]["blast_count"], 0)
 
     def test_schedule_health(self):
@@ -386,7 +386,7 @@ class FakeRunner:
                     "name": name, "dataType": "NUMBER"}
         fields = [
             ss("Blocked", ["Unblocked", "Blocked"]),
-            ss("Blast radius", ["None", "Blocks 1", "Blocks many", "Blocks release"]),
+            ss("Blast radius", ["Blocks none", "Blocks 1", "Blocks many", "Blocks release"]),
             num("Blast count"),
             ss("Schedule health", ["On track", "At risk", "Blocked", "Overdue", "Done"]),
             ss("Slippage", ["Not late", "1–2d", "3–5d", "1+wk", "2+wk"]),

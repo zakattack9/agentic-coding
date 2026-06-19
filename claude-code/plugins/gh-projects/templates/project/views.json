@@ -1,5 +1,5 @@
 {
-  "_comment": "Golden-template Project VIEW CATALOG (gh-projects). The 8 saved views are created as SHELLS by lib/setup_board.py (REST POST .../views — name + layout + filter + visible_fields) and then have their grouping/slice/sort finished by hand in the UI (the create API takes no group/sort/slice; there is no view-update API). They replicate via copyProjectV2. scaffold-repo verifies the copy carries all 8 by name AND that each resolves its documented filter/group/slice (verify_views) — a missing view or unresolved filter/group/slice is a template/copy defect: fix it on the golden template and re-copy, never hand-add to a scaffolded project. Each view declares: name, layout, the expected raw `filter` string (substring qualifiers that MUST be present in the copied view's resolved filter), `group` (the field the view groups columns/rows by, must resolve to a real project/issue field — empty for ungrouped), `slice` (the verticalGroupBy/slice-panel field — empty when none), and `fields` (the visible columns/card fields BY NAME, in display order — table & board only, empty for roadmap). setup_board resolves `fields` names to field IDs against the live project and sets `visible_fields` at create; the org issue fields (Priority / Start date / Target date) don't auto-appear as project columns, so setup_board adds them first via POST .../fields {issue_field_id} and then resolves them like any other field (any name still absent is skipped with a warning). Note: the `Type` issue-type field can NOT be a `visible_fields` column — GitHub silently drops issue_type from visible_fields — so it is surfaced via a view's `slice` and, when a view also wants it shown inline, listed in `ui_columns` (toggle on by hand), never in `fields`. Two optional UI-only hint keys are reminders emitted in setup_board's punch-list and are sent to NO API and checked by NEITHER verify nor stale: `group_order` (for a board-grouped view, the left-to-right column order to set by hand — board columns otherwise follow the field's option order) and `ui_columns` (columns to toggle on by hand that visible_fields can't set, e.g. issue_type). Full sort/card detail lives in views.md.",
+  "_comment": "Golden-template Project VIEW CATALOG (gh-projects). The 8 saved views are created as SHELLS by lib/setup_board.py (REST POST .../views — name + layout + filter + visible_fields) and then have their grouping/slice/sort finished by hand in the UI (the create API takes no group/sort/slice; there is no view-update API). They replicate via copyProjectV2. scaffold-repo verifies the copy carries all 8 by name AND that each resolves its documented filter/group/slice (verify_views) — a missing view or unresolved filter/group/slice is a template/copy defect: fix it on the golden template and re-copy, never hand-add to a scaffolded project. Each view declares: name, layout, the expected raw `filter` string (substring qualifiers that MUST be present in the copied view's resolved filter), `group` (the field the view groups columns/rows by, must resolve to a real project/issue field — empty for ungrouped), `slice` (the verticalGroupBy/slice-panel field — empty when none), and `fields` (the visible columns/card fields BY NAME, in display order — table & board only, empty for roadmap). setup_board resolves `fields` names to field IDs against the live project and sets `visible_fields` at create; the org issue fields (Priority / Start date / Target date) don't auto-appear as project columns, so setup_board adds them first via POST .../fields {issue_field_id} and then resolves them like any other field (any name still absent is skipped with a warning). Note: the `Type` issue-type field can NOT be a `visible_fields` column — GitHub silently drops issue_type from visible_fields — so it is surfaced via a view's `slice` and, when a view also wants it shown inline, listed in `ui_columns` (toggle on by hand), never in `fields`. Two optional UI-only hint keys are reminders emitted in setup_board's punch-list and are sent to NO API and checked by NEITHER verify nor stale: `group_order` (for a board-grouped view, the left-to-right column order to set by hand — board columns otherwise follow the field's option order), `ui_columns` (columns to toggle on by hand that visible_fields can't set, e.g. issue_type), and `hierarchy` (a table view's Show-hierarchy toggle — true=ON to nest sub-issues, e.g. Epics + Grooming; false=OFF for a flat list; omitted = leave at the GitHub default). Full sort/card detail lives in views.md.",
   "_field_qualifiers": {
     "_comment": "Maps a filter qualifier KEYWORD (left of the colon in a saved-search filter, e.g. `status:Ready`) to the project/issue FIELD NAME it resolves against. A declared filter qualifier 'resolves' when its keyword maps here AND the mapped field exists on the copy. Native GitHub qualifiers (is, assignee, no) need no field and are listed as native.",
     "sprint": "Sprint",
@@ -42,7 +42,7 @@
     {
       "name": "Blockers",
       "layout": "TABLE_LAYOUT",
-      "filter": "-blast-radius:None is:open",
+      "filter": "-blast-radius:\"Blocks none\" is:open",
       "group": "Blast radius",
       "slice": "",
       "fields": ["Blast count", "Blocked", "Status", "Assignees", "Target date", "Parent issue"]
@@ -62,6 +62,7 @@
       "filter": "type:Epic is:open",
       "group": "",
       "slice": "",
+      "hierarchy": true,
       "fields": ["Sub-issues progress", "Status", "Schedule health", "Target date", "Impact level"]
     },
     {
@@ -71,6 +72,7 @@
       "group": "Status",
       "slice": "Type",
       "ui_columns": ["Type"],
+      "hierarchy": true,
       "fields": ["Tier", "Size", "Priority", "Assignees", "Target date", "Sprint"]
     },
     {

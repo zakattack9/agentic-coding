@@ -54,7 +54,7 @@ SLIP_3_5 = "3–5d"
 SLIP_1WK = "1+wk"
 SLIP_2WK = "2+wk"
 
-BLAST_NONE = "None"
+BLAST_NONE = "Blocks none"
 BLAST_ONE = "Blocks 1"
 BLAST_MANY = "Blocks many"
 BLAST_RELEASE = "Blocks release"

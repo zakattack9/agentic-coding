@@ -64,8 +64,8 @@ class TestIssueFields(unittest.TestCase):
         self.assertEqual([o["name"] for o in opts], ["P0", "P1", "P2", "P3"])
         # issue-fields DO take a per-option color, lowercased from fields.json
         colors = {o["name"]: o["color"] for o in opts}
-        self.assertEqual(colors["P0"], "pink")
-        self.assertEqual(colors["P1"], "red")
+        self.assertEqual(colors["P0"], "red")   # P0 = most alarming
+        self.assertEqual(colors["P1"], "pink")
         self.assertTrue(all(o["color"].islower() for o in opts))
 
     def test_dates_are_date_type(self):
@@ -209,6 +209,13 @@ class TestPunchList(unittest.TestCase):
         self.assertIn("global field order", text)             # field_display_order step
         self.assertIn("Overdue → Blocked", text)              # Triage board column order (group_order)
         self.assertIn("show column(s) by hand", text)         # Grooming Type (ui_columns)
+        self.assertIn("Show hierarchy ON", text)              # Epics + Grooming nested tree (hierarchy=true)
+
+    def test_hierarchy_off_is_emitted_for_a_flat_view(self):
+        # the OFF branch renders for a hierarchy:false view (synthetic — no shipped view is OFF)
+        views = {"views": [{"name": "Flat", "layout": "TABLE_LAYOUT", "hierarchy": False}]}
+        text = "\n".join(sb.punch_list(sb.load_fields(), views))
+        self.assertIn("Flat: Show hierarchy OFF", text)
 
 
 class TestFieldDisplayOrder(unittest.TestCase):

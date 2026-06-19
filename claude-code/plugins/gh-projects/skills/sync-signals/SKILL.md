@@ -24,8 +24,8 @@ need a GitHub **App installation token** in `GH_APP_TOKEN` — **never**
 
 | Field | Derivation |
 |---|---|
-| **Blocked** | `yes` if the item has ≥1 OPEN blocker (native blocked-by DAG) |
-| **Blast radius** | `None / Blocks 1 / Blocks many / Blocks release` — downstream reach |
+| **Blocked** | `Blocked` if the item has ≥1 OPEN blocker, else `Unblocked` (native blocked-by DAG) |
+| **Blast radius** | `Blocks none / Blocks 1 / Blocks many / Blocks release` — downstream reach |
 | **Blast count** | # distinct downstream items transitively blocked |
 | **Schedule health** | `Done`(closed) › `Overdue`(open, past Target) › `Blocked` › `At risk`(Target ≤ window) › `On track` |
 | **Slippage** | bucketed days past Target — `Not late / 1–2d / 3–5d / 1+wk / 2+wk` |
