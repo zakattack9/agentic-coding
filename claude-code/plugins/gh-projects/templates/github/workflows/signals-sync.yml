@@ -20,7 +20,7 @@
 #   secrets.GH_APP_ID + secrets.GH_APP_PRIVATE_KEY — the GitHub App that can
 #     write Projects v2 (org-scoped, `project` scope). NEVER the default token.
 
-name: signals-sync
+name: "~ GH Projects: Signals Sync"
 
 on:
   issues:
@@ -30,8 +30,10 @@ on:
     types: [opened, closed, reopened, ready_for_review, converted_to_draft]
   schedule:
     # Low-frequency backstop so date-driven signals (Overdue / Slippage) stay
-    # live even with no events — once every 6 hours.
-    - cron: "0 */6 * * *"
+    # live even with no events — once every 12 hours (00:00 & 12:00 UTC). To
+    # change the cadence, edit this one line: GitHub requires a literal cron
+    # expression here — it cannot read a repo var/secret.
+    - cron: "0 */12 * * *"
   workflow_dispatch: {}
 
 # Read-only default token — it CANNOT write Projects v2 fields and is never used

@@ -23,7 +23,7 @@
 #   secrets.GH_APP_ID + secrets.GH_APP_PRIVATE_KEY — the GitHub App that can
 #     write Projects v2 (org-scoped). NEVER the default token.
 
-name: add-to-project
+name: "~ GH Projects: Add To Project"
 
 on:
   issues:

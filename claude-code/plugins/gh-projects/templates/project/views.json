@@ -50,7 +50,7 @@
     {
       "name": "Triage",
       "layout": "BOARD_LAYOUT",
-      "filter": "is:open -schedule-health:Done",
+      "filter": "is:open -schedule-health:Done has:schedule-health",
       "group": "Schedule health",
       "slice": "Decision needed",
       "group_order": ["Overdue", "Blocked", "At risk", "On track"],

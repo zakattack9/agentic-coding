@@ -22,7 +22,7 @@
 # Every Projects v2 field write uses a GitHub App INSTALLATION token minted from
 # the App id + private-key secrets — NEVER GITHUB_TOKEN (constraint #2).
 
-name: board-sync
+name: "~ GH Projects: Board Sync"
 
 on:
   push:
