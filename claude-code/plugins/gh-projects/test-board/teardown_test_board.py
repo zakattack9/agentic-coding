@@ -47,19 +47,25 @@ def teardown(dry_run: bool, assume_yes: bool):
     repo = m["repo"]
     project = m.get("project", {})
     issues = m.get("issues", [])
+    # Only milestones this seed CREATED (created=True) get deleted; reused ones are left.
+    milestones = [ms for ms in m.get("milestones", []) if ms.get("created")]
 
-    print(f"Repo    : {repo}")
-    print(f"Project : #{project.get('number')}  {project.get('url')}")
-    print(f"Issues  : {len(issues)}")
+    print(f"Repo      : {repo}")
+    print(f"Project   : #{project.get('number')}  {project.get('url')}")
+    print(f"Issues    : {len(issues)}")
     for it in issues:
         print(f"   - #{it['number']}  {it.get('title', '')}")
+    print(f"Milestones: {len(milestones)}")
+    for ms in milestones:
+        print(f"   - #{ms['number']}  {ms.get('title', '')}")
 
     if dry_run:
         print("\n--dry-run: nothing deleted.")
         return
 
     if not assume_yes:
-        resp = input(f"\nDelete the project and all {len(issues)} issues? [y/N] ").strip().lower()
+        resp = input(f"\nDelete the project, {len(issues)} issues and {len(milestones)} milestones? "
+                     "[y/N] ").strip().lower()
         if resp not in ("y", "yes"):
             print("aborted.")
             return
@@ -86,7 +92,22 @@ def teardown(dry_run: bool, assume_yes: bool):
         else:
             print(f"[board] delete failed (may already be gone): {err.strip()}")
 
-    # 3. manifest
+    # 3. milestones (only the ones we created)
+    if milestones:
+        owner, name = repo.split("/")
+        ms_deleted = 0
+        for ms in milestones:
+            code, _, err = run(["api", "-X", "DELETE",
+                                f"/repos/{owner}/{name}/milestones/{ms['number']}"], check=False)
+            if code == 0:
+                ms_deleted += 1
+            elif "not found" in (err or "").lower():
+                print(f"   milestone #{ms['number']} already gone")
+            else:
+                print(f"   ! milestone #{ms['number']} delete failed: {err.strip()}")
+        print(f"[milestones] deleted {ms_deleted}/{len(milestones)}")
+
+    # 4. manifest
     MANIFEST.unlink()
     print(f"[manifest] removed {MANIFEST.name}")
     print("\nTeardown complete.")

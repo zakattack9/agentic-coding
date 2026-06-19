@@ -68,6 +68,25 @@ ISSUE_FIELDS = {"Priority", "Start date", "Target date"}
 ASSIGNEE = "zakattack9"
 ASSIGN_WHEN_STATUS = {"Ready", "In Progress", "In Review", "On Staging", "Done"}
 
+# Release milestones (repo-level). Several views group by Milestone (Schedule Risk
+# Table, Epic Hierarchy, Intake & Hygiene, Release Train Roadmap), so without these
+# everything sits under "No milestone". `keys` lists the issues in each milestone;
+# a few issues are deliberately left off (realistic unscheduled backlog).
+MILESTONES = [
+    {"title": "v1.0 — Booking MVP", "due_on": "2026-07-05",
+     "description": "End-to-end booking + payment ready to ship.",
+     "keys": ["EPIC-BOOK", "BOOK-SEARCH", "BOOK-CHECKOUT", "BOOK-CONFIRM", "BOOK-CANCEL",
+              "BUG-CALENDAR", "BUG-PAYMENT", "BUG-MOBILE", "FEAT-AUTH", "FEAT-MAP",
+              "INFRA-CI", "INFRA-CDN", "INFRA-DB"]},
+    {"title": "v1.1 — Fleet management", "due_on": "2026-07-19",
+     "description": "Vehicle inventory, pricing and media.",
+     "keys": ["EPIC-FLEET", "FLEET-CRUD", "FLEET-PRICING", "FLEET-IMG", "CHORE-TESTS"]},
+    {"title": "v1.2 — Polish & i18n", "due_on": "2026-08-02",
+     "description": "Reviews, localization, accessibility and cleanup.",
+     "keys": ["FEAT-REVIEWS", "FEAT-I18N", "CHORE-A11Y"]},
+    # left unmilestoned on purpose: CHORE-DEPS, BUG-EMAIL
+]
+
 # --------------------------------------------------------------------------- #
 # The mock backlog. `key` is internal (parent / blocked_by references only).
 # Fields left unset are simply skipped. Dates are coherent with the sprint above.
@@ -264,6 +283,15 @@ def gql(query, **variables):
     return data.get("data", {})
 
 
+def rest(method, path, **fields):
+    args = ["api", "-X", method, path]
+    for k, v in fields.items():
+        flag = "-F" if isinstance(v, int) and not isinstance(v, bool) else "-f"
+        args += [flag, f"{k}={v}"]
+    out = run(args)
+    return json.loads(out) if out.strip() else {}
+
+
 def esc(s: str) -> str:
     return str(s).replace("\\", "\\\\").replace('"', '\\"')
 
@@ -425,6 +453,28 @@ def set_assignee(number: int, login: str):
     run(["issue", "edit", str(number), "--repo", REPO, "--add-assignee", login])
 
 
+def create_milestones() -> list[dict]:
+    """Ensure each MILESTONES entry exists in the repo (idempotent by title).
+    Returns [{title, number, created}] so teardown can delete only the ones we made."""
+    owner, name = REPO.split("/")
+    existing = {m["title"]: m["number"]
+                for m in (rest("GET", f"/repos/{owner}/{name}/milestones", state="all") or [])}
+    out = []
+    for ms in MILESTONES:
+        if ms["title"] in existing:
+            out.append({"title": ms["title"], "number": existing[ms["title"]], "created": False})
+            continue
+        r = rest("POST", f"/repos/{owner}/{name}/milestones",
+                 title=ms["title"], state="open",
+                 description=ms.get("description", ""), due_on=ms["due_on"] + "T00:00:00Z")
+        out.append({"title": ms["title"], "number": r["number"], "created": True})
+    return out
+
+
+def set_milestone(number: int, title: str):
+    run(["issue", "edit", str(number), "--repo", REPO, "--milestone", title])
+
+
 def add_sub_issue(parent_node: str, child_node: str):
     gql("mutation($p:ID!,$c:ID!){addSubIssue(input:{issueId:$p,subIssueId:$c}){issue{id}}}",
         p=parent_node, c=child_node)
@@ -470,11 +520,17 @@ def seed(dry_run: bool):
     print(f"[board] set {len(SPRINTS)} Sprint iterations (Sprint 2 = current)")
     print(f"[board] linked repo {REPO}" if link_repo(board["id"]) else f"[board] repo {REPO} already linked")
 
+    milestones = create_milestones()
+    ms_title_by_key = {k: ms["title"] for ms in MILESTONES for k in ms["keys"]}
+    print(f"[milestones] {sum(1 for m in milestones if m['created'])} created, "
+          f"{sum(1 for m in milestones if not m['created'])} reused "
+          f"({', '.join(m['title'] for m in milestones)})")
+
     pfields = resolve_project_fields(board["number"])
     ifields = resolve_issue_fields()
     itypes = resolve_issue_types()
 
-    manifest = {"project": board, "org": ORG, "repo": REPO, "issues": []}
+    manifest = {"project": board, "org": ORG, "repo": REPO, "milestones": milestones, "issues": []}
     by_key = {}
 
     for spec in ISSUES:
@@ -495,6 +551,8 @@ def seed(dry_run: bool):
                 set_issue_field(issue["node_id"], ifields[fname], spec[fname])
         if spec.get("Status") in ASSIGN_WHEN_STATUS:
             set_assignee(issue["number"], ASSIGNEE)
+        if spec["key"] in ms_title_by_key:
+            set_milestone(issue["number"], ms_title_by_key[spec["key"]])
         print(f"  #{issue['number']:>4}  {spec['type']:7} {spec['Status']:11} {spec['title']}")
 
     # Relationships (after every issue exists)
