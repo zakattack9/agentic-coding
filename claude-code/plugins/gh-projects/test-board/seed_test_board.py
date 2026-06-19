@@ -350,6 +350,22 @@ def set_sprints(project_number: int):
     gql(q, f=fid)
 
 
+def link_repo(project_id: str):
+    """Link the repo to the Project (surfaces the board in the repo's Projects tab).
+    Idempotent: skips if already linked."""
+    owner, name = REPO.split("/")
+    data = gql("query($o:String!,$n:String!){repository(owner:$o,name:$n){id}}", o=owner, n=name)
+    repo_id = data["repository"]["id"]
+    linked = gql("query($p:ID!){node(id:$p){... on ProjectV2{repositories(first:50){nodes{id}}}}}",
+                 p=project_id)
+    have = {n["id"] for n in (linked["node"]["repositories"]["nodes"] or [])}
+    if repo_id in have:
+        return False
+    gql("mutation($p:ID!,$r:ID!){linkProjectV2ToRepository(input:{projectId:$p,repositoryId:$r})"
+        "{repository{nameWithOwner}}}", p=project_id, r=repo_id)
+    return True
+
+
 # --------------------------------------------------------------------------- #
 # Per-issue writes
 # --------------------------------------------------------------------------- #
@@ -452,6 +468,7 @@ def seed(dry_run: bool):
     print(f"\n[board] created #{board['number']}  {board['url']}")
     set_sprints(board["number"])
     print(f"[board] set {len(SPRINTS)} Sprint iterations (Sprint 2 = current)")
+    print(f"[board] linked repo {REPO}" if link_repo(board["id"]) else f"[board] repo {REPO} already linked")
 
     pfields = resolve_project_fields(board["number"])
     ifields = resolve_issue_fields()
