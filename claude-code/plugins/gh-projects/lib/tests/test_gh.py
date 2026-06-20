@@ -400,6 +400,91 @@ class TestAppToken(GhTestBase):
         self.assertNotIn("os.environ['GITHUB_TOKEN']", src)
 
 
+class TestAppTokenMinting(GhTestBase):
+    """The APP_ID + APP_PRIVATE_KEY minting path: real RS256 signing via openssl.
+
+    Regression guard for the JWT signing path, which previously double-signed
+    (signed the message, then fed that signature back to openssl as if it were
+    the key) and so always failed. Skipped only where `openssl` is unavailable.
+    """
+
+    @staticmethod
+    def _have_openssl():
+        import shutil
+        return shutil.which("openssl") is not None
+
+    def _gen_keypair(self):
+        import subprocess
+        import tempfile
+        d = tempfile.mkdtemp()
+        priv = os.path.join(d, "key.pem")
+        pub = os.path.join(d, "key.pub")
+        subprocess.run(["openssl", "genrsa", "-out", priv, "2048"],
+                       capture_output=True, check=True)
+        subprocess.run(["openssl", "rsa", "-in", priv, "-pubout", "-out", pub],
+                       capture_output=True, check=True)
+        with open(priv, encoding="utf-8") as fh:
+            pem = fh.read()
+        return pem, pub, d
+
+    def test_minted_jwt_signature_verifies(self):
+        if not self._have_openssl():
+            self.skipTest("openssl not available")
+        import base64
+        import shutil
+        import subprocess
+        pem, pub, d = self._gen_keypair()
+        try:
+            jwt = gh._mint_app_jwt("12345", pem)
+            parts = jwt.split(".")
+            self.assertEqual(len(parts), 3, "JWT must be header.claims.signature")
+            signing_input = (parts[0] + "." + parts[1]).encode("ascii")
+            # base64url-decode the signature (restore the stripped '=' padding)
+            sig_b64 = parts[2] + "=" * (-len(parts[2]) % 4)
+            sig = base64.urlsafe_b64decode(sig_b64)
+            sig_path = os.path.join(d, "sig.bin")
+            with open(sig_path, "wb") as fh:
+                fh.write(sig)
+            proc = subprocess.run(
+                ["openssl", "dgst", "-sha256", "-verify", pub, "-signature", sig_path],
+                input=signing_input, capture_output=True)
+            self.assertEqual(proc.returncode, 0,
+                             "minted JWT signature must verify against the public key")
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def test_get_app_token_mints_via_app_id_and_private_key(self):
+        if not self._have_openssl():
+            self.skipTest("openssl not available")
+        import shutil
+        pem, _pub, d = self._gen_keypair()
+        saved = {k: os.environ.pop(k, None) for k in
+                 ("GH_APP_TOKEN", "APP_ID", "APP_PRIVATE_KEY", "APP_PRIVATE_KEY_PATH",
+                  "APP_INSTALLATION_ID")}
+        os.environ["APP_ID"] = "12345"
+        os.environ["APP_PRIVATE_KEY"] = pem
+
+        def fake_run(args):
+            body = " ".join(str(a) for a in args)
+            # POST .../installations/<id>/access_tokens -> the installation token
+            if "/app/installations/" in body and "access_tokens" in body:
+                return json.dumps({"token": "ghs_mintedinstalltoken1234567890abcd"})
+            # GET /app/installations -> list (resolves the installation id)
+            if "/app/installations" in body:
+                return json.dumps([{"id": 999}])
+            return "{}"
+
+        gh.RUN = fake_run
+        try:
+            self.assertEqual(gh.get_app_token(), "ghs_mintedinstalltoken1234567890abcd")
+        finally:
+            for k, v in saved.items():
+                os.environ.pop(k, None)
+                if v is not None:
+                    os.environ[k] = v
+            shutil.rmtree(d, ignore_errors=True)
+
+
 # --------------------------------------------------------------------------- #
 # exit codes for each entrypoint + secret scan (prints no token)
 # --------------------------------------------------------------------------- #
