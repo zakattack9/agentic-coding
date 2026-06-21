@@ -179,6 +179,25 @@ Also write the **backward sweep** into the ledger's `backwardSweep`: set `ran` t
 
 Validate the shape (`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/validate_return.py --kind judge-verify`), then write `verdict` / `missed` / `weakEvidence` into the ledger's `judge` field and set `judge.ran` true. Every entry in `missed` / `weakEvidence` becomes another pass; the judge returns `complete` only when both are empty and both sweeps ran honestly.
 
+#### Cross-model judge — a second, different-provider judge (when available)
+
+So a completeness check isn't *Claude auditing Claude*, run a second judge of a **different provider** (OpenAI Codex) **beside** the Claude judge — **optional and fail-open**: when Codex is absent / unauthenticated / off / slow / malformed, this section is a no-op and the verdict is exactly what the Claude judge produced. **Read `${CLAUDE_PLUGIN_ROOT}/references/cross-model-judge.md`** for the shared policy (final-pass-only, concurrent dispatch, verbatim rubric, AND-merge, fail-open branching, stubborn-split escalation). verify-spec specifics:
+
+- **Only on the completeness pass.** Dispatch the Codex judge only on the pass where the ledger is otherwise structurally complete and you are about to sign off — not on intermediate gap-fixing passes. ~one Codex call per run.
+- **Concurrent dispatch.** In the same turn you dispatch the Claude `spec-verify-judge` `Task`, also build the Codex prompt and call the bridge — the rubric file `${CLAUDE_PLUGIN_ROOT}/agents/spec-verify-judge.md` **verbatim**, then `## The target` and `## The ledger` (the target text/path + the current ledger JSON — **only** those, no memory of prior passes), written to a transient `/tmp` prompt file:
+
+  ```bash
+  python3 "${CLAUDE_PLUGIN_ROOT}/scripts/codex_bridge.py" --kind judge-verify \
+    --prompt-file <tmp-prompt> \
+    --schema-file "${CLAUDE_PLUGIN_ROOT}/schemas/judge_verify.schema.json" \
+    --cd <repo-root> --effort xhigh
+  ```
+
+  The Codex judge runs **read-only** (the bridge pins `--sandbox read-only`) and returns the **identical `judge-verify` contract**, already shape-validated by the bridge on exit 0.
+- **Branch on the exit code.** `0` → merge the Codex verdict; `10` / `11` / `12` → proceed Claude-only, surface the one bridge log line, change nothing.
+- **AND-merge into the single `judge` field.** When a Codex verdict came back, write `judge.verdict: "complete"` **only when both** judges returned `complete`; set the ledger's `missed` / `weakEvidence` to the **union** of both judges' findings. You are not adding a ledger field — you are withholding the existing done-signal until both judges agree, so `stop_verify_spec.py` and the ledger schema stay unchanged. The combined gate is strictly stronger, never weaker.
+- **Stubborn split → escalate, never deadlock.** If Codex keeps failing a claim the Claude judge passes and no further grounding resolves it, escalate per the shared policy (`AskUserQuestion` interactively, or the blocked/handoff return under `orchestrate-spec`); the user's disposition resolves the contested finding so the gate can release.
+
 ### 5. Re-check — settle or loop
 
 If the judge reported `gaps`, **loop**: enumerate the `missed` claims, re-ground the `weakEvidence` ones, then re-run the judge. Before stopping, make the ledger reflect reality — every claim verdicted, every verdict cited, every `unverifiable` dispositioned, and the judge `complete`. The `Stop` hook bounces you back here if anything is still `unchecked`, uncited, undispositioned, or the judge hasn't signed off.
@@ -205,7 +224,7 @@ When the gate passes, report a **per-claim verdict table** — `claim | verdict 
 - **Evidence is always real source.** Never cite the spec, an audit, a checklist, or your own earlier claim as proof — only the codebase, git, or live read-only state. Docs are what you check, not what you check against.
 - **Observe, never change — the tool grants are broader than the contract.** This skill holds `Bash` and `Write`, but its contract is strictly read-only:
   - **Bash:** only non-mutating commands — `git log/diff/show`, `aws … describe/list/get`, `gh api` GETs, `grep`, `cat`. **Never** run anything that writes, creates, deletes, applies, deploys, commits, pushes, or redirects (`>` / `>>`, `sed -i`, `rm`, `mv`, `terraform apply`, `aws … create/put/delete`, `git commit/push/checkout`).
-  - **Write:** the **only** legal target is the `/tmp` ledger. Never write or edit a repo file, the spec, or code. (The drift baseline and the spec-amendment handoff — both in `/tmp`, never the repo — are written by the `Stop` hook, never by you; you only *read* the drift baseline at run start.)
+  - **Write:** the legal targets are both in `/tmp`, never the repo — the verification ledger, and a transient Codex-judge **prompt file** (the rubric + target + ledger handed to `codex_bridge.py` on the completeness pass). Never write or edit a repo file, the spec, or code. (The drift baseline and the spec-amendment handoff — also `/tmp`, never the repo — are written by the `Stop` hook, never by you; you only *read* the drift baseline at run start.)
   - Treat any mutating action as out-of-contract even though the tool would permit it.
 - **Deterministic.** The same claim checked against the same source must yield the same verdict; if a re-check flips a verdict without the source having changed, that's a grounding error to resolve, not new information.
 - **Enumerate, don't assume.** A claim you didn't list is a claim you didn't verify.
