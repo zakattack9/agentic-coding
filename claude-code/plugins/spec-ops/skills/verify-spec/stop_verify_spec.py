@@ -100,6 +100,16 @@ STALE_SECONDS = 45 * 60
 # Allowed verdict values for a claim.
 VERDICTS = {"unchecked", "confirmed", "contradicted", "unverifiable"}
 
+# Evidence-grounding techniques and spec-linkage pattern types, defined ONCE here
+# (the validating authority) and mirrored for humans in verify-spec/SKILL.md. The
+# scanner (scripts/spec_linkage_scan.py) is the producer of the non-judgment pattern
+# types; `identifier` and `background` are the model-added judgment classes. These
+# drive the schema hint below — the hook validates `method`/`patternType` by
+# presence/shape only, never against these sets (fit is the judge's call), so the
+# lists stay a single source for the docs without becoming a hard enum gate.
+METHODS = ("static-read", "measurement", "exhaustive-check", "cli-observation", "test-run")
+PATTERN_TYPES = ("ac-id", "build-phase", "spec-ref", "provenance", "temporal", "identifier", "background")
+
 # Canonical ledger shape, shown to the agent whenever its ledger is rejected.
 SCHEMA_HINT = (
     '{\n'
@@ -110,7 +120,7 @@ SCHEMA_HINT = (
     '      "claim": "short text of one checkable claim",\n'
     '      "verdict": "unchecked | confirmed | contradicted | unverifiable",\n'
     '      "evidence": "file:line / git sha / read-only CLI output (required once verdict is confirmed/contradicted)",\n'
-    '      "method": "how it was grounded: static-read / measurement / exhaustive-check / cli-observation / test-run (required once confirmed/contradicted)",\n'
+    f'      "method": "how it was grounded: {" / ".join(METHODS)} (required once confirmed/contradicted)",\n'
     '      "disposition": "the user\'s call (required once verdict is unverifiable)"\n'
     '    }\n'
     '  ],\n'
@@ -138,7 +148,7 @@ SCHEMA_HINT = (
     '    "findings": [\n'
     '      {\n'
     '        "file": "file:line of delivered text referencing the build spec",\n'
-    '        "patternType": "ac-id | build-phase | spec-ref | provenance | temporal | identifier | background",\n'
+    f'        "patternType": "{" | ".join(PATTERN_TYPES)}",\n'
     '        "snippet": "the offending text",\n'
     '        "suggested": "the line with the linkage stripped (or empty)"\n'
     '      }\n'
@@ -388,7 +398,7 @@ def evaluate(marker_path: str, marker: dict):
         more = f" (+{len(no_method) - 5} more)" if len(no_method) > 5 else ""
         failures.append(
             "These claims have a verdict but record no 'method' (how it was grounded — "
-            f"static-read / measurement / exhaustive-check / cli-observation / test-run): {preview}{more}"
+            f"{' / '.join(METHODS)}): {preview}{more}"
         )
 
     # 3. Every unverifiable claim must carry an explicit user disposition.

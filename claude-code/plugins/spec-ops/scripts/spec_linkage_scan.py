@@ -167,6 +167,11 @@ RE_OUTPUT_CTX = re.compile(
 )
 
 
+# This scanner is the *producer* of the non-judgment patternTypes — `ac-id`,
+# `build-phase`, `spec-ref`, `provenance`, `temporal` (emitted below). The two
+# judgment classes a model adds by reading the diff — `identifier`, `background` —
+# are documented in verify-spec/SKILL.md and stop_verify_spec.py's PATTERN_TYPES.
+# Keep all three sites in sync when the set changes.
 class Finding:
     __slots__ = ("file", "line", "patternType", "severity", "snippet", "autostrip", "suggested")
 
