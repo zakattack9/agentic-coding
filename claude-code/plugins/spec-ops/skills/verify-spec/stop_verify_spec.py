@@ -27,11 +27,6 @@ so refine-spec can ingest a missed-requirement finding on its next run without
 manual re-keying (see spec_amendments.py). Same best-effort /tmp discipline; a
 clean sweep clears it.
 
-On the same clean pass it also runs the deterministic spec-linkage detector over the
-diff and writes the result to /tmp/claude-linkage-scan-<abs-spec-path>.json — a
-deterministic cross-check of the model's specLinkageSweep, report-only and never a
-gate (see write_linkage_scan). Best-effort; a missing base or git error is a no-op.
-
 The ledger is authored by the model, so it is treated as UNTRUSTED input and
 validated strictly. The guardrail must never be silently disabled by an AI
 mistake (malformed JSON, wrong types):
@@ -75,7 +70,6 @@ Output: nothing to allow the stop; {"decision":"block","reason":...} to force
 
 import json
 import os
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -98,15 +92,6 @@ try:
 except Exception:  # noqa: BLE001 — a missing helper must never disable the gate
     spec_amendments = None
 
-# The deterministic spec-linkage detector (scripts/). On a clean pass the hook runs it
-# over the diff as a best-effort cross-check and writes the result to /tmp, so a
-# deterministic record of greppable linkage exists at verification time. Report-only
-# and never gates — same discipline as the drift baseline. Guarded import.
-try:
-    import spec_linkage_scan
-except Exception:  # noqa: BLE001 — a missing helper must never disable the gate
-    spec_linkage_scan = None
-
 # Ledger is considered abandoned/stuck if not rewritten within this window.
 # Long enough for a heavy pass (parallel grounding subagents + user Q&A),
 # short enough that a leaked ledger frees the session on its own.
@@ -122,54 +107,68 @@ VERDICTS = {"unchecked", "confirmed", "contradicted", "unverifiable"}
 # drive the schema hint below — the hook validates `method`/`patternType` by
 # presence/shape only, never against these sets (fit is the judge's call), so the
 # lists stay a single source for the docs without becoming a hard enum gate.
-METHODS = ("static-read", "measurement", "exhaustive-check", "cli-observation", "test-run")
-PATTERN_TYPES = ("ac-id", "build-phase", "spec-ref", "provenance", "temporal", "identifier", "background")
+METHODS = (
+    "static-read",
+    "measurement",
+    "exhaustive-check",
+    "cli-observation",
+    "test-run",
+)
+PATTERN_TYPES = (
+    "ac-id",
+    "build-phase",
+    "spec-ref",
+    "provenance",
+    "temporal",
+    "identifier",
+    "background",
+)
 
 # Canonical ledger shape, shown to the agent whenever its ledger is rejected.
 SCHEMA_HINT = (
-    '{\n'
+    "{\n"
     '  "target": "<what you are verifying — a path, feature, or commit range>",\n'
     '  "specPath": "<absolute path of the spec under verification — enables the drift baseline; omit for non-spec targets>",\n'
     '  "claims": [\n'
-    '    {\n'
+    "    {\n"
     '      "claim": "short text of one checkable claim",\n'
     '      "verdict": "unchecked | confirmed | contradicted | unverifiable",\n'
     '      "evidence": "file:line / git sha / read-only CLI output (required once verdict is confirmed/contradicted)",\n'
     f'      "method": "how it was grounded: {" / ".join(METHODS)} (required once confirmed/contradicted)",\n'
     '      "disposition": "the user\'s call (required once verdict is unverifiable)"\n'
-    '    }\n'
-    '  ],\n'
+    "    }\n"
+    "  ],\n"
     '  "judge": {\n'
     '    "ran": false,\n'
     '    "verdict": "pending | gaps | complete",\n'
     '    "missed": ["claims the judge found absent from the ledger"],\n'
     '    "weakEvidence": ["claims whose evidence the judge found hollow/stale/doc-based"]\n'
-    '  },\n'
+    "  },\n"
     '  "backwardSweep": {\n'
     '    "ran": false,\n'
     '    "base": "diff base swept (commit range), or empty if none",\n'
     '    "skippedReason": "why the sweep was skipped, if it was (else empty)",\n'
     '    "findings": [\n'
-    '      {\n'
+    "      {\n"
     '        "hunk": "file:line / path of a substantive change mapping to NO acceptance criterion",\n'
     '        "evidence": "git sha / file:line",\n'
     '        "disposition": "intended | unintended | unsure",\n'
     '        "proposedAC": "candidate AC text"\n'
-    '      }\n'
-    '    ]\n'
-    '  },\n'
+    "      }\n"
+    "    ]\n"
+    "  },\n"
     '  "specLinkageSweep": {\n'
     '    "ran": false,\n'
     '    "findings": [\n'
-    '      {\n'
+    "      {\n"
     '        "file": "file:line of delivered text referencing the build spec",\n'
     f'        "patternType": "{" | ".join(PATTERN_TYPES)}",\n'
     '        "snippet": "the offending text",\n'
     '        "suggested": "the line with the linkage stripped (or empty)"\n'
-    '      }\n'
-    '    ]\n'
-    '  }\n'
-    '}'
+    "      }\n"
+    "    ]\n"
+    "  }\n"
+    "}"
 )
 
 
@@ -224,7 +223,9 @@ def validate_ledger(m):
     # specPath: OPTIONAL — when verifying a spec, its absolute path. Used only to
     # key the drift baseline; shape-validated when present, never gates the stop.
     if "specPath" in m and not isinstance(m.get("specPath"), str):
-        problems.append("'specPath' must be a string (absolute path of the spec under verification)")
+        problems.append(
+            "'specPath' must be a string (absolute path of the spec under verification)"
+        )
 
     # claims: required, non-empty list of {claim, verdict, evidence?, disposition?}.
     claims = m.get("claims")
@@ -233,7 +234,9 @@ def validate_ledger(m):
     else:
         for i, c in enumerate(claims):
             if not isinstance(c, dict):
-                problems.append(f"claims[{i}] must be an object with 'claim' and 'verdict'")
+                problems.append(
+                    f"claims[{i}] must be an object with 'claim' and 'verdict'"
+                )
                 continue
             if not isinstance(c.get("claim"), str) or not c.get("claim").strip():
                 problems.append(f"claims[{i}].claim must be a non-empty string")
@@ -261,8 +264,13 @@ def validate_ledger(m):
     else:
         if not isinstance(judge.get("ran"), bool):
             problems.append("'judge.ran' must be a JSON boolean (true/false)")
-        if not isinstance(judge.get("verdict"), str) or not judge.get("verdict", "").strip():
-            problems.append("'judge.verdict' must be a non-empty string (pending/gaps/complete)")
+        if (
+            not isinstance(judge.get("verdict"), str)
+            or not judge.get("verdict", "").strip()
+        ):
+            problems.append(
+                "'judge.verdict' must be a non-empty string (pending/gaps/complete)"
+            )
         for key in ("missed", "weakEvidence"):
             if key in judge and not isinstance(judge.get(key), list):
                 problems.append(f"'judge.{key}' must be a JSON array")
@@ -279,7 +287,9 @@ def validate_ledger(m):
             )
         else:
             if not isinstance(sweep.get("ran"), bool):
-                problems.append("'backwardSweep.ran' must be a JSON boolean (true/false)")
+                problems.append(
+                    "'backwardSweep.ran' must be a JSON boolean (true/false)"
+                )
             for key in ("base", "skippedReason"):
                 if key in sweep and not isinstance(sweep.get(key), str):
                     problems.append(f"'backwardSweep.{key}' must be a string")
@@ -289,13 +299,19 @@ def validate_ledger(m):
             elif isinstance(findings, list):
                 for i, f in enumerate(findings):
                     if not isinstance(f, dict):
-                        problems.append(f"backwardSweep.findings[{i}] must be an object")
+                        problems.append(
+                            f"backwardSweep.findings[{i}] must be an object"
+                        )
                         continue
                     if not isinstance(f.get("hunk"), str) or not f.get("hunk").strip():
-                        problems.append(f"backwardSweep.findings[{i}].hunk must be a non-empty string")
+                        problems.append(
+                            f"backwardSweep.findings[{i}].hunk must be a non-empty string"
+                        )
                     for key in ("evidence", "disposition", "proposedAC"):
                         if key in f and not isinstance(f.get(key), str):
-                            problems.append(f"backwardSweep.findings[{i}].{key} must be a string")
+                            problems.append(
+                                f"backwardSweep.findings[{i}].{key} must be a string"
+                            )
 
     # specLinkageSweep: OPTIONAL, report-only (the spec-linkage hygiene pass — artifact
     # text that references the build spec). Shape-validated when present so a malformed
@@ -309,20 +325,28 @@ def validate_ledger(m):
             )
         else:
             if not isinstance(linkage.get("ran"), bool):
-                problems.append("'specLinkageSweep.ran' must be a JSON boolean (true/false)")
+                problems.append(
+                    "'specLinkageSweep.ran' must be a JSON boolean (true/false)"
+                )
             lfindings = linkage.get("findings")
             if lfindings is not None and not isinstance(lfindings, list):
                 problems.append("'specLinkageSweep.findings' must be a JSON array")
             elif isinstance(lfindings, list):
                 for i, f in enumerate(lfindings):
                     if not isinstance(f, dict):
-                        problems.append(f"specLinkageSweep.findings[{i}] must be an object")
+                        problems.append(
+                            f"specLinkageSweep.findings[{i}] must be an object"
+                        )
                         continue
                     if not isinstance(f.get("file"), str) or not f.get("file").strip():
-                        problems.append(f"specLinkageSweep.findings[{i}].file must be a non-empty string")
+                        problems.append(
+                            f"specLinkageSweep.findings[{i}].file must be a non-empty string"
+                        )
                     for key in ("patternType", "snippet", "suggested"):
                         if key in f and not isinstance(f.get(key), str):
-                            problems.append(f"specLinkageSweep.findings[{i}].{key} must be a string")
+                            problems.append(
+                                f"specLinkageSweep.findings[{i}].{key} must be a string"
+                            )
 
     return problems
 
@@ -360,59 +384,10 @@ def write_spec_amendments(marker: dict):
         if not spec_path:
             return  # non-spec target: nothing to hand off
         findings = spec_amendments.findings_from_ledger(marker)
-        spec_amendments.write_amendments(spec_path, findings)  # [] clears a stale handoff
+        spec_amendments.write_amendments(
+            spec_path, findings
+        )  # [] clears a stale handoff
     except Exception:  # noqa: BLE001 — handoff is best-effort; never break the stop
-        pass
-
-
-def linkage_scan_path(spec_path: str) -> str:
-    """/tmp sidecar path keyed on the spec's realpath (report-only, never the repo)."""
-    real = os.path.realpath(spec_path)
-    safe = "".join(c if (c.isalnum() or c in "._-") else "_" for c in real)
-    return f"/tmp/claude-linkage-scan-{safe}.json"
-
-
-def write_linkage_scan(marker: dict):
-    """On a clean pass, run the deterministic spec-linkage detector over the diff and
-    write its findings to /tmp — a deterministic cross-check of the model's
-    `specLinkageSweep`, available to a later run or the user. Entirely best-effort and
-    report-only: a missing helper, non-spec target, no recorded diff base, git error,
-    oversized diff, or write error is a silent no-op. It NEVER blocks the allowed stop,
-    never raises, and never gates (linkage is always report-only). verify-spec still
-    writes only /tmp."""
-    if spec_linkage_scan is None:
-        return
-    try:
-        spec_path = str(marker.get("specPath", "")).strip()
-        if not spec_path:
-            return  # non-spec target: nothing to scan
-        sweep = marker.get("backwardSweep")
-        base = str(sweep.get("base", "")).strip() if isinstance(sweep, dict) else ""
-        if not base:
-            return  # no diff base recorded: nothing deterministic to scan against
-        # Compute changed files HERE. The scanner's own changed_files() calls sys.exit
-        # on a git error, which would escape as a blocking hook exit — so never call it.
-        try:
-            res = subprocess.run(
-                ["git", "diff", "--name-only", "--diff-filter=d", f"{base}..HEAD"],
-                capture_output=True, text=True, timeout=20,
-            )
-        except Exception:  # noqa: BLE001 — git missing/slow → skip, never block
-            return
-        if res.returncode != 0:
-            return
-        files = [ln for ln in res.stdout.splitlines() if ln.strip()]
-        if len(files) > 200:
-            return  # too large to scan as a turn-end backstop; skip rather than delay
-        findings, scanned = (spec_linkage_scan.scan(files) if files else ([], 0))
-        report = {
-            "base": base,
-            "scanned": scanned,
-            "findings": [f.as_dict() for f in findings],
-        }
-        with open(linkage_scan_path(spec_path), "w") as fh:
-            json.dump(report, fh)
-    except Exception:  # noqa: BLE001 — best-effort; never break the stop
         pass
 
 
@@ -471,11 +446,14 @@ def evaluate(marker_path: str, marker: dict):
     undispositioned = [
         c["claim"]
         for c in claims
-        if c.get("verdict") == "unverifiable" and not str(c.get("disposition", "")).strip()
+        if c.get("verdict") == "unverifiable"
+        and not str(c.get("disposition", "")).strip()
     ]
     if undispositioned:
         preview = "; ".join(undispositioned[:5])
-        more = f" (+{len(undispositioned) - 5} more)" if len(undispositioned) > 5 else ""
+        more = (
+            f" (+{len(undispositioned) - 5} more)" if len(undispositioned) > 5 else ""
+        )
         failures.append(
             "These claims are 'unverifiable' but have no user disposition "
             f"(dig further, or ask the user and record their call): {preview}{more}"
@@ -517,7 +495,6 @@ def evaluate(marker_path: str, marker: dict):
     if not failures:
         write_drift_baseline(marker, claims)
         write_spec_amendments(marker)
-        write_linkage_scan(marker)
         remove(marker_path)
         allow()
         return
