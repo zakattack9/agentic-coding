@@ -8,7 +8,7 @@ ledger or a gate decision — never trust a subagent's prose. This script is tha
 validation step (the plan-validate-execute pattern): pipe a subagent's return
 through it and branch on the exit code.
 
-Four contracts (`--kind`):
+Five contracts (`--kind`):
 
   grounder-verify : verify-spec step 2 — a JSON ARRAY, one object per claim:
         [{ "claim", "verdict": confirmed|contradicted|unverifiable,
@@ -27,6 +27,11 @@ Four contracts (`--kind`):
         { "perCriterion": [{ "criterion": <one of the six gate flags>,
             "verdict": PASS|FAIL, "reason" }], "findings": [...],
           "overall": PASS|FAIL }
+
+  write-requirements : write-spec discovery requirements review — a JSON OBJECT,
+        three string arrays naming what the feature implies but the draft missed:
+        { "missingACs": [...], "unaskedQuestions": [...], "scopeRisks": [...] }
+        Advisory only — the caller surfaces it for disposition, never gates on it.
 
 Input: the JSON on stdin, or a file path argument. Usage:
     python3 validate_return.py --kind <kind> [file.json]
@@ -94,6 +99,13 @@ SCHEMAS = {
         '  ],\n'
         '  "findings": [{ "type": "Gap | Ambiguity | Conflict", "acId": "AC-7 or empty", "detail": "..." }],\n'
         '  "overall": "PASS | FAIL"\n'
+        '}'
+    ),
+    "write-requirements": (
+        '{\n'
+        '  "missingACs": ["a requirement the feature implies but the AC table never captures"],\n'
+        '  "unaskedQuestions": ["a product decision the discovery transcript never put to the user"],\n'
+        '  "scopeRisks": ["a scope/over-reach risk in what was drafted"]\n'
         '}'
     ),
 }
@@ -204,11 +216,27 @@ def validate_judge_refine(data):
     return problems
 
 
+def validate_write_requirements(data):
+    problems = []
+    if not isinstance(data, dict):
+        return ["the return must be a JSON object {missingACs, unaskedQuestions, scopeRisks}"]
+    for key in ("missingACs", "unaskedQuestions", "scopeRisks"):
+        v = data.get(key)
+        if not isinstance(v, list):
+            problems.append(f"'{key}' must be a JSON array of strings (empty when none)")
+            continue
+        for i, item in enumerate(v):
+            if not _is_str(item):
+                problems.append(f"{key}[{i}] must be a string")
+    return problems
+
+
 VALIDATORS = {
     "grounder-verify": validate_grounder_verify,
     "grounder-refine": validate_grounder_refine,
     "judge-verify": validate_judge_verify,
     "judge-refine": validate_judge_refine,
+    "write-requirements": validate_write_requirements,
 }
 
 

@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "completeness judge verdict",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "verdict": { "type": "string", "enum": ["complete", "gaps"] },
+    "missed": { "type": "array", "items": { "type": "string" } },
+    "weakEvidence": { "type": "array", "items": { "type": "string" } },
+    "backwardSweepAttested": { "type": "boolean" },
+    "specLinkageSweepAttested": { "type": "boolean" },
+    "notes": { "type": "string" }
+  },
+  "required": [
+    "verdict",
+    "missed",
+    "weakEvidence",
+    "backwardSweepAttested",
+    "specLinkageSweepAttested",
+    "notes"
+  ]
+}

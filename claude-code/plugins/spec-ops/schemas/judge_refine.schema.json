@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "readiness judge verdict",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "perCriterion": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "criterion": {
+            "type": "string",
+            "enum": [
+              "claims_verified",
+              "no_open_questions",
+              "no_overengineering",
+              "no_bloat",
+              "implementable_cold",
+              "ac_complete"
+            ]
+          },
+          "verdict": { "type": "string", "enum": ["PASS", "FAIL"] },
+          "reason": { "type": "string" }
+        },
+        "required": ["criterion", "verdict", "reason"]
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": { "type": "string", "enum": ["Gap", "Ambiguity", "Conflict"] },
+          "acId": { "type": "string" },
+          "detail": { "type": "string" }
+        },
+        "required": ["type", "acId", "detail"]
+      }
+    },
+    "overall": { "type": "string", "enum": ["PASS", "FAIL"] }
+  },
+  "required": ["perCriterion", "findings", "overall"]
+}
