@@ -75,7 +75,7 @@ dur_txt=""
 if (( total_dur_sec < 60 )); then
   dur_txt="${total_dur_sec}s"
 elif (( dur_days > 0 )); then
-  dur_txt="${dur_days}d ${dur_hours}h ${dur_mins}m"
+  dur_txt="${dur_days}d ${dur_hours}h"
 elif (( dur_hours > 0 )); then
   dur_txt="${dur_hours}h ${dur_mins}m"
 else
