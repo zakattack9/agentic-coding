@@ -18,7 +18,7 @@ rules decide whether an issue may enter `Ready`.
 
 ## Ready gate (`ac_complete`)
 
-`intake-issues` **refuses `Ready`** when AC are:
+`create-issues` **refuses `Ready`** when AC are:
 
 - prose-only (no table), or
 - unverifiable / not an observable end-state (a task, an aspiration, a "should").
@@ -30,7 +30,7 @@ for code that maps to no AC).
 
 ## AC-group count → size + Epic-split
 
-`intake-issues` reads the **group count**:
+`create-issues` reads the **group count**:
 
 - `1 → S`, `2–3 → M`, `4+ → L` (human-confirmed).
 - At **>~3–4 groups**, recommend an **Epic split**: one **sub-issue per group**

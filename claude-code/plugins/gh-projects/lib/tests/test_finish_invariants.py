@@ -4,7 +4,7 @@
 Holistic assertions over the six gh-projects skills + the add-to-project template
 + the root marketplace, behind the invariants that must hold across the plugin:
 
-  - route-issue and promote-pr frontmatter carry the PreToolUse / matcher
+  - start-issue and create-pr frontmatter carry the PreToolUse / matcher
     "Bash" guard hooks block pointing at hooks/guard.sh; plan-sprint does NOT
     (it neither deploys nor merges). The guard's behavior (squash / prod /
     fail-open) is exercised separately in test_guard.py.
@@ -14,8 +14,8 @@ Holistic assertions over the six gh-projects skills + the add-to-project templat
     project write with a GitHub App token, never GITHUB_TOKEN.
   - Root marketplace.json pins gh-projects to >= 0.2.0.
   - All six skills declare disable-model-invocation + model: claude-opus-4-8
-    with the deliberate per-skill effort (route-issue medium · plan-sprint
-    high · promote-pr high · scaffold-repo medium · intake-issues high ·
+    with the deliberate per-skill effort (start-issue medium · plan-sprint
+    high · create-pr high · scaffold-repo medium · create-issues high ·
     sync-signals low).
 """
 from __future__ import annotations
@@ -34,15 +34,15 @@ ADD_TO_PROJECT = os.path.join(
     PLUGIN_ROOT, "templates", "github", "workflows", "add-to-project.yml"
 )
 
-SIDE_EFFECTING_SKILLS = ["route-issue", "plan-sprint", "promote-pr"]
-ALL_SKILLS = SIDE_EFFECTING_SKILLS + ["scaffold-repo", "intake-issues", "sync-signals"]
+SIDE_EFFECTING_SKILLS = ["start-issue", "plan-sprint", "create-pr"]
+ALL_SKILLS = SIDE_EFFECTING_SKILLS + ["scaffold-repo", "create-issues", "sync-signals"]
 # Deliberate per-skill effort.
 EXPECTED_EFFORT = {
-    "route-issue": "medium", "plan-sprint": "high", "promote-pr": "high",
-    "scaffold-repo": "medium", "intake-issues": "high", "sync-signals": "low",
+    "start-issue": "medium", "plan-sprint": "high", "create-pr": "high",
+    "scaffold-repo": "medium", "create-issues": "high", "sync-signals": "low",
 }
 # The guard is scoped ONLY to the deploy/merge-capable skills.
-GUARD_SKILLS = {"route-issue", "promote-pr"}
+GUARD_SKILLS = {"start-issue", "create-pr"}
 
 
 def _read_skill(name: str) -> str:
@@ -91,7 +91,7 @@ class AC34_ModelAndEffort(unittest.TestCase):
 
 
 class AC25_GuardFrontmatter(unittest.TestCase):
-    """route-issue + promote-pr wire the guard; plan-sprint does not."""
+    """start-issue + create-pr wire the guard; plan-sprint does not."""
 
     def _has_guard_block(self, fm: str) -> bool:
         return (
@@ -147,7 +147,7 @@ class AC27_NoMeteredAI(unittest.TestCase):
     )
 
     def test_side_effecting_skills_make_no_metered_call(self):
-        for name in ("route-issue", "plan-sprint", "promote-pr"):
+        for name in ("start-issue", "plan-sprint", "create-pr"):
             body = _read_skill(name)
             self.assertIsNone(
                 self.METERED.search(body), f"{name}: contains a metered-AI reference"

@@ -133,7 +133,7 @@ and any Homepage URL.
 | **Administration** | Read & write | Toggle the repo **no-squash** merge setting (`scaffold-repo`) |
 | **Contents** | Read & write | Cut the authoritative linked branch; publish Releases (`board-status`) |
 | **Issues** | Read & write | Create/route issues, set fields, assignees, milestones; close at prod |
-| **Pull requests** | Read & write | Open/update/merge the linked PR (`promote-pr`, `board-sync`) |
+| **Pull requests** | Read & write | Open/update/merge the linked PR (`create-pr`, `board-sync`) |
 | **Metadata** | Read-only | Mandatory (auto-selected) |
 
 **Organization permissions:**

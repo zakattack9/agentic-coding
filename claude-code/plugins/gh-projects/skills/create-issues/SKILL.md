@@ -1,5 +1,5 @@
 ---
-name: intake-issues
+name: create-issues
 description: >-
   Turn a raw dump of feature ideas / bugs / chores into individual, tiered,
   field-complete GitHub issues on the board — each with Type/Size/Tier/PM-ID and
@@ -18,7 +18,7 @@ allowed-tools: Bash(python3 *), Bash(bash *), Bash(gh issue create *), Bash(gh i
 argument-hint: "[raw dump text or path to a file/PRD] (creates nothing until you confirm)"
 ---
 
-# intake-issues
+# create-issues
 
 Compile a raw dump into tiered, AC-bearing GitHub issues on the board. Two hard
 rails define this skill:

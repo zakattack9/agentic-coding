@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PreToolUse guard for gh-projects — deterministic, skill-scoped enforcement.
 #
-# Wired into the route-issue / promote-pr skills' frontmatter (PreToolUse,
+# Wired into the start-issue / create-pr skills' frontmatter (PreToolUse,
 # matcher: "Bash"), so it is active ONLY while those skills run — never global.
 # It hard-blocks, regardless of what the model attempts on a Bash call:
 #   1) a squash merge of a PR (no-squash is policy; commits are preserved)

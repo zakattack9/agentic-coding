@@ -14,7 +14,7 @@
 #   open-pr | pr-checks | merge-pr | set-milestone | reorder-item | set-assignee
 #   | link-repo | link-team   (the two scaffold-completion links — same rail)
 #   | add-item | write-field | advance-status | create-linked-branch
-#       (the route-issue / plan-sprint projection verbs — same --force rail)
+#       (the start-issue / plan-sprint projection verbs — same --force rail)
 # Anything not in the read whitelist falls to "*)" and requires --force.
 #
 # Exit:   0 ok · 2 usage · 3 not found · 1 unexpected (mirrors gh.py).

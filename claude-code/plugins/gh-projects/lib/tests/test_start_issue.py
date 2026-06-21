@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Offline tests for the route-issue leaf — NO network, NO live
-org, NO mutation. route-issue is thin prose that orchestrates the EXISTING
+"""Offline tests for the start-issue leaf — NO network, NO live
+org, NO mutation. start-issue is thin prose that orchestrates the EXISTING
 lib/gh.py verbs (add_item / write_field / advance_status / create_linked_branch /
 set_assignee), all behind engine.sh's dry-by-default `--force` rail. These tests
 exercise that orchestrated behavior against an injected fake RUN (the
@@ -18,7 +18,7 @@ Covers:
     already at/past the target (advance_status).
   - dry-by-default — without --force the engine adds no item, sets no
     field, creates no branch, sets no assignee; --force does (via engine.sh).
-  - route-issue/SKILL.md declares disable-model-invocation true, model
+  - start-issue/SKILL.md declares disable-model-invocation true, model
     claude-opus-4-8, effort medium, AND carries the PreToolUse/Bash guard
     hooks block pointing at hooks/guard.sh.
 """
@@ -38,9 +38,9 @@ sys.path.insert(0, LIB)
 import gh  # noqa: E402
 
 ENGINE = os.path.join(LIB, "engine.sh")
-SKILL_MD = os.path.join(PLUGIN, "skills", "route-issue", "SKILL.md")
+SKILL_MD = os.path.join(PLUGIN, "skills", "start-issue", "SKILL.md")
 
-# The intake-time fields route-issue owns (the field-home split: route-issue sets
+# The intake-time fields start-issue owns (the field-home split: start-issue sets
 # ONLY these; plan-sprint owns Sprint/Milestone/Start/Target).
 INTAKE_FIELDS = {
     "Type": "Feature",
@@ -58,7 +58,7 @@ def _q(args):
 
 
 # --------------------------------------------------------------------------- #
-# A fake gh runner modelling the board the route-issue projection writes onto.
+# A fake gh runner modelling the board the start-issue projection writes onto.
 # It serves the project field/option resolve, addProjectV2ItemById (REUSING a
 # stable item id per content so a re-add returns the same id), the
 # two-phase field write + read-back, the assignee read/edit, and both
@@ -245,7 +245,7 @@ class TestProjection(Base):
         self.assertEqual(dump, INTAKE_FIELDS)
 
     def test_only_intake_fields_no_scheduling_fields(self):
-        # Field-home split: route-issue sets ONLY intake-time fields, never the
+        # Field-home split: start-issue sets ONLY intake-time fields, never the
         # scheduling fields (Sprint/Milestone/Start/Target = plan-sprint's home).
         for sched in ("Sprint", "Milestone", "Start", "Target"):
             self.assertNotIn(sched, INTAKE_FIELDS)
@@ -334,8 +334,8 @@ class TestMonotonicStatus(Base):
 # Dry-by-default via engine.sh: no write without --force; --force writes.
 # --------------------------------------------------------------------------- #
 class TestDryByDefault(Base):
-    """route-issue's writes ride engine.sh's `--force` rail. We exercise the rail
-    with a route-issue write that IS exposed as a CLI verb (set-assignee — the
+    """start-issue's writes ride engine.sh's `--force` rail. We exercise the rail
+    with a start-issue write that IS exposed as a CLI verb (set-assignee — the
     self-assign step): without --force the engine previews and runs no mutation;
     with --force it runs the verb. (The field/branch projection rides the same
     rail; the projection writes themselves are unit-tested above.)"""
@@ -385,7 +385,7 @@ class TestDryByDefault(Base):
 
 
 # --------------------------------------------------------------------------- #
-# route-issue/SKILL.md static frontmatter assertions.
+# start-issue/SKILL.md static frontmatter assertions.
 # --------------------------------------------------------------------------- #
 class TestSkillFrontmatter(unittest.TestCase):
     @classmethod
@@ -405,12 +405,12 @@ class TestSkillFrontmatter(unittest.TestCase):
     def test_effort_is_medium(self):
         self.assertRegex(self.fm, r"(?m)^effort:\s*medium\s*$")
 
-    def test_name_is_route_issue(self):
-        self.assertRegex(self.fm, r"(?m)^name:\s*route-issue\s*$")
+    def test_name_is_start_issue(self):
+        self.assertRegex(self.fm, r"(?m)^name:\s*start-issue\s*$")
 
     def test_carries_guard_hooks_block(self):
         # The PreToolUse / matcher "Bash" guard block pointing at guard.sh
-        # so the guard is active ONLY while route-issue runs.
+        # so the guard is active ONLY while start-issue runs.
         self.assertIn("PreToolUse:", self.fm)
         self.assertRegex(self.fm, r'matcher:\s*"Bash"')
         self.assertIn("${CLAUDE_PLUGIN_ROOT}/hooks/guard.sh", self.fm)

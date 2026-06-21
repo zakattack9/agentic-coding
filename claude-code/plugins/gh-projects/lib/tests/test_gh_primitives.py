@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for the FOUR route-issue / plan-sprint projection verbs on
+"""Offline tests for the FOUR start-issue / plan-sprint projection verbs on
 lib/gh.py's CLI — add-item, write-field, advance-status,
 create-linked-branch — NO network, NO live org, NO mutation. Every test installs
 a fake RUN that returns canned JSON and counts round-trips.

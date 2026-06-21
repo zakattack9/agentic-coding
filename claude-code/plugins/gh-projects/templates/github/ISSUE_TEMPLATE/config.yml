@@ -6,5 +6,5 @@ contact_links:
     url: https://github.com
     about: >-
       Have a raw, unstructured idea? Don't open a blank issue. Run
-      gh-projects:intake-issues on the dump — it turns it into tiered,
+      gh-projects:create-issues on the dump — it turns it into tiered,
       AC-bearing issues with Type/Size/Tier/PM-ID set.

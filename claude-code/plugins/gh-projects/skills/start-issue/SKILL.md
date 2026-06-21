@@ -1,6 +1,6 @@
 ---
-name: route-issue
-description: Route one GitHub issue onto the org board and create its authoritative linked branch — project the item, populate its intake-time fields, optionally self-assign, advance Status monotonically. Use when the user says "route this issue", "put #N on the board", "start work on issue N", "add issue N to the project + cut its branch", or "project this ticket". Dry-by-default — previews the full projection + branch plan and writes nothing until you re-run with --force. Does NOT intake/triage a backlog dump (intake-issues), assign sprints/dates/Milestone (plan-sprint), or open/merge the PR (promote-pr).
+name: start-issue
+description: Start one GitHub issue onto the org board and create its authoritative linked branch — project the item, populate its intake-time fields, optionally self-assign, advance Status monotonically. Use when the user says "start this issue", "put #N on the board", "start work on issue N", "add issue N to the project + cut its branch", or "project this ticket". Dry-by-default — previews the full projection + branch plan and writes nothing until you re-run with --force. Does NOT intake/triage a backlog dump (create-issues), assign sprints/dates/Milestone (plan-sprint), or open/merge the PR (create-pr).
 disable-model-invocation: true
 model: claude-opus-4-8
 effort: medium
@@ -14,7 +14,7 @@ hooks:
           command: "${CLAUDE_PLUGIN_ROOT}/hooks/guard.sh"
 ---
 
-# route-issue
+# start-issue
 
 Project **one** issue onto the org board and create its **authoritative linked
 branch**. This is a thin orchestrator over the deterministic engine — every
@@ -35,13 +35,13 @@ even in dry mode; write verbs mutate nothing without `--force`.
   installation token (`GH_APP_TOKEN`, or `APP_ID`+`APP_PRIVATE_KEY`), **never**
   `GITHUB_TOKEN` — it cannot write org Projects v2. The token is never
   printed.
-- **Field-home split.** route-issue sets **only** the intake-time fields —
+- **Field-home split.** start-issue sets **only** the intake-time fields —
   `Type / Size / Tier / PM-ID / Spec / Priority / Status`. It does **not** touch
   `Sprint / Milestone / Start / Target` (that is `plan-sprint`).
 - **Monotonic Status.** Status advances only along
   `Backlog < Ready < In Progress < In Review < On Staging < Done`; a re-route
   never regresses an item already at/past the target.
-- **Non-closing links only.** route-issue never writes `Closes/Fixes/Resolves`
+- **Non-closing links only.** start-issue never writes `Closes/Fixes/Resolves`
   — closure stays the prod-time `board-status` job.
 - **Idempotent.** A re-run is a clean no-op: the existing board item is reused
   (same item id), the existing linked branch is detected and skipped (exit 0),
@@ -63,7 +63,7 @@ Resolve the board (read-only, runs in dry mode):
 bash "$ENGINE" resolve --owner <org> --number <project#>
 ```
 
-This caches the project + every field/option id route-issue will write to.
+This caches the project + every field/option id start-issue will write to.
 
 ## 2. Dry run (always first)
 
@@ -149,8 +149,8 @@ detected, no field/assignee/Status write).
 - Dry run first, every time; `--force` only after the user confirms.
 - Never call `gh` to mutate the board directly — go through `engine.sh` (the
   `gh.py` verbs ride its `--force` rail).
-- route-issue sets **only** intake-time fields — never `Sprint/Milestone/Start/
-  Target` (that is `plan-sprint`), never the PR (that is `promote-pr`).
+- start-issue sets **only** intake-time fields — never `Sprint/Milestone/Start/
+  Target` (that is `plan-sprint`), never the PR (that is `create-pr`).
 - Status is **monotonic** — never regress an item already past the target.
 - **Non-closing links only** — never `Closes/Fixes/Resolves`; closure is
   the prod-time `board-status` job's responsibility.

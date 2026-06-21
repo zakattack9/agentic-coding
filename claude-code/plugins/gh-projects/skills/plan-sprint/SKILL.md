@@ -1,6 +1,6 @@
 ---
 name: plan-sprint
-description: Schedule issues into the gh-projects board's current Iteration + Milestone, set Start/Target dates, show working-day capacity vs assigned load, and reorder the Ready queue to the deterministic recommendation. Use when the user asks to "plan the sprint", "assign these to the current iteration", "schedule the sprint", or "reorder the ready queue". Dry-by-default — previews every assignment, date set, and reorder; writes only on explicit --force. NO AI/model call (pure date math + field writes). Does NOT route/project new issues or self-assign the actor (route-issue), and does NOT open/merge PRs or move Status (promote-pr).
+description: Schedule issues into the gh-projects board's current Iteration + Milestone, set Start/Target dates, show working-day capacity vs assigned load, and reorder the Ready queue to the deterministic recommendation. Use when the user asks to "plan the sprint", "assign these to the current iteration", "schedule the sprint", or "reorder the ready queue". Dry-by-default — previews every assignment, date set, and reorder; writes only on explicit --force. NO AI/model call (pure date math + field writes). Does NOT start/project new issues or self-assign the actor (start-issue), and does NOT open/merge PRs or move Status (create-pr).
 disable-model-invocation: true
 model: claude-opus-4-8
 effort: high
@@ -29,8 +29,8 @@ v2 fields). The engine **never prints** the token: `bash $ENGINE token` only
 **Field-home split.** `plan-sprint` OWNS the **scheduling** fields — **Sprint
 (Iteration)**, **Milestone**, **Start**, **Target** — and the **Ready order**. It
 does **not** set the intake-time fields (Type/Size/Tier/PM-ID/Spec/Priority — that
-is `route-issue`) and does **not** move **Status** beyond what scheduling implies
-(lifecycle Status is `promote-pr`). `plan-sprint` does not deploy or merge, so it
+is `start-issue`) and does **not** move **Status** beyond what scheduling implies
+(lifecycle Status is `create-pr`). `plan-sprint` does not deploy or merge, so it
 does **not** wire the guard.
 
 ## What it does (all deterministic, no AI)
@@ -165,8 +165,8 @@ assignment / milestone / position already in place → no further write, exit 0)
   already at its recommended position, is detected and **skipped** — never a
   409/422. A second run is a clean no-op (exit 0).
 - This skill owns **scheduling** fields + Ready order only. It does **not** project
-  new issues or self-assign (`route-issue`), and does **not** open/merge PRs or
-  advance lifecycle Status (`promote-pr`).
+  new issues or self-assign (`start-issue`), and does **not** open/merge PRs or
+  advance lifecycle Status (`create-pr`).
 - Capacity is **advisory** — over-allocation warns, it never hard-blocks.
 - Exit codes: `0` ok · `2` usage / no App token · `3` project/field not found ·
   `1` unexpected.

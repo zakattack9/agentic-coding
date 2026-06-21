@@ -33,7 +33,7 @@ or a periodic digest. No metered AI: every moving part is plain Python + GraphQL
 - **GitHub CLI (`gh`)** installed and authenticated (`gh auth login`). The plugin
   shells out to `gh` / `gh api`.
 - **Python 3** (standard library only — nothing to `pip install`).
-- **The `spec-ops` plugin installed.** `intake-issues` delegates the issue body +
+- **The `spec-ops` plugin installed.** `create-issues` delegates the issue body +
   acceptance-criteria authoring to `spec-ops`; without it, intake can't write issue
   bodies.
 
@@ -126,15 +126,15 @@ writes nothing. Re-run with **`--force`** to apply. A second run is a clean no-o
 ## The skills
 
 All skills are thin orchestrators over the deterministic engine (`lib/`), run on
-`model: opus`, and (except `intake-issues`) are **Explicit** — user-invoked only.
+`model: opus`, and (except `create-issues`) are **Explicit** — user-invoked only.
 
 | Skill | What it does | Invocation |
 |---|---|---|
 | `scaffold-repo` | Stand up the board + per-repo automation from the golden template (see Setup). Idempotent, dry-by-default. | Explicit |
-| `intake-issues` | Raw dump → tiered, field-complete issues. Delegates the body + acceptance criteria to `spec-ops`; sizes and Epic-splits from the AC-group count. Dry-runs before any `gh issue create`. | Model-invocable |
+| `create-issues` | Raw dump → tiered, field-complete issues. Delegates the body + acceptance criteria to `spec-ops`; sizes and Epic-splits from the AC-group count. Dry-runs before any `gh issue create`. | Model-invocable |
 | `plan-sprint` | Assign issues to the current Iteration + Milestone, set Start/Target dates, show working-day capacity vs. assigned load (warns on over-allocation), and reorder the Ready queue. Dry-by-default. | Explicit |
-| `route-issue` | Project one issue onto the board, populate its intake-time fields (Type/Size/Tier/PM-ID/Spec/Priority/Status), optionally self-assign, and cut its authoritative linked branch. Monotonic Status, dry-by-default, guard-scoped. | Explicit |
-| `promote-pr` | Open/update the issue-linked PR (non-closing `Relates to #N`), advance board Status across the PR lifecycle, surface the PR's check state, and offer a **non-squash** merge only when checks are green. Dry-by-default, guard-scoped. | Explicit |
+| `start-issue` | Project one issue onto the board, populate its intake-time fields (Type/Size/Tier/PM-ID/Spec/Priority/Status), optionally self-assign, and cut its authoritative linked branch. Monotonic Status, dry-by-default, guard-scoped. | Explicit |
+| `create-pr` | Open/update the issue-linked PR (non-closing `Relates to #N`), advance board Status across the PR lifecycle, surface the PR's check state, and offer a **non-squash** merge only when checks are green. Dry-by-default, guard-scoped. | Explicit |
 | `sync-signals` | Recompute the auto Gantt signals (Schedule health, Slippage, Slippage days, Blast radius, Blast count, **Blocked**) from the blocked-by graph and post the project Status update. Also runs automatically via `signals-sync.yml` on events + cron. | Explicit |
 
 ---
@@ -142,25 +142,25 @@ All skills are thin orchestrators over the deterministic engine (`lib/`), run on
 ## Everyday lifecycle
 
 ```
-intake-issues  →  plan-sprint  →  route-issue  →  (dev codes)  →  promote-pr  →  deploy
+create-issues  →  plan-sprint  →  start-issue  →  (dev codes)  →  create-pr   →  deploy
      │               │               │              │                │             │
   tiered AC       Iteration +     board item +   board-sync.yml    PR + Status   board-status
   issues          dates + Ready   linked branch  moves Status      + green-gated  → On Staging
   on the board    order           (self-assign)  on push/PR        non-squash     / Done + Release
 ```
 
-1. **Intake** — `intake-issues "<dump or path>"` turns a brain-dump into tiered
+1. **Intake** — `create-issues "<dump or path>"` turns a brain-dump into tiered
    issues with acceptance criteria; prose-only / non-atomic items are refused
    `Ready` with a reason.
 2. **Plan** — `plan-sprint --owner <org> --number <project#> …` schedules the
    current Iteration + Milestone + dates and orders the Ready queue by Priority
    then Target.
-3. **Start work** — `route-issue --owner <org> --number <project#> --repo
+3. **Start work** — `start-issue --owner <org> --number <project#> --repo
    owner/name --issue <n> [--assignee <login>]` projects the issue, sets its fields,
    and creates the linked branch.
 4. **Code** — push to the linked branch and open a PR; the board moves itself
    (`In Progress` on push, `In Review` on a ready PR).
-5. **Promote** — `promote-pr --owner <org> --number <project#> --repo owner/name
+5. **Promote** — `create-pr --owner <org> --number <project#> --repo owner/name
    --issue <n>` opens/updates the non-closing PR, holds the merge while checks are
    red/pending, and offers a non-squash merge when green.
 6. **Deploy** — add the `board-status` action as one step in your deploy job to set
@@ -196,7 +196,7 @@ replayed event is a no-op; only an explicit reopen moves Status back. Issues are
 - **No metered AI** anywhere — pure date math + the blocked-by graph.
 - **Every Projects v2 write uses the GitHub App installation token**, never
   `GITHUB_TOKEN`; no token or secret is ever printed.
-- **`hooks/guard.sh`** (a `PreToolUse` hook scoped to `route-issue` / `promote-pr`)
+- **`hooks/guard.sh`** (a `PreToolUse` hook scoped to `start-issue` / `create-pr`)
   blocks `--squash` merges and prod actions without provably-green checks, and fails
   **open** on anything unrelated.
 - **Dry-by-default + idempotent** — every skill and write verb previews first and

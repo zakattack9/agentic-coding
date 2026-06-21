@@ -45,14 +45,14 @@ creds — every round-trip goes through the injectable `gh.RUN` seam). Keep it g
 
 ## Skills
 
-- All declare `model: claude-opus-4-8` + a deliberate `effort`. Only `intake-issues`
+- All declare `model: claude-opus-4-8` + a deliberate `effort`. Only `create-issues`
   is model-invocable; the other five are Explicit (`disable-model-invocation: true`).
-- `hooks/guard.sh` (PreToolUse) is wired **only** into `route-issue` + `promote-pr`
+- `hooks/guard.sh` (PreToolUse) is wired **only** into `start-issue` + `create-pr`
   frontmatter — **not** `plan-sprint`.
-- Field-home split: `route-issue` sets the intake fields (Type/Size/Tier/PM-ID/Spec/
+- Field-home split: `start-issue` sets the intake fields (Type/Size/Tier/PM-ID/Spec/
   Priority/Status); `plan-sprint` owns scheduling (Sprint/Milestone/Start/Target) +
-  Ready order; `promote-pr` touches only Status, monotonically.
-- `intake-issues` delegates issue body + acceptance criteria to the **spec-ops**
+  Ready order; `create-pr` touches only Status, monotonically.
+- `create-issues` delegates issue body + acceptance criteria to the **spec-ops**
   plugin (a dependency) — never author bodies inline. The interface is **narrow and
   pinned**: the two skill ids (`WRITE_SPEC_SKILL` / `REFINE_SPEC_SKILL`) and three
   rigor names (`TIER_RIGOR`: `light`/`standard`/`full`) in `lib/intake.py`. spec-ops's

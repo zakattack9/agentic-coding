@@ -1,6 +1,6 @@
 ---
-name: promote-pr
-description: Open or update the issue-linked PR for the active branch, advance the board Status across the PR lifecycle, surface the PR's check state, and offer a guard-protected non-squash merge once checks are green. Use when the user says "promote the PR", "open the PR for this branch", "move to in review", or "merge when green". Dry-by-default — previews the PR + Status + merge intent and mutates nothing until you re-run with --force. Does NOT route issues or create linked branches (route-issue) and does NOT plan sprints / set dates (plan-sprint); does NOT author specs (spec-ops).
+name: create-pr
+description: Create or update the issue-linked PR for the active branch — and beyond creating it, advance the board Status across the PR lifecycle, surface the PR's check state, and offer a guard-protected non-squash merge once checks are green. Use when the user says "create the PR", "open the PR for this branch", "move to in review", or "merge when green". Dry-by-default — previews the PR + Status + merge intent and mutates nothing until you re-run with --force. Does NOT start issues or create linked branches (start-issue) and does NOT plan sprints / set dates (plan-sprint); does NOT author specs (spec-ops).
 disable-model-invocation: true
 model: claude-opus-4-8
 effort: high
@@ -14,9 +14,9 @@ hooks:
           command: "${CLAUDE_PLUGIN_ROOT}/hooks/guard.sh"
 ---
 
-# promote-pr
+# create-pr
 
-Open/update the issue-linked PR for the active branch, advance the board
+Create/update the issue-linked PR for the active branch, advance the board
 **Status** across the PR lifecycle, surface the PR's **check state**, and offer a
 **guard-protected non-squash merge** once checks are green. This skill is a thin
 orchestrator over the deterministic engine — every load-bearing operation is a
@@ -39,7 +39,7 @@ checks, and fails open on everything else. Never work around it.
   job). The `open_or_update_pr` verb rejects a smuggled-in closer (exit 2).
 - **Status is monotonic and Status-only.** This skill touches **only** the Status
   field and only forward along `Backlog < Ready < In Progress < In Review <
-  On Staging < Done` (`advance_status`); it never sets intake fields (route-issue)
+  On Staging < Done` (`advance_status`); it never sets intake fields (start-issue)
   or scheduling fields (plan-sprint), and never regresses Status.
 - **No merge while checks are red/pending.** The merge step is **withheld** until
   `pr_check_state` reads `green`, with the reason stated.
@@ -57,7 +57,7 @@ checks, and fails open on everything else. Never work around it.
 You need the **org login** (`--owner`), the **project number** (`--number`), the
 **`owner/name` repo** (`--repo`), and the **issue number** (`--issue`) whose
 linked branch this PR promotes. The active **head** branch is the issue's
-authoritative linked branch (created by `route-issue`); the **base** is the
+authoritative linked branch (created by `start-issue`); the **base** is the
 repo's default branch unless the user names another. If any input is missing, ask
 with `AskUserQuestion`. Confirm the App token is available (`GH_APP_TOKEN` or
 `APP_ID`+`APP_PRIVATE_KEY`); the engine fails with a usage error (exit 2) if not.
@@ -151,7 +151,7 @@ in place, no Status rewrite, no re-merge).
 - **Non-closing link only** — `Relates to #N`, never Closes/Fixes/Resolves.
   Closure stays the prod-time `board-status` job.
 - **Status only, monotonic** — never set intake/scheduling fields, never regress
-  Status. Intake fields are route-issue's; scheduling is plan-sprint's.
+  Status. Intake fields are start-issue's; scheduling is plan-sprint's.
 - **No merge unless green**; **never `--squash`** — the guard
   enforces both.
 - Never print the App token; the engine scrubs secrets from all output.

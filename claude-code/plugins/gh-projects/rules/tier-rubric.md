@@ -1,6 +1,6 @@
 # Tier rubric — T1 / T2 / T3
 
-`Tier` is a Project single-select set by `intake-issues`. It picks the spec-ops
+`Tier` is a Project single-select set by `create-issues`. It picks the spec-ops
 `write-spec` **rigor dial** and decides whether a linked deep spec is required.
 There is no separate `Rigor` field — `Tier` is the single rigor knob.
 

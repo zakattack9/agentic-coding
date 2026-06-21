@@ -1049,7 +1049,7 @@ def link_team(project_id: str, team_id: str) -> dict:
 
 # --------------------------------------------------------------------------- #
 # Issue node-id / linked-branch / default-branch resolution (read-only) — these
-# back the route-issue projection verbs (add-item / write-field / advance-status /
+# back the start-issue projection verbs (add-item / write-field / advance-status /
 # create-linked-branch). No new mutation here; they reuse the core lib functions.
 # --------------------------------------------------------------------------- #
 def _split_repo(repo: str):
@@ -1213,7 +1213,7 @@ def _cmd_link_team(args) -> int:
     return 0
 
 
-# -- route-issue / plan-sprint projection verbs (reuse core lib, idempotent) -- #
+# -- start-issue / plan-sprint projection verbs (reuse core lib, idempotent) -- #
 def _cmd_add_item(args) -> int:
     """Project an issue onto the board (add_item). Idempotent: a re-add returns
     the SAME item id (addProjectV2ItemById is server-side idempotent)."""

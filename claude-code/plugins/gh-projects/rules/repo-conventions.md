@@ -57,7 +57,7 @@ regresses Status.
 
 ## Guard (skill-scoped)
 
-`hooks/guard.sh` is wired into the `route-issue` / `promote-pr` skills' frontmatter
+`hooks/guard.sh` is wired into the `start-issue` / `create-pr` skills' frontmatter
 as a `PreToolUse` (matcher `Bash`) — active only while those skills run. It
 fail-opens on unrelated input and **blocks** `--squash` and prod actions without
 provably-green checks. It is a plugin-scoped fast-fail, not org enforcement.

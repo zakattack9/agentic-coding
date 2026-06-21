@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""gh-projects intake — the DETERMINISTIC core behind the `intake-issues` skill.
+"""gh-projects intake — the DETERMINISTIC core behind the `create-issues` skill.
 
-The skill (skills/intake-issues/SKILL.md) does the AI-shaped work: it splits a
+The skill (skills/create-issues/SKILL.md) does the AI-shaped work: it splits a
 raw dump into atomic items and DELEGATES every body+AC to `spec-ops:write-spec`
 at the tier's rigor. It authors NO body itself. THIS file holds only the
 non-AI decision logic the skill must not invent in prose:

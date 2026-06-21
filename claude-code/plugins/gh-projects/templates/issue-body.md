@@ -1,6 +1,6 @@
 <!--
 Issue body skeleton — this IS spec-ops:write-spec's output shape for an intake
-issue (T1 `light` / T2 `standard`). The intake-issues skill NEVER hand-authors
+issue (T1 `light` / T2 `standard`). The create-issues skill NEVER hand-authors
 this body; it delegates authoring to spec-ops at the tier's rigor and pastes the
 result here. Order is load-bearing:
 
@@ -28,7 +28,7 @@ table below is the exhaustive contract, this is the summary.}}
 One markdown table PER ordered named group (capability cluster). The `AC` column
 holds the BARE number; cite ids elsewhere as `AC-N`. Each row is ONE atomic,
 observable end-state ("X is true / returns / renders ..."), NEVER a task.
-Enumerate exhaustively — never condense AC. `intake-issues` REFUSES `Ready` for
+Enumerate exhaustively — never condense AC. `create-issues` REFUSES `Ready` for
 any prose-only / non-atomic row (lib/intake.py ready_gate). Number AC
 consecutively ACROSS groups (do not restart per group). Group order + any
 `needs §X` build dependency is recorded in the deep spec for T3 / projected onto

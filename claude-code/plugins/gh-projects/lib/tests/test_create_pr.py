@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Offline tests for the `promote-pr` skill's orchestration over the lib verbs —
+"""Offline tests for the `create-pr` skill's orchestration over the lib verbs —
 NO network, NO live org, NO mutation.
 
-promote-pr is thin prose over the deterministic engine: it composes the existing
+create-pr is thin prose over the deterministic engine: it composes the existing
 `gh.py` verbs (`open_or_update_pr`, `pr_check_state`, `advance_status`/
 `STATUS_ORDER`, `merge_pr`) behind `engine.sh`'s dry-by-default / --force rail. It
 adds NO decision logic of its own to the lib. These tests therefore exercise the
@@ -20,7 +20,7 @@ Covers:
   - NON-SQUASH merge (--merge/--rebase) only on confirm/--force and only on
     green; never --squash.
   - dry-by-default — preview mutates nothing; --force mutates.
-  - the PreToolUse / matcher Bash guard block is present in promote-pr's frontmatter.
+  - the PreToolUse / matcher Bash guard block is present in create-pr's frontmatter.
   - frontmatter — disable-model-invocation true, model claude-opus-4-8,
     effort high.
 """
@@ -39,7 +39,7 @@ sys.path.insert(0, LIB)
 
 import gh  # noqa: E402
 
-SKILL = os.path.join(PLUGIN_ROOT, "skills", "promote-pr", "SKILL.md")
+SKILL = os.path.join(PLUGIN_ROOT, "skills", "create-pr", "SKILL.md")
 
 
 def _q(args):
@@ -47,7 +47,7 @@ def _q(args):
 
 
 class PromoteRunner:
-    """Fake gh runner for promote-pr's composed verbs. Dispatches on argv,
+    """Fake gh runner for create-pr's composed verbs. Dispatches on argv,
     returns canned JSON, records every call so writes/round-trips are testable.
 
     Presettable state:
@@ -88,7 +88,7 @@ class Base(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# The promote-pr orchestration the SKILL.md prescribes, expressed as a pure
+# The create-pr orchestration the SKILL.md prescribes, expressed as a pure
 # composition of the existing lib verbs (no new decision logic in the lib).
 # --------------------------------------------------------------------------- #
 def _status_target_for_pr(*, draft: bool) -> str:
@@ -98,7 +98,7 @@ def _status_target_for_pr(*, draft: bool) -> str:
 
 def _promote(repo, head, base, issue, *, draft, current_status,
              pr_number, do_merge=False, method="merge"):
-    """Compose the promote-pr flow exactly as SKILL.md steps 2-3 prescribe.
+    """Compose the create-pr flow exactly as SKILL.md steps 2-3 prescribe.
 
     Returns a record of the decisions: the PR action, the check verdict, the
     Status to write (None = hold/no-op), whether merge was performed, and the
@@ -291,7 +291,7 @@ class TestNonSquashMergeOnGreen(Base):
 # Dry-by-default through engine.sh: preview mutates nothing; --force does
 # --------------------------------------------------------------------------- #
 class TestDryByDefault(unittest.TestCase):
-    """The write verbs promote-pr drives (open-pr, merge-pr) are gated by
+    """The write verbs create-pr drives (open-pr, merge-pr) are gated by
     engine.sh's --force rail. Without --force the engine previews and never shells
     python3 gh.py for a write verb; with --force it does. We assert by parsing
     engine.sh's source (no live gh, no real mutation)."""
@@ -302,7 +302,7 @@ class TestDryByDefault(unittest.TestCase):
 
     def test_write_verbs_not_in_dry_read_whitelist(self):
         # the dry-mode read whitelist runs ONLY resolve|capabilities|token; the
-        # write verbs promote-pr uses fall through to the "pass --force" branch.
+        # write verbs create-pr uses fall through to the "pass --force" branch.
         m = re.search(r"resolve\|capabilities\|token", self.src)
         self.assertIsNotNone(m, "engine.sh keeps a read-only dry whitelist")
         whitelist = m.group(0)
@@ -337,8 +337,8 @@ class TestFrontmatter(unittest.TestCase):
     def test_skill_file_exists(self):
         self.assertTrue(os.path.isfile(SKILL))
 
-    def test_name_is_promote_pr(self):
-        self.assertRegex(self.front, r"(?m)^name:\s*promote-pr\s*$")
+    def test_name_is_create_pr(self):
+        self.assertRegex(self.front, r"(?m)^name:\s*create-pr\s*$")
 
     def test_disable_model_invocation_true(self):
         self.assertRegex(self.front, r"(?m)^disable-model-invocation:\s*true\s*$")
@@ -358,7 +358,7 @@ class TestFrontmatter(unittest.TestCase):
         m = re.search(r"(?m)^allowed-tools:\s*(.+)$", self.front)
         self.assertIsNotNone(m)
         tools = m.group(1)
-        # promote-pr shells `gh pr checks`, so Bash(gh *) is in scope; plus the
+        # create-pr shells `gh pr checks`, so Bash(gh *) is in scope; plus the
         # engine + python3 wrappers and the read/ask tools.
         self.assertIn("Bash(gh *)", tools)
         self.assertIn("Bash(python3 *)", tools)

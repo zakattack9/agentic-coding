@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Offline tests for lib/intake.py — NO network, NO live org, NO mutation.
 
-Exercises the DETERMINISTIC intake core that backs skills/intake-issues. The
+Exercises the DETERMINISTIC intake core that backs skills/create-issues. The
 skill delegates AC authoring to spec-ops; here we test only the decision logic:
 
   * every planned item carries Type/Size/Tier/PM-ID + grouped AC.
