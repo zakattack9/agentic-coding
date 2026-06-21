@@ -1,7 +1,7 @@
 ---
 name: write-spec
 description: The entrypoint to the spec workflow — turn an idea, even a rough one-liner, into a concise, scannable feature spec that contains everything needed to implement the change and nothing more. At full rigor it first runs a short discovery pass (eliciting and distilling requirements via questions) before drafting; refine-spec hardens the draft afterward. Use this skill when the user asks to write or update a spec, PRD, feature specification, or requirements doc, when they want to document what a feature should do, or when they describe a change they want to build — even a half-formed idea, and even if they don't use the word "spec."
-argument-hint: [what to build / a rough idea] [@path/to/spec.md — optional; can be named after drafting] [rigor: light|standard|full]
+argument-hint: [what to build] [@path/to/spec.md] [rigor: light|standard|full]
 model: opus
 effort: xhigh
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash
@@ -13,11 +13,11 @@ allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 
 `write-spec` always produces the **WHAT** (the behavior/contract), but at one of three depths. Read the requested rigor from the arguments (`rigor: light|standard|full`). If none is given, infer it from the ask — a self-evidently trivial change is `light`, a routine bounded feature is `standard`, a complex change or any infra / platform / config / migration spec is `full` — and **when unsure, default to `full`** (more rigor is the safe error). A caller delegating to this skill in batch (e.g. a board-intake workflow) passes the rigor explicitly; honor it.
 
-| Rigor | Use for | Emit | Clarifying questions |
-|---|---|---|---|
-| **`light`** | a trivial, self-contained task | The `## Acceptance Criteria` table **only** (plus a one-line goal if it isn't obvious from the title). No TL;DR, Boundaries, body sections, or Checklist. A few lines total. | **Markers only.** Draft from what's given; flag a genuine unknown with one `[NEEDS CLARIFICATION: …]` and move on. Do **not** open an `AskUserQuestion` loop. |
-| **`standard`** | a routine, bounded feature | TL;DR (lead with any "breaks if missed") + the AC table (grouped only if ≥2 obvious clusters) + **Boundaries** + a *lean* body **only** for behavioral rules the AC don't already make obvious. | **Markers only**, as above. |
-| **`full`** | a complex change, or any infra / config-as-contract spec | The complete structure below — exhaustive AC, self-contained body, every relevant section. | **Interactive.** Run **[Discovery](#discovery--turn-a-bare-idea-into-requirements)** to elicit requirements from the idea, using `AskUserQuestion` before guessing — better to ask one too many. Then draft, and hand the result to **`refine-spec`** to ground and harden. |
+| Rigor          | Use for                                                  | Emit                                                                                                                                                                                            | Clarifying questions                                                                                                                                                                                                                                                        |
+| -------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`light`**    | a trivial, self-contained task                           | The `## Acceptance Criteria` table **only** (plus a one-line goal if it isn't obvious from the title). No TL;DR, Boundaries, body sections, or Checklist. A few lines total.                    | **Markers only.** Draft from what's given; flag a genuine unknown with one `[NEEDS CLARIFICATION: …]` and move on. Do **not** open an `AskUserQuestion` loop.                                                                                                               |
+| **`standard`** | a routine, bounded feature                               | TL;DR (lead with any "breaks if missed") + the AC table (grouped only if ≥2 obvious clusters) + **Boundaries** + a *lean* body **only** for behavioral rules the AC don't already make obvious. | **Markers only**, as above.                                                                                                                                                                                                                                                 |
+| **`full`**     | a complex change, or any infra / config-as-contract spec | The complete structure below — exhaustive AC, self-contained body, every relevant section.                                                                                                      | **Interactive.** Run **[Discovery](#discovery--turn-a-bare-idea-into-requirements)** to elicit requirements from the idea, using `AskUserQuestion` before guessing — better to ask one too many. Then draft, and hand the result to **`refine-spec`** to ground and harden. |
 
 **Constant across all three:** the **Acceptance Criteria are enumerated exhaustively, never condensed** — "cut to the bone" is for *prose*, never for coverage. A `light` spec is *all* criteria and almost no prose; it still lists every one. And **`light`/`standard` are strictly code-free WHAT** — they describe behavior and the *observable interface* (a route, a user-visible field, an API response shape) but name **no internal implementation** (file paths, function/class names, table/column names, config keys, framework specifics); the implementer chooses the HOW, and grounding enters later in `refine-spec`. Only **`full`** may pin implementation — it's where code-grounding lives, and for an infra/config-as-contract spec the config *is* the contract. **So a config-as-contract change — CDN, WAF, deploy-pipeline, networking, migration — does not fit `light`/`standard`: a code-free spec can't carry a contract that *is* configuration.** If you're asked for one at `light`/`standard`, draft the code-free WHAT but **flag the mismatch and recommend `full`** (for a board-intake caller, that's its T3 tier).
 
@@ -119,10 +119,10 @@ The skeleton below is the **`full`**-rigor shape; `light` is the Acceptance Crit
 <!-- The enumerated contract: every behavior/constraint that must hold when done, as a discrete, testable assertion with a stable id. The reader's 2-minute scan AND what launch-spec's done-gate and verify-spec check 1:1. Enumerate exhaustively — never condense. Each AC is ONE atomic, observable end-state ("X is true"), not a task. Detailed rules in the body cite their AC-id so each fact is said once. -->
 <!-- Default to a single FLAT table. OPTIONALLY split into named groups (### N. <capability>), one table per group, when the ACs fall into ≥2 obvious capabilities — a "what am I building" map. AC-ids stay globally unique and stable across groups. Do NOT assert a build order or cross-group `needs §X` here; refine-spec commits that after grounding against the codebase. -->
 
-| AC | Criterion |
-|----|-----------|
-| 1 | {single testable assertion about the end state} |
-| 2 | {…} |
+| AC  | Criterion                                       |
+| --- | ----------------------------------------------- |
+| 1   | {single testable assertion about the end state} |
+| 2   | {…}                                             |
 
 ---
 
