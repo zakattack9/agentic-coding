@@ -3,7 +3,7 @@ name: launch-spec
 description: Compile a finished, verified spec into the self-contained /goal driver prompt that implements it — then stop. Use this on a finished, refined spec to turn it into the one-shot execution prompt you'd otherwise hand-type: the goal, the spec + checklist references, the boundaries (what NOT to touch), and a verify-spec completion gate. It does NOT implement, run, or loop — it emits the driver and quits; you run it with /goal (the native implement step). For genuinely wide or repetitive work it can emit a dynamic-workflow or /batch brief instead.
 argument-hint: [@path/to/spec.md] [focus areas]
 model: opus
-effort: xhigh
+effort: high
 allowed-tools: Read, Grep, Glob, Write, Bash
 ---
 

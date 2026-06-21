@@ -27,6 +27,11 @@ so refine-spec can ingest a missed-requirement finding on its next run without
 manual re-keying (see spec_amendments.py). Same best-effort /tmp discipline; a
 clean sweep clears it.
 
+On the same clean pass it also runs the deterministic spec-linkage detector over the
+diff and writes the result to /tmp/claude-linkage-scan-<abs-spec-path>.json — a
+deterministic cross-check of the model's specLinkageSweep, report-only and never a
+gate (see write_linkage_scan). Best-effort; a missing base or git error is a no-op.
+
 The ledger is authored by the model, so it is treated as UNTRUSTED input and
 validated strictly. The guardrail must never be silently disabled by an AI
 mistake (malformed JSON, wrong types):
@@ -70,6 +75,7 @@ Output: nothing to allow the stop; {"decision":"block","reason":...} to force
 
 import json
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -91,6 +97,15 @@ try:
     import spec_amendments
 except Exception:  # noqa: BLE001 — a missing helper must never disable the gate
     spec_amendments = None
+
+# The deterministic spec-linkage detector (scripts/). On a clean pass the hook runs it
+# over the diff as a best-effort cross-check and writes the result to /tmp, so a
+# deterministic record of greppable linkage exists at verification time. Report-only
+# and never gates — same discipline as the drift baseline. Guarded import.
+try:
+    import spec_linkage_scan
+except Exception:  # noqa: BLE001 — a missing helper must never disable the gate
+    spec_linkage_scan = None
 
 # Ledger is considered abandoned/stuck if not rewritten within this window.
 # Long enough for a heavy pass (parallel grounding subagents + user Q&A),
@@ -350,6 +365,57 @@ def write_spec_amendments(marker: dict):
         pass
 
 
+def linkage_scan_path(spec_path: str) -> str:
+    """/tmp sidecar path keyed on the spec's realpath (report-only, never the repo)."""
+    real = os.path.realpath(spec_path)
+    safe = "".join(c if (c.isalnum() or c in "._-") else "_" for c in real)
+    return f"/tmp/claude-linkage-scan-{safe}.json"
+
+
+def write_linkage_scan(marker: dict):
+    """On a clean pass, run the deterministic spec-linkage detector over the diff and
+    write its findings to /tmp — a deterministic cross-check of the model's
+    `specLinkageSweep`, available to a later run or the user. Entirely best-effort and
+    report-only: a missing helper, non-spec target, no recorded diff base, git error,
+    oversized diff, or write error is a silent no-op. It NEVER blocks the allowed stop,
+    never raises, and never gates (linkage is always report-only). verify-spec still
+    writes only /tmp."""
+    if spec_linkage_scan is None:
+        return
+    try:
+        spec_path = str(marker.get("specPath", "")).strip()
+        if not spec_path:
+            return  # non-spec target: nothing to scan
+        sweep = marker.get("backwardSweep")
+        base = str(sweep.get("base", "")).strip() if isinstance(sweep, dict) else ""
+        if not base:
+            return  # no diff base recorded: nothing deterministic to scan against
+        # Compute changed files HERE. The scanner's own changed_files() calls sys.exit
+        # on a git error, which would escape as a blocking hook exit — so never call it.
+        try:
+            res = subprocess.run(
+                ["git", "diff", "--name-only", "--diff-filter=d", f"{base}..HEAD"],
+                capture_output=True, text=True, timeout=20,
+            )
+        except Exception:  # noqa: BLE001 — git missing/slow → skip, never block
+            return
+        if res.returncode != 0:
+            return
+        files = [ln for ln in res.stdout.splitlines() if ln.strip()]
+        if len(files) > 200:
+            return  # too large to scan as a turn-end backstop; skip rather than delay
+        findings, scanned = (spec_linkage_scan.scan(files) if files else ([], 0))
+        report = {
+            "base": base,
+            "scanned": scanned,
+            "findings": [f.as_dict() for f in findings],
+        }
+        with open(linkage_scan_path(spec_path), "w") as fh:
+            json.dump(report, fh)
+    except Exception:  # noqa: BLE001 — best-effort; never break the stop
+        pass
+
+
 def evaluate(marker_path: str, marker: dict):
     """Validated-ledger path: enforce the verification gate or block with specifics."""
     problems = validate_ledger(marker)
@@ -451,6 +517,7 @@ def evaluate(marker_path: str, marker: dict):
     if not failures:
         write_drift_baseline(marker, claims)
         write_spec_amendments(marker)
+        write_linkage_scan(marker)
         remove(marker_path)
         allow()
         return
