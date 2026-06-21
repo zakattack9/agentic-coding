@@ -7,37 +7,37 @@
     {
       "name": "zaksak",
       "source": "./claude-code/plugins/zaksak",
-      "description": "A collection of Claude Code utilities by Zak Sakata",
+      "description": "A collection of Claude Code utilities by Zak Sakata.",
       "version": "0.2.0"
     },
     {
       "name": "spec-ops",
       "source": "./claude-code/plugins/spec-ops",
-      "description": "Spec workflow (write \u2192 refine \u2192 launch \u2192 verify): write-spec is the workflow entrypoint that turns a bare idea into a spec — eliciting and distilling requirements (full rigor) before drafting concise feature specs at a requested rigor (light/standard a code-free, implementation-agnostic WHAT → full deep spec that may pin implementation) that open with a flat, id'd Acceptance Criteria contract (optionally organized into ordered named groups); refine-spec hardens a draft into an implementation-ready spec, commits the grounded group order, and hunts unstated constraints; launch-spec compiles the ready spec into one of three drivers (/goal, ultracode, /batch), each completed by a verify-spec gate on every acceptance criterion (emit-only), phasing a large or hard-sequenced build by AC group; verify-spec checks the implementation matches the spec's claims and every acceptance criterion against real code, git, and live state \u2014 with the evidence standard scaled to each criterion and a verification method recorded per AC \u2014 and flags delivered code that maps to no criterion (backward coverage), plus a report-only spec-linkage hygiene sweep (a deterministic detector for the greppable patterns + a judgment pass) that flags delivered code/docs/tests still referencing the build spec (AC-ids, build-phase numbers, spec ids, predecessor provenance, spec/history-named identifiers, inert background context) so the shipped artifact reads standalone; on a spec re-run it drifts against the last clean verification — re-grounding only criteria whose evidence moved and flagging regressions. refine-spec and verify-spec each delegate their adversarial readiness/completeness check to a dedicated read-only judge subagent (spec-refine-judge, spec-verify-judge) that carries the rubric and returns a strict JSON verdict; grounder and judge subagent returns are schema-validated structured data. spec-ops also commits the spec artifact at each stage — write-spec the draft, refine-spec the implementation-ready spec (Stop-hook-enforced), launch-spec bakes a per-phase commit cadence into the /goal driver — each commit scoped to the spec file (never a broad add) and never pushed. A verify→refine handoff carries verify-spec's backward-sweep proposed ACs to refine-spec (via /tmp, written by the verify Stop hook), so a missed-requirement finding amends the spec on the next refine run without re-keying — verify stays read-only.",
+      "description": "A spec-driven development workflow that turns a rough idea into a verified implementation. It elicits and hardens an acceptance-criteria-first spec against your codebase, compiles it into an execution driver, then checks the built code against every criterion — with read-only adversarial judges gating quality at each stage and every spec change committed automatically.",
       "version": "0.21.1"
     },
     {
       "name": "ralph",
       "source": "./claude-code/plugins/ralph",
-      "description": "Ralph Loop \u2014 autonomous agentic coding workflow with sandbox isolation, scoped memory, and self-managing task iteration",
+      "description": "Ralph Loop — an autonomous agentic coding workflow with sandbox isolation, scoped memory, and self-managing task iteration.",
       "version": "0.1.8"
     },
     {
       "name": "skill-manager",
       "source": "./claude-code/plugins/skill-manager",
-      "description": "Manage Claude Code skills from inside any project: configure which plugins a project uses, publish/sync local skills to a central marketplace, remove them, and diagnose and auto-repair the setup. Adapts to any repo layout; authoring is delegated to the native skill-creator skill.",
+      "description": "Manage your Claude Code skills and plugins from inside any project — switch which plugins are active, publish and sync local skills to a central marketplace, and diagnose and auto-repair a broken setup. Adapts to any repo layout and delegates skill authoring to the native skill-creator.",
       "version": "0.2.26"
     },
     {
       "name": "worktree-ops",
       "source": "./claude-code/plugins/worktree-ops",
-      "description": "Git worktree workflow for parallel Claude Code sessions, built on native worktree support, with deterministic enforcement (a skill-scoped PreToolUse guard, active only while the pull/merge skills run, blocks squash merges and committing unresolved conflicts; helper scripts make pre-flight, conflict listing, and merge-confirm repeatable): create-worktree spins up an isolated worktree and flips the session into it (fresh from origin, .worktreeinclude env files copied, optional issue/PR seed, idempotently keeps .claude/worktrees/ gitignored, opt-in setup script); list-worktrees shows a dashboard of every worktree (ahead/behind, dirty, PR, current marked); pull-worktree rebases/merges a worktree onto a chosen base branch with an ask-first conflict policy; merge-worktree commits, pushes, opens/merges the PR into a chosen target (never squashed) only after confirming MERGED, runs an opt-in teardown script, then removes the worktree and returns to main.",
+      "description": "A git worktree workflow for running multiple Claude Code sessions in parallel — no restarts, no manual checkouts. Built on native worktrees, it covers the full lifecycle from spinning up an isolated worktree to finishing it through a guarded, never-squashed PR merge, with a live dashboard of in-flight work and deterministic guards against squash merges and committing unresolved conflicts.",
       "version": "0.3.6"
     },
     {
       "name": "gh-projects",
       "source": "./claude-code/plugins/gh-projects",
-      "description": "Run a small team's entire software lifecycle on GitHub Projects v2 — deterministic, free, and GitHub-native. scaffold-repo copies a golden-template Project (fields, 8 views, 3 Insights charts) across the org and installs the repo automation (issue forms, PR template, board-sync + signals-sync workflows, the self-contained board-status deploy action, release notes, CODEOWNERS, no-squash merge setting) plus per-repo auto-add (actions/add-to-project, SHA-pinned, App-token), links repos + a team to the Project; route-issue projects an issue onto the board, sets its intake fields and cuts the authoritative linked branch; plan-sprint assigns the current Iteration + Milestone + Start/Target dates, shows working-day capacity vs load and reorders the Ready queue; promote-pr opens/updates the non-closing linked PR, advances board Status across the PR lifecycle and offers a check-gated non-squash merge; intake-issues turns a raw dump into tiered, AC-bearing issues by delegating the spec body + Acceptance Criteria to spec-ops (write-spec at the tier's rigor, refine-spec for T3) and sizing/Epic-splitting from the AC-group count; sync-signals recomputes the auto Gantt-signal fields from the native blocked-by DAG and posts the project Status update. The board tracks the full branch → PR → staging → prod flow with no hand-maintenance: Status writes are idempotent + monotonic across three loosely-coupled layers, every Projects v2 write uses a GitHub App installation token (never GITHUB_TOKEN), schema edits diff before mutate to keep option/iteration IDs stable, and a skill-scoped PreToolUse guard (active only while route-issue/promote-pr run) blocks --squash and prod actions without green checks. No metered AI.",
+      "description": "Run a small team's entire software lifecycle on GitHub Projects v2 — deterministic, free, GitHub-native, and with no metered AI. It provisions a golden-template board and repo automation across an org, then drives work from issue intake through sprint planning and the full branch → PR → merge flow with check-gated, never-squashed merges, kept safe by GitHub App-token writes and skill-scoped guards.",
       "version": "0.2.23"
     }
   ]
