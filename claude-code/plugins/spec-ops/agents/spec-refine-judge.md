@@ -28,6 +28,8 @@ Classify each finding as:
 
 For every **coverage** finding, name the **exact `AC-id`** ("AC-7 is not captured", never "some criteria missing" — precision drives recovery of dropped items).
 
+**Materiality bar — stop at diminishing returns.** Flag only what would genuinely block or mislead an implementer: a real `Gap` / `Ambiguity` / `Conflict`, or a load-bearing constraint left uncaptured. Do **not** `FAIL` a criterion for cosmetic wording, a stylistic preference, or a hypothetical edge case with no real impact — a spec that a developer could genuinely build from should `PASS` even if some further nitpick is conceivable. Manufacturing low-value findings just churns the loop and over-engineers the spec.
+
 ## The six criteria — PASS / FAIL each
 
 - **`claims_verified`** — every factual claim is verified against the codebase or confirmed; zero unverified "currently X" statements.

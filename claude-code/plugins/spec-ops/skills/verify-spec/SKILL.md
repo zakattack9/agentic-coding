@@ -10,6 +10,10 @@ hooks:
     - hooks:
         - type: command
           command: "${CLAUDE_PLUGIN_ROOT}/skills/verify-spec/stop_verify_spec.py"
+  SubagentStop:
+    - hooks:
+        - type: command
+          command: "${CLAUDE_PLUGIN_ROOT}/scripts/subagent_validate.py verify"
 ---
 
 # Verify Spec
@@ -143,7 +147,7 @@ Ground truth, in order of authority: the **codebase at branch HEAD**; the **git 
 
 #### Evidence standard — scale grounding to what the claim asserts, and record the method
 
-Scale the evidence to **what the claim asserts** and record the technique in `method` — a bare code citation is not automatically enough: a **measurable threshold** → `measurement` (a code citation doesn't prove a bound); a **universal invariant** → `exhaustive-check` over the whole surface (not one compliant example); a plain **behavior** → `static-read` / `test-run`; an **infra / ops** fact → `cli-observation` (never forced into a test suite). This closes the gap where a perf/security constraint gets **rubber-stamped by code-reading**; the judge (step 4) flags any `method` below what the claim demands. Full rules + worked examples: `${CLAUDE_PLUGIN_ROOT}/references/verify-internals.md`.
+Scale the evidence to **what the claim asserts** and record the technique in `method` — a bare code citation is not automatically enough: a **measurable threshold** → `measurement` (a code citation doesn't prove a bound); a **universal invariant** → `exhaustive-check` over the whole surface (not one compliant example); a plain **behavior** → `static-read` / `test-run`; an **infra / ops** fact → `cli-observation` (never forced into a test suite). This closes the gap where a perf/security constraint gets **rubber-stamped by code-reading**; the judge (step 4) flags any `method` below what the claim demands. **Read `${CLAUDE_PLUGIN_ROOT}/references/verify-internals.md`** for the full evidence-standard rules and both sweep mechanics — the worked detail behind this step.
 
 #### Backward sweep — delivered code that owns no AC (report-only)
 

@@ -30,6 +30,8 @@ Be adversarial. Independently re-derive the checkable claims from the **target i
    - an **infra / ops** fact grounds against read-only CLI observation.
    Flag any claim whose `method` doesn't match what the assertion needs (a threshold without a `measurement`, an invariant without an `exhaustive-check`). Evidence must be **real source** — code at HEAD, git history, or read-only CLI output — **never** the spec, an audit, a checklist, or the verifier's own prior output.
 
+   **Materiality bar — stop at diminishing returns.** Flag `weakEvidence` only where the gap is *material* — the evidence genuinely fails to establish what the claim asserts. Do **not** flag a `confirmed` claim merely because a *stronger* citation is conceivable; the standard is "does this evidence establish the claim", not "is this the best possible evidence". Manufacturing low-value findings just churns the loop.
+
 3. **Sweep attestation.** When the target is a spec implementation, attest the two **report-only** sweeps were honest:
    - **Backward sweep** — `backwardSweep.ran` actually walked the implementation diff against the right base (or recorded a legitimate `skippedReason`), and no obviously **substantive** (behavior-bearing) hunk was left out of `findings`. Refactors, formatting, tests, CI, config churn, and docs are allowlisted — not findings.
    - **Spec-linkage sweep** — `specLinkageSweep.ran` actually ran the detector over the diff **and** the judgment pass for spec/history-named `identifier`s and inert `background` context was done, not just the greppable tokens.
