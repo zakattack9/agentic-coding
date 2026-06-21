@@ -176,6 +176,27 @@ The skeleton below is the **`full`**-rigor shape; `light` is the Acceptance Crit
 - [ ] {…} — AC-5
 ```
 
+## Requirements reviewer — full rigor only, advisory
+
+At **`full` rigor only**, after the AC table is distilled **and before the draft is committed**, get a second, **different-provider** opinion (OpenAI Codex) on *what the feature implies that the draft missed* — the single highest-value spot, since a requirement dropped at discovery is the most expensive miss. It is **optional, advisory, and fail-open**: it never gates, never blocks the draft from being written or committed, and is a no-op when Codex is absent / unauthenticated / off / slow / malformed. Run it **at most once**.
+
+It has its **own independent off-switch**, `SPEC_OPS_CODEX_WRITE=0` (separate from the verify/refine judges' `SPEC_OPS_CODEX`), enforced by the bridge — set, the reviewer is skipped and the draft proceeds unchanged.
+
+**Preserve the write firewall.** This is still a *requirements* review sourced from the **idea**, not a grounding review sourced from the **codebase** (that is `refine-spec`'s job). The reviewer reasons only about requirements the feature *implies* — it must **not** inspect the code. Enforce that structurally: point `--cd` at a **fresh empty scratch directory** (e.g. `mktemp -d`), so even under the read-only sandbox there is nothing to ground against.
+
+Build a prompt file with the **idea + the drafted AC table + the discovery transcript** and an instruction to return only requirements implied by the feature (no codebase grounding), then dispatch:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/codex_bridge.py" --kind write-requirements \
+  --prompt-file <tmp-prompt> \
+  --schema-file "${CLAUDE_PLUGIN_ROOT}/schemas/write_requirements.schema.json" \
+  --cd <empty-scratch-dir> --effort xhigh
+```
+
+Branch on the exit code: **`0`** → the reviewer returned the `write-requirements` contract on stdout (`missingACs`, `unaskedQuestions`, `scopeRisks` — three string arrays, already shape-validated by the bridge); **`10` / `11` / `12`** → skipped / errored / unparseable, surface the one bridge log line and proceed straight to the commit.
+
+**Disposition in ONE consolidated `AskUserQuestion`** (never a per-item loop): present every `missingACs` / `unaskedQuestions` / `scopeRisks` item together and let the user accept or reject each — an accepted `missingAC` becomes a new criterion in the AC table, an accepted `unaskedQuestion` becomes a discovery question to resolve, an accepted `scopeRisk` a trim; rejected items are dropped with a one-line reason. The findings are **advisory** — the user's dispositions shape the draft, but nothing here can block the draft from being written or committed.
+
 ## Commit the draft
 
 Once the spec is written **to a file**, commit it — scoped to that one file — so the draft is captured in git:
