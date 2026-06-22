@@ -2,17 +2,23 @@
 
 Run a small team's (≤4 engineers) **entire software lifecycle on GitHub Projects
 v2** — deterministic, free, and GitHub-native. One org-owned board spans every
-repo: AI-assisted intake into tiered issues with acceptance criteria, a structured
-board, a light **branch → PR → staging → prod** flow tracked with zero
-hand-maintenance, and always-live stakeholder surfaces (the project Status update,
-Gantt-signal fields, the Roadmap view, Insights charts) — never a hand-kept Gantt
-or a periodic digest. No metered AI: every moving part is plain Python + GraphQL.
+repo: resumable intake of a raw dump into tiered issues with acceptance criteria
+(staged locally, then promoted to the board), a structured board, a light
+**branch → PR → staging → prod** flow tracked with zero hand-maintenance, always-live
+stakeholder surfaces (the project Status update, Gantt-signal fields, the Roadmap
+view, Insights charts), and read-only whole-program / sprint analysis on demand —
+never a hand-kept Gantt or a periodic digest. No metered AI: every moving part is
+plain Python + GraphQL.
 
 ## How it works (the mental model)
 
 - **The GitHub issue is the canonical unit.** Issues carry typed fields and a
   grouped **Acceptance Criteria** table; the board is a live projection of
   issue / PR / deploy events, driven *into* the Project via GraphQL.
+- **Intake stages locally before it touches the board.** `create-issues` captures
+  candidates as git-tracked drafts, refines them there, and only promotes a draft to
+  a real issue once it passes the readiness bar — so an interrupted run resumes, and
+  nothing half-formed lands on the board. Promotion is one-way.
 - **One org board, three field homes** — the work taxonomy is an **Issue Type**
   (`Feature/Bug/Chore/Infra/Epic`); org-wide attributes are **Issue Fields**
   (Priority, Start date, Target date); board-local state lives in **Project
@@ -133,9 +139,9 @@ All skills are thin orchestrators over the deterministic engine (`lib/`), run on
 | Skill | What it does | Invocation |
 |---|---|---|
 | `scaffold-repo` | Stand up the board + per-repo automation from the golden template (see Setup). Idempotent, dry-by-default. | Explicit |
-| `create-issues` | Raw dump → tiered, field-complete issues. Delegates the body + acceptance criteria to `spec-ops`; sizes and Epic-splits from the AC-group count. Dry-runs before any `gh issue create`. | Model-invocable |
+| `create-issues` | Raw dump → tiered, field-complete board issues via a **resumable decompose → refine → promote** pipeline over a local, git-tracked staging area: candidates are captured as drafts, refined there (body + acceptance criteria, delegated to `spec-ops`), and only promoted to a real issue once they pass the readiness bar. Promote sizes / Epic-splits from the AC-group count, sets the triage fields (Type/Tier/Priority/Size/PM-ID/Spec), and lands the item at `Backlog`. An interrupted run resumes exactly the unpromoted drafts; promotion is one-way. Dry-runs before any `gh issue create`. | Model-invocable |
 | `plan-sprint` | Assign issues to the current Iteration + Milestone, set Start/Target dates, show working-day capacity vs. assigned load (warns on over-allocation), and reorder the Ready queue. Dry-by-default. | Explicit |
-| `start-issue` | Project one issue onto the board, populate its intake-time fields (Type/Size/Tier/PM-ID/Spec/Priority/Status), optionally self-assign, and cut its authoritative linked branch. Monotonic Status, dry-by-default, guard-scoped. | Explicit |
+| `start-issue` | Move one already-triaged issue into active work: set Status → `In Progress`, optionally self-assign, and cut its authoritative linked branch. Touches only work-start state — the triage fields are set at promote time by `create-issues`. Monotonic Status, dry-by-default, guard-scoped. | Explicit |
 | `create-pr` | Open/update the issue-linked PR (non-closing `Relates to #N`), advance board Status across the PR lifecycle, surface the PR's check state, and offer a **non-squash** merge only when checks are green. Dry-by-default, guard-scoped. | Explicit |
 | `sync-signals` | Recompute the auto Gantt signals (Schedule health, Slippage, Slippage days, Blast radius, Blast count, **Blocked**) from the blocked-by graph and post the project Status update. Also runs automatically via `signals-sync.yml` on events + cron. | Explicit |
 | `analyze-board` | **Read-only** whole-program digest: rollup health, the critical chain (release-blockers that are themselves blocked), overdue × high-blast-radius items, intake-hygiene gaps, unassigned in-sprint work, stalled epics, and every `Decision needed ≠ No` — each line with its evidence and the one-command resolving skill. Never writes the board. | Model-invocable |
@@ -148,20 +154,25 @@ All skills are thin orchestrators over the deterministic engine (`lib/`), run on
 ```
 create-issues  →  plan-sprint  →  start-issue  →  (dev codes)  →  create-pr   →  deploy
      │               │               │              │                │             │
-  tiered AC       Iteration +     board item +   board-sync.yml    PR + Status   board-status
-  issues          dates + Ready   linked branch  moves Status      + green-gated  → On Staging
-  on the board    order           (self-assign)  on push/PR        non-squash     / Done + Release
+  staged drafts   Iteration +     Status→         board-sync.yml    PR + Status   board-status
+  → promoted to   dates + Ready   In Progress +   moves Status      + green-gated  → On Staging
+  Backlog issues  order           branch (assign) on push/PR        non-squash     / Done + Release
+  (triage fields)
 ```
 
-1. **Intake** — `create-issues "<dump or path>"` turns a brain-dump into tiered
-   issues with acceptance criteria; prose-only / non-atomic items are refused
-   `Ready` with a reason.
+1. **Intake** — `create-issues "<dump or path>"` runs the resumable
+   decompose → refine → promote pipeline over a local staging area: it stages
+   drafts, refines their body + acceptance criteria (via `spec-ops`), and promotes
+   each ready draft to a board issue at `Backlog` with its triage fields set
+   (Type/Tier/Priority/Size/PM-ID/Spec). Prose-only / non-atomic items are refused
+   promotion with a reason; an interrupted run resumes the unpromoted drafts.
 2. **Plan** — `plan-sprint --owner <org> --number <project#> …` schedules the
    current Iteration + Milestone + dates and orders the Ready queue by Priority
    then Target.
 3. **Start work** — `start-issue --owner <org> --number <project#> --repo
-   owner/name --issue <n> [--assignee <login>]` projects the issue, sets its fields,
-   and creates the linked branch.
+   owner/name --issue <n> [--assignee <login>]` moves the triaged issue into active
+   work: Status → `In Progress`, optional self-assign, and the linked branch. It
+   sets only work-start state; the triage fields were set at promote time.
 4. **Code** — push to the linked branch and open a PR; the board moves itself
    (`In Progress` on push, `In Review` on a ready PR).
 5. **Promote** — `create-pr --owner <org> --number <project#> --repo owner/name
@@ -229,6 +240,10 @@ replayed event is a no-op; only an explicit reopen moves Status back. Issues are
   - `scaffold.py` — golden-template copy + idempotent file install.
   - `dag.py` — blocked-by graph → Blocked / Blast radius / Blast count.
   - `pm.py` — `PM-####` id allocator + flow-style front-matter I/O.
+  - `backlog.py` — the staging-ledger engine behind the resumable `create-issues`
+    pipeline: the git-tracked local drafts + JSON ledger and the deterministic
+    decompose → refine → promote lifecycle (promote sets the triage fields and lands
+    the issue at `Backlog`).
   - `analysis.py` — read-only ranked-findings engine over existing signals + the
     blocked-by DAG (the `analyze-*` skills' deterministic core).
   - `engine.sh` — the dry-by-default / `--force` rail the skills call.
@@ -237,8 +252,9 @@ replayed event is a no-op; only an explicit reopen moves Status back. Issues are
   `add-to-project.yml`, the self-contained `board-status` action, `release.yml`,
   CODEOWNERS).
 - `hooks/guard.sh` — the skill-scoped PreToolUse guard.
-- `rules/` — `github-fields.md`, `repo-conventions.md`, `ac-rubric.md`,
-  `tier-rubric.md`.
+- `rules/` — `vocabulary.md` (the canonical field/status/term glossary),
+  `composition.md` (how the skills compose across the lifecycle), `github-fields.md`,
+  `repo-conventions.md`, `ac-rubric.md`, `tier-rubric.md`.
 
 The plugin manifest carries only `name` + `description`; the version lives in the
 repo-root `.claude-plugin/marketplace.json`.

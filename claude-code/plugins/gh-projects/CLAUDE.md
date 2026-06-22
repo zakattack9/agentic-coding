@@ -18,13 +18,18 @@ creds — every round-trip goes through the injectable `gh.RUN` seam). Keep it g
 
 - `lib/` — the deterministic engine; **stdlib only**, exit codes `0/2/3/1`. `gh.py`
   (GraphQL/REST core + all write verbs), `sprint.py`, `scaffold.py`, `dag.py`,
-  `pm.py`, `analysis.py` (READ-ONLY ranked-findings engine for the `analyze-*`
-  skills), `setup_board.py` (one-shot golden-template builder, run by the user — not
-  the App), `engine.sh` (the dry-by-default rail), `lib/tests/`.
+  `pm.py`, `intake.py` (tier→rigor / size / Epic-split / ready-gate decisions),
+  `backlog.py` (the git-tracked staging-ledger engine for the resumable `create-issues`
+  decompose→refine→promote pipeline; promote sets the triage fields + lands at Backlog),
+  `analysis.py` (READ-ONLY ranked-findings engine for the `analyze-*` skills),
+  `setup_board.py` (one-shot golden-template builder, run by the user — not the App),
+  `engine.sh` (the dry-by-default rail), `lib/tests/`.
 - `skills/` — eight **thin** SKILL.md orchestrators over the engine. Put no decision
   logic in prose; every load-bearing step is a checked-in engine verb.
-- `templates/` — golden-template `project/*` + per-repo `github/*`. `hooks/guard.sh`,
-  `rules/`.
+- `templates/` — golden-template `project/*` + per-repo `github/*`. `hooks/guard.sh`.
+- `rules/` — `vocabulary.md` (canonical field/status/term glossary), `composition.md`
+  (how the skills compose across the lifecycle), `github-fields.md`,
+  `repo-conventions.md`, `ac-rubric.md`, `tier-rubric.md`.
 
 ## Invariants — preserve these on every change (tests enforce them)
 

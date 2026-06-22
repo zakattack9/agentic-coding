@@ -132,7 +132,7 @@ and any Homepage URL.
 |---|---|---|
 | **Administration** | Read & write | Toggle the repo **no-squash** merge setting (`scaffold-repo`) |
 | **Contents** | Read & write | Cut the authoritative linked branch; publish Releases (`board-status`) |
-| **Issues** | Read & write | Create/route issues, set fields, assignees, milestones; close at prod |
+| **Issues** | Read & write | Create issues, set fields, assignees, milestones; close at prod |
 | **Pull requests** | Read & write | Open/update/merge the linked PR (`create-pr`, `board-sync`) |
 | **Metadata** | Read-only | Mandatory (auto-selected) |
 
@@ -380,7 +380,7 @@ resolution; it **cannot** verify charts (no API) — hence the eyeball step.
 
 `scaffold-repo` reported the new board's **number** and **URL** in its manifest. Set
 these variables so the installed workflows target it — **the same way (Path A / Path
-B) you stored the App secrets** in Phase 0.0 §6:
+B) you stored the App secrets** in Phase 0.0 (step "Store the App secrets"):
 
 - `GH_PROJECT_OWNER` = the org login (`zilarent`)
 - `GH_PROJECT_NUMBER` = the board number scaffold reported
@@ -394,8 +394,8 @@ gh variable set GH_PROJECT_NUMBER --repo "$R" --body "N"
 gh variable set GH_PROJECT_URL    --repo "$R" --body "https://github.com/orgs/zilarent/projects/N"
 ```
 
-> **Free org:** if you deferred the App **secrets** from Phase 0.0 §6, set them on this
-> same repo now too (the two `gh secret set --repo` lines). Everything just needs to be
+> **Free org:** if you deferred the App **secrets** from the Phase 0.0 "Store the App
+> secrets" step, set them on this same repo now too (the two `gh secret set --repo` lines). Everything just needs to be
 > present before a workflow first triggers.
 
 ---
@@ -460,4 +460,4 @@ won't repopulate.
 **Per repo/board:**
 - [ ] `scaffold-repo --org <org> --template "…" … --force` (creates the board + installs workflow files; uses the org's App token)
 - [ ] **Wire the board variables** (`GH_PROJECT_OWNER` / `GH_PROJECT_NUMBER` / `GH_PROJECT_URL`) from scaffold's reported board number — org-level (Path A) or per repo (Path B)
-- [ ] *(Free org)* if App secrets were deferred, set them on this repo too (Phase 0.0 §6 Path B)
+- [ ] *(Free org)* if App secrets were deferred, set them on this repo too (Phase 0.0 "Store the App secrets" Path B)
