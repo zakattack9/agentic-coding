@@ -1,7 +1,7 @@
 ---
 paths:
   - "**/SKILL.md"
-  - "**/hooks/**"
+  - "**plugins/**/hooks/**"
 ---
 
 # Writing Skills for This Project
