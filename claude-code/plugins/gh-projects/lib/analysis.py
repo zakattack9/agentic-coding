@@ -69,7 +69,7 @@ IMPACT_HIGH = "High"
 STATUS_READY = "Ready"
 IN_SPRINT_STATUSES = ("Ready", "In Progress", "In Review", "On Staging")
 
-DECISION_NONE = "No"
+DECISION_NONE = "No decision"
 
 # Resolving skills (the action each finding routes to).
 SKILL_CREATE_ISSUES = "create-issues"
@@ -82,7 +82,7 @@ KIND_OVERDUE_HIGH_BLAST = "overdue_high_blast"   # overdue x high blast radius
 KIND_STALLED_EPIC = "stalled_epic"               # At risk/Overdue epic, incomplete sub-issues
 KIND_INTAKE_HYGIENE = "intake_hygiene"           # Ready item missing AC table / Size / Target
 KIND_UNASSIGNED_IN_SPRINT = "unassigned_in_sprint"
-KIND_DECISION_NEEDED = "decision_needed"         # Decision needed != No
+KIND_DECISION_NEEDED = "decision_needed"         # Decision needed != No decision
 
 # Severity ranks (lower = more urgent). Stable, fully deterministic.
 SEV_CRITICAL_CHAIN = 0
@@ -161,7 +161,7 @@ def _utc_today() -> _dt.date:
 #    "blast_radius": <"Blocks none"|... >,  # the WRITTEN Blast radius value
 #    "blocked": <"Blocked"|"Unblocked">,    # the WRITTEN Blocked value
 #    "impact": <"Release blocker"|... >,    # Impact level (human-set)
-#    "decision_needed": <"No"|"Move date"|...>,  # Decision needed (human-set)
+#    "decision_needed": <"No decision"|"Move date"|...>,  # Decision needed (human-set)
 #    "blocked_by": [<number>, ...]}         # the native blocked-by edges
 #
 # Missing keys degrade to safe defaults — a snapshot from `load_board` always

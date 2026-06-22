@@ -46,7 +46,7 @@ explicit reopen regresses it).
 | **Blast radius** + **Blast count** | Blocks release · Blocks many · Blocks 1 · Blocks none (+ exact count) | how much *this* blocks downstream |
 | **Blocked** | Unblocked · Blocked | is *this* held up upstream |
 | **Impact level** | Release blocker · High · Medium · Low | intrinsic consequence if late (human call) |
-| **Decision needed** | No · Move date · Reduce scope · Reassign · Split · Unblock · Defer | the pending PM/CTO move (names the decision owed — not a yes/no) |
+| **Decision needed** | No decision · Move date · Reduce scope · Reassign · Split · Unblock · Defer | the pending PM/CTO move (names the decision owed — not a yes/no) |
 
 ## Scheduling + linkage
 

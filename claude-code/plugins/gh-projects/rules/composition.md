@@ -87,7 +87,7 @@ actually owed:
   human-owned counterpart to a derived `Blocked` flag — someone must act to clear
   it).
 - `Defer` — drop the item from the current plan.
-- `No` — nothing pending; the default when the item needs no decision.
+- `No decision` — nothing pending; the default when the item needs no decision.
 
-Set it deliberately and clear it back to `No` once the decision is made and acted
+Set it deliberately and clear it back to `No decision` once the decision is made and acted
 on.

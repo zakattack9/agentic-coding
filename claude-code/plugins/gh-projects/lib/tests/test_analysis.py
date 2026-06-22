@@ -51,32 +51,32 @@ def snapshot_fixture():
          "target": "2026-07-01", "assignees": ["alice"], "has_ac_table": True,
          "schedule_health": "Blocked", "blast_radius": "Blocks release",
          "blocked": "Blocked", "impact": "Release blocker",
-         "decision_needed": "No", "blocked_by": [19]},
+         "decision_needed": "No decision", "blocked_by": [19]},
         # #20 — overdue AND high blast radius -> overdue_high_blast.
         {"number": 20, "status": "In Progress", "type": "Feature", "size": "L",
          "target": "2026-06-01", "assignees": ["bob"], "has_ac_table": True,
          "schedule_health": "Overdue", "blast_radius": "Blocks many",
          "blocked": "Unblocked", "impact": "High",
-         "decision_needed": "No", "blocked_by": []},
+         "decision_needed": "No decision", "blocked_by": []},
         # #30 — At risk epic with incomplete sub-issues -> stalled_epic.
         {"number": 30, "status": "In Progress", "type": "Epic", "size": "L",
          "target": "2026-06-25", "assignees": ["carol"], "has_ac_table": True,
          "sub_issues_total": 5, "sub_issues_done": 2,
          "schedule_health": "At risk", "blast_radius": "Blocks 1",
          "blocked": "Unblocked", "impact": "Medium",
-         "decision_needed": "No", "blocked_by": []},
+         "decision_needed": "No decision", "blocked_by": []},
         # #40 — Ready but missing AC table + Size + Target -> intake_hygiene.
         {"number": 40, "status": "Ready", "type": "Feature", "size": None,
          "target": None, "assignees": ["dave"], "has_ac_table": False,
          "schedule_health": "On track", "blast_radius": "Blocks none",
          "blocked": "Unblocked", "impact": "Low",
-         "decision_needed": "No", "blocked_by": []},
+         "decision_needed": "No decision", "blocked_by": []},
         # #50 — in-sprint with no assignee -> unassigned_in_sprint.
         {"number": 50, "status": "In Progress", "type": "Feature", "size": "S",
          "target": "2026-07-10", "assignees": [], "has_ac_table": True,
          "schedule_health": "On track", "blast_radius": "Blocks none",
          "blocked": "Unblocked", "impact": "Low",
-         "decision_needed": "No", "blocked_by": []},
+         "decision_needed": "No decision", "blocked_by": []},
         # #60 — Decision needed = Move date -> decision_needed.
         {"number": 60, "status": "In Progress", "type": "Feature", "size": "M",
          "target": "2026-07-05", "assignees": ["alice"], "has_ac_table": True,
@@ -88,7 +88,7 @@ def snapshot_fixture():
          "target": "2026-05-01", "assignees": ["bob"], "has_ac_table": True,
          "schedule_health": "Done", "blast_radius": "Blocks none",
          "blocked": "Unblocked", "impact": "Low",
-         "decision_needed": "No", "blocked_by": []},
+         "decision_needed": "No decision", "blocked_by": []},
     ]
 
 
@@ -292,7 +292,7 @@ class FakeReadRunner:
                 "blast": {"name": it.get("blast_radius", "")},
                 "blockedField": {"name": it.get("blocked", "")},
                 "impact": {"name": it.get("impact", "")},
-                "decision": {"name": it.get("decision_needed", "No")},
+                "decision": {"name": it.get("decision_needed", "No decision")},
             })
         return {"data": {"organization": {"projectV2": {
             "id": "PVT_proj1",

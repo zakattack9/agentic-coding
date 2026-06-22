@@ -105,7 +105,7 @@ calls). They power the live views and the project Status update.
   *not* dependency fan-out (that is Blast radius).
 - **Decision needed** — a single-select naming the **pending decision owed** on a
   stuck item — *what move the PM/CTO must make*. It is explicitly **not a boolean**:
-  it names the decision, not merely that one exists. Options: `No` (none pending),
+  it names the decision, not merely that one exists. Options: `No decision` (none pending),
   `Move date`, `Reduce scope`, `Reassign`, `Split`, `Unblock`, `Defer`. A deliberate
   human call. *Not* a dependency flag (that is Blocked) and *not* an effort
   estimate (that is Size). See `composition.md` for picking the right option.

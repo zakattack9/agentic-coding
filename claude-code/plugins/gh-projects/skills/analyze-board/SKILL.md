@@ -1,6 +1,6 @@
 ---
 name: analyze-board
-description: Read the whole gh-projects board through one strategic lens and tell the PM/CTO what matters — the rollup health, the critical chain (release-blockers that are themselves blocked), overdue × high-blast-radius items, intake-hygiene gaps (Ready items missing an AC table / Size / Target date), unassigned in-sprint work, stalled epics, and every item whose Decision needed ≠ No — each line carrying its evidence and the one-command skill that resolves it. Use when the user asks to "analyze the board", "what needs my attention", "what's at risk", "give me the program rollup", "what should I decide", or wants a whole-program digest instead of reading eight views. READ-ONLY — it never writes a field, posts a Status update, emits/posts a digest anywhere, or schedules a cron. Does NOT plan the sprint (plan-sprint), file issues (create-issues), or recompute signals (sync-signals).
+description: Read the whole gh-projects board through one strategic lens and tell the PM/CTO what matters — the rollup health, the critical chain (release-blockers that are themselves blocked), overdue × high-blast-radius items, intake-hygiene gaps (Ready items missing an AC table / Size / Target date), unassigned in-sprint work, stalled epics, and every item whose Decision needed ≠ No decision — each line carrying its evidence and the one-command skill that resolves it. Use when the user asks to "analyze the board", "what needs my attention", "what's at risk", "give me the program rollup", "what should I decide", or wants a whole-program digest instead of reading eight views. READ-ONLY — it never writes a field, posts a Status update, emits/posts a digest anywhere, or schedules a cron. Does NOT plan the sprint (plan-sprint), file issues (create-issues), or recompute signals (sync-signals).
 model: claude-opus-4-8
 effort: high
 allowed-tools: Bash(python3 *), Bash(gh api *), Read, AskUserQuestion
@@ -81,7 +81,7 @@ finding, the **action** line is the one-command fix: render
 ### Stalled epics
 - #<number> — <summary>  → action: plan-sprint <args>   [evidence: <evidence>]
 
-### Decisions owed (Decision needed ≠ No)
+### Decisions owed (Decision needed ≠ No decision)
 - #<number> — <summary>  → decide: <decision option owed>   [evidence: <evidence>]
 
 ### Intake-hygiene gaps (Ready items missing AC table / Size / Target date)

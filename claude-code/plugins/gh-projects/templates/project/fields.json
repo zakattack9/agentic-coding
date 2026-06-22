@@ -396,7 +396,7 @@
       "purpose": "The pending PM/lead decision on a stuck item",
       "options": [
         {
-          "name": "No",
+          "name": "No decision",
           "description": "No decision pending.",
           "color": "GRAY"
         },
