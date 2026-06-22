@@ -80,6 +80,7 @@ Before invoking, the bridge checks, with **no network call and no browser**:
 |----------|--------|
 | `SPEC_OPS_CODEX=0` | disable **all** Codex cross-model checks (any kind ⇒ `10`); behavior byte-identical to no Codex |
 | `SPEC_OPS_CODEX_WRITE=0` | disable **only** the `write-requirements` discovery reviewer, independently of the verify/refine judges |
+| `SPEC_OPS_CODEX_TIMEOUT` | per-call Codex timeout in **seconds** (default `180`); raise it for slow xhigh runs. An explicit `--timeout` arg still wins; invalid / non-positive ⇒ default. **Effective ceiling ~600s** — the skill dispatches the bridge as a foreground Bash call the harness caps at 600s; a true longer budget needs the dispatch moved to a background poll. |
 | `CODEX_HOME` | respected when locating the user's `config.toml` |
 
 (Off is recognized for `0` / `false` / `no` / `off`.)

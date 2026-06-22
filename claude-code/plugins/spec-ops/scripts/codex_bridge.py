@@ -37,6 +37,7 @@ Usage:
     codex_bridge.py --kind <judge-verify|judge-refine|write-requirements> \
                     --prompt-file <f> [--schema-file <f>] [--cd <repo>] \
                     [--model <m>] [--effort xhigh|medium] [--timeout 180]
+                    # default timeout is SPEC_OPS_CODEX_TIMEOUT (seconds) or 180; --timeout wins
     codex_bridge.py --probe --kind <kind>    # one-line availability verdict, no Codex call
 
 The `--probe` mode prints a single deterministic line — `CODEX: YES …` or
@@ -90,6 +91,11 @@ UNPARSEABLE = 12
 DEFAULT_MODEL = "gpt-5.5"
 
 # Per-call ceiling so a hung turn can never stall the loop the caller is waiting on.
+# Overridable per-environment via SPEC_OPS_CODEX_TIMEOUT (seconds); an explicit
+# --timeout arg still wins. Raise it when xhigh reasoning on a large spec needs
+# longer than the default. NOTE: a skill dispatches this bridge as a *foreground*
+# Bash call, which the harness caps at 600s — so the effective ceiling is ~600s
+# unless the dispatch is moved to a background poll.
 DEFAULT_TIMEOUT = 180
 
 VALID_EFFORTS = ("xhigh", "medium", "high", "low", "minimal")
@@ -98,6 +104,22 @@ VALID_EFFORTS = ("xhigh", "medium", "high", "low", "minimal")
 def _is_off(val):
     """An env toggle reads as 'off' for the usual falsey spellings."""
     return isinstance(val, str) and val.strip().lower() in ("0", "false", "no", "off")
+
+
+def resolve_timeout(environ, default=DEFAULT_TIMEOUT):
+    """Per-call timeout (seconds), overridable via SPEC_OPS_CODEX_TIMEOUT.
+
+    An explicit --timeout arg still wins over this. A missing / invalid / non-positive
+    env value falls back to the default — a bad env var never crashes the bridge.
+    """
+    raw = environ.get("SPEC_OPS_CODEX_TIMEOUT")
+    if raw is None:
+        return default
+    try:
+        val = int(str(raw).strip())
+    except (ValueError, TypeError):
+        return default
+    return val if val > 0 else default
 
 
 def disabled_by_env(kind, environ):
@@ -389,7 +411,7 @@ def run(kind, prompt, schema_file, cd, model, effort, timeout, environ,
 def main(argv):
     kind = prompt_file = schema_file = cd = model = None
     effort = "xhigh"
-    timeout = DEFAULT_TIMEOUT
+    timeout = resolve_timeout(os.environ)
     do_probe = False
     i = 0
 
