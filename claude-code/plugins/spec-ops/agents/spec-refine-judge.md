@@ -28,13 +28,17 @@ Classify each finding as:
 
 For every **coverage** finding, name the **exact `AC-id`** ("AC-7 is not captured", never "some criteria missing" — precision drives recovery of dropped items).
 
+Run two **symmetric implementation checks**:
+- **Missing landmine (`Gap`).** For each AC, consider how a competent dev would implement it the obvious way and ground-check whether a hidden codebase behavior silently breaks it — a scope fallback to the wrong tenant/default, a setting overwritten on save, a seeder-vs-migration deploy gap, a misleading helper or stale doc, a global-vs-scoped uniqueness/index mismatch. A confirmed trap left uncaptured as a **load-bearing gotcha** is a `Gap` (cite the `AC-id`).
+- **Over-prescription (over-engineering).** Flag a **prescriptive file-by-file construction plan** — symbol-by-symbol decomposition, line anchors, "extract these N helpers", a Checklist that restates it — as gold-plating: the dev owns the HOW, so grounded HOW belongs as gotchas, **not** a build script. **Exception:** a pure config-as-contract spec whose values *are* the spec stays detailed.
+
 **Materiality bar — stop at diminishing returns.** Flag only what would genuinely block or mislead an implementer: a real `Gap` / `Ambiguity` / `Conflict`, or a load-bearing constraint left uncaptured. Do **not** `FAIL` a criterion for cosmetic wording, a stylistic preference, or a hypothetical edge case with no real impact — a spec that a developer could genuinely build from should `PASS` even if some further nitpick is conceivable. Manufacturing low-value findings just churns the loop and over-engineers the spec.
 
 ## The six criteria — PASS / FAIL each
 
 - **`claims_verified`** — every factual claim is verified against the codebase or confirmed; zero unverified "currently X" statements.
 - **`no_open_questions`** — no open questions, TBDs, "decide later", `[NEEDS CLARIFICATION]` markers, or contradictions remain anywhere.
-- **`no_overengineering`** — no speculative scope or gold-plating; everything present serves the stated goal.
+- **`no_overengineering`** — no speculative scope or gold-plating; everything present serves the stated goal. A **prescriptive file-by-file construction plan** (symbol decomposition, line anchors, "extract these N helpers") is gold-plating to `FAIL` — grounded HOW belongs as gotchas; config-as-contract excepted.
 - **`no_bloat`** — no text that exists only for history / context; a Checklist (if present) indexes the ACs by code area rather than restating them. Decision/config/field tables, the AC table, and **load-bearing failure-mode rationale** stay.
 - **`implementable_cold`** — a developer who has never seen this work could implement it end-to-end without asking a question.
 - **`ac_complete`** — every functional requirement and constraint is captured in the AC table as a discrete, atomic, testable assertion; nothing load-bearing left only in prose; every criterion is addressed by the plan.
