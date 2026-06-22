@@ -37,6 +37,12 @@ Usage:
     codex_bridge.py --kind <judge-verify|judge-refine|write-requirements> \
                     --prompt-file <f> [--schema-file <f>] [--cd <repo>] \
                     [--model <m>] [--effort xhigh|medium] [--timeout 180]
+    codex_bridge.py --probe --kind <kind>    # one-line availability verdict, no Codex call
+
+The `--probe` mode prints a single deterministic line — `CODEX: YES …` or
+`CODEX: NO — <reason>` — and exits 0. It is meant for a skill's `!`-injection at
+load: the caller skips its cross-model section on NO and dispatches the judge on
+YES, instead of constructing a prompt only to learn Codex is absent.
 
 Exit codes (the caller branches on the code alone):
     0   valid, contract-checked JSON on stdout — fold it into the ledger / disposition
@@ -125,6 +131,22 @@ def codex_authenticated(environ):
     except (OSError, subprocess.SubprocessError):
         return False
     return res.returncode == 0
+
+
+def probe_line(kind, environ):
+    """One-line, read-only availability verdict for a skill's `!`-injection at load.
+    Mirrors run()'s guard order and never invokes Codex — the caller skips its
+    cross-model section on NO and dispatches the judge on YES. Always exit 0."""
+    if disabled_by_env(kind, environ):
+        flag = ("SPEC_OPS_CODEX_WRITE"
+                if kind == "write-requirements" and not _is_off(environ.get("SPEC_OPS_CODEX"))
+                else "SPEC_OPS_CODEX")
+        return f"CODEX: NO — disabled by {flag}"
+    if not codex_available():
+        return "CODEX: NO — codex CLI not on PATH"
+    if not codex_authenticated(environ):
+        return "CODEX: NO — codex not authenticated (set OPENAI_API_KEY/CODEX_API_KEY or run `codex login`)"
+    return "CODEX: YES — available and authenticated"
 
 
 def _config_path(environ):
@@ -368,6 +390,7 @@ def main(argv):
     kind = prompt_file = schema_file = cd = model = None
     effort = "xhigh"
     timeout = DEFAULT_TIMEOUT
+    do_probe = False
     i = 0
 
     def nextval(flag):
@@ -386,6 +409,8 @@ def main(argv):
             prompt_file = nextval(a)
         elif a == "--schema-file":
             schema_file = nextval(a)
+        elif a == "--probe":
+            do_probe = True
         elif a == "--cd":
             cd = nextval(a)
         elif a == "--model":
@@ -412,6 +437,9 @@ def main(argv):
             "codex_bridge: --kind must be one of judge-verify, judge-refine, write-requirements\n"
         )
         return 3
+    if do_probe:
+        sys.stdout.write(probe_line(kind, os.environ) + "\n")
+        return 0
     if not prompt_file:
         sys.stderr.write("codex_bridge: --prompt-file is required\n")
         return 3

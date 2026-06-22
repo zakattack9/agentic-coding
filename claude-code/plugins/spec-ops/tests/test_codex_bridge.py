@@ -129,6 +129,61 @@ def test_exit_10_when_write_toggle_disables_only_write():
     code_v, _, _ = _run("judge-verify", _fake_invoke(stdout=stream), environ=env)
     assert code_v == cb.OK
 
+
+# ---- --probe: one-line availability verdict for skill !-injection ------------------
+
+def test_probe_line_yes_when_available_and_authed():
+    orig_a, orig_u = cb.codex_available, cb.codex_authenticated
+    cb.codex_available = lambda: True
+    cb.codex_authenticated = lambda env: True
+    try:
+        assert cb.probe_line("judge-verify", {}).startswith("CODEX: YES")
+    finally:
+        cb.codex_available, cb.codex_authenticated = orig_a, orig_u
+
+def test_probe_line_no_when_absent():
+    orig = cb.codex_available
+    cb.codex_available = lambda: False
+    try:
+        line = cb.probe_line("judge-verify", {})
+    finally:
+        cb.codex_available = orig
+    assert line.startswith("CODEX: NO") and "PATH" in line
+
+def test_probe_line_no_when_unauthenticated():
+    orig_a, orig_u = cb.codex_available, cb.codex_authenticated
+    cb.codex_available = lambda: True
+    cb.codex_authenticated = lambda env: False
+    try:
+        line = cb.probe_line("judge-verify", {})
+    finally:
+        cb.codex_available, cb.codex_authenticated = orig_a, orig_u
+    assert line.startswith("CODEX: NO") and "authenticated" in line
+
+def test_probe_line_attributes_the_right_disable_flag():
+    assert "SPEC_OPS_CODEX_WRITE" in cb.probe_line("write-requirements", {"SPEC_OPS_CODEX_WRITE": "0"})
+    # the global switch wins the attribution even for the write kind
+    assert cb.probe_line("write-requirements", {"SPEC_OPS_CODEX": "0"}).endswith("SPEC_OPS_CODEX")
+    assert cb.probe_line("judge-verify", {"SPEC_OPS_CODEX": "0"}).endswith("SPEC_OPS_CODEX")
+
+def test_probe_mode_prints_line_and_exits_zero():
+    orig_a, orig_u = cb.codex_available, cb.codex_authenticated
+    cb.codex_available = lambda: False
+    cb.codex_authenticated = lambda env: True
+    try:
+        out = io.StringIO(); err = io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = cb.main(["--probe", "--kind", "judge-verify"])
+    finally:
+        cb.codex_available, cb.codex_authenticated = orig_a, orig_u
+    assert code == 0 and out.getvalue().strip().startswith("CODEX: NO")
+
+def test_probe_mode_requires_valid_kind():
+    out = io.StringIO(); err = io.StringIO()
+    with redirect_stdout(out), redirect_stderr(err):
+        code = cb.main(["--probe", "--kind", "bogus"])
+    assert code == 3
+
 def test_exit_11_on_timeout():
     code, _, err = _run("judge-verify", _fake_invoke(timed_out=True))
     assert code == cb.ERROR

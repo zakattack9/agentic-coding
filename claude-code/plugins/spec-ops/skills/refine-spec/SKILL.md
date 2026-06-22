@@ -151,6 +151,7 @@ Validate the shape (`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/validate_return.py --
 
 **Cross-model judge — a second, different-provider judge (when available).** So readiness isn't *Claude auditing Claude*, run a second judge of a **different provider** (OpenAI Codex) **alongside** the Claude `spec-refine-judge` — **optional and fail-open**: when Codex is absent / unauthenticated / off / slow / malformed, this is a no-op and the gate is exactly what the Claude judge produced. **Read `${CLAUDE_PLUGIN_ROOT}/references/cross-model-judge.md`** for the shared policy (final-pass-only, concurrent dispatch, verbatim rubric, AND-merge, fail-open branching, stubborn-split escalation). refine-spec specifics:
 
+- **Availability — check this first.** Skill-load probe: !`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/codex_bridge.py" --probe --kind judge-refine` — if it reads `CODEX: NO`, **skip this whole section** (proceed Claude-only exactly as today: build no prompt, make no bridge call); only on `CODEX: YES` do the steps below.
 - **Only on the no-fix readiness pass.** Dispatch the Codex judge on the pass where a full pass produced no fixes and you are evaluating the gate — not on earlier editing passes. ~one Codex call per run.
 - **Concurrent dispatch.** In the same turn you dispatch the Claude `spec-refine-judge` `Task`, also build the Codex prompt and call the bridge — the rubric file `${CLAUDE_PLUGIN_ROOT}/agents/spec-refine-judge.md` **verbatim**, then the **spec path + repo root** (only those), written to a transient `/tmp` prompt file:
 

@@ -38,6 +38,8 @@ codex_bridge.py --kind <judge-verify|judge-refine|write-requirements> \
   (`xhigh` for a judge/review; `medium` reserved for any future grounding lane), and the
   per-call timeout.
 
+**Availability probe (`--probe`).** `codex_bridge.py --probe --kind <kind>` prints one deterministic line — `CODEX: YES …` or `CODEX: NO — <reason>` — and exits `0` **without invoking Codex**. It mirrors the same availability / auth / env-switch guards `run()` applies. A skill injects it at load with `` !`…codex_bridge.py --probe --kind <kind>` `` (Claude Code dynamic-context injection) so it can **skip its cross-model section on `NO`** — building no prompt and making no bridge call on the common no-Codex path — and run the judge only on `YES`. The `YES` path still calls the bridge and branches on the real exit code below (a `YES` probe doesn't guarantee the judge call itself returns `0`).
+
 Under the hood it runs, with **no escalating flag, ever**:
 
 ```
