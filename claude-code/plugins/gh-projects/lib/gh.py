@@ -85,20 +85,14 @@ def _scrub(text) -> str:
 
 
 def _redact_args(args) -> str:
-    """A safe, single-line rendering of an argv for logs (token args masked)."""
-    out, skip = [], False
-    for a in args:
-        a = str(a)
-        if skip:
-            out.append("[REDACTED]")
-            skip = False
-            continue
-        if a in ("-H", "--header", "-f", "-F") and "token" in a.lower():
-            out.append(a)
-            skip = True
-            continue
-        out.append(_scrub(a))
-    return _scrub(" ".join(out))
+    """A safe, single-line rendering of an argv for logs.
+
+    The whole rendered command is run through `_scrub`, which masks token-shaped
+    values, bearer headers, and `authorization:/token=/private-key` assignments —
+    so a secret passed as a flag value (e.g. `-H "Authorization: Bearer <jwt>"`)
+    is redacted in place without dropping the surrounding non-secret context.
+    """
+    return _scrub(" ".join(str(a) for a in args))
 
 
 # --------------------------------------------------------------------------- #
@@ -203,11 +197,11 @@ def _b64url(data: bytes) -> str:
 
 
 def _mint_app_jwt(app_id: str, pem: str) -> str:
-    """Sign a short-lived RS256 JWT for the App (stdlib-only crypto).
+    """Sign a short-lived RS256 JWT for the App.
 
-    Uses `hashlib`/`hmac`-free RSA via the bundled `_rsa_sign` helper which
-    shells out to `openssl` through RUN-independent subprocess ONLY when the
-    pure-Python path is unavailable. Kept dependency-free; never logs the key.
+    Signs the `header.claims` input with `_rsa_sign`, which shells out to
+    `openssl` (no third-party crypto dependency). The private key is never
+    placed in argv and never logged.
     """
     import time
 
@@ -224,29 +218,19 @@ def _mint_app_jwt(app_id: str, pem: str) -> str:
 
 
 def _rsa_sign(message: bytes, pem: str) -> bytes:
-    """RS256 sign `message` with the PEM private key, stdlib only.
+    """RS256-sign `message` with the PEM private key via openssl.
 
-    Falls back to `openssl` if present (always available on GH runners). The
-    private key is fed on stdin and never appears in argv or any log.
+    openssl cannot take the key and the data both on stdin, so the key is
+    written to an owner-only temp file (`mkstemp` creates it mode 0600) and the
+    message is fed on stdin. The key never appears in argv or any log, and the
+    temp file is always removed — even on error. Returns the raw signature bytes.
     """
-    proc = subprocess.run(
-        ["openssl", "dgst", "-sha256", "-sign", "/dev/stdin"],
-        input=_pem_then(pem, message),
-        capture_output=True,
-    )
-    if proc.returncode != 0:
-        raise GhError("RSA signing failed (openssl)", code=1)
-    return proc.stdout
-
-
-def _pem_then(pem: str, message: bytes) -> bytes:
-    # openssl can't take key + data both on stdin; write key to a temp file.
     import tempfile
 
-    with tempfile.NamedTemporaryFile("w", delete=False, suffix=".pem") as kf:
-        kf.write(pem)
-        key_path = kf.name
+    fd, key_path = tempfile.mkstemp(suffix=".pem")
     try:
+        with os.fdopen(fd, "wb") as kf:
+            kf.write(pem.encode("utf-8") if isinstance(pem, str) else pem)
         proc = subprocess.run(
             ["openssl", "dgst", "-sha256", "-sign", key_path],
             input=message,
@@ -820,9 +804,15 @@ def open_or_update_pr(repo: str, head: str, base: str, issue_number,
     if draft:
         args.append("--draft")
     out = RUN(args)
-    # `gh pr create` prints the PR url on stdout.
+    # `gh pr create` prints the PR url on stdout (…/pull/<n>); parse the number
+    # from it so a freshly-created PR is immediately addressable (pr-checks/merge).
     url = (out or "").strip().splitlines()[-1] if (out or "").strip() else None
-    return {"action": "created", "number": None, "url": url}
+    number = None
+    if url:
+        m = re.search(r"/pull/(\d+)", url)
+        if m:
+            number = int(m.group(1))
+    return {"action": "created", "number": number, "url": url}
 
 
 # --------------------------------------------------------------------------- #

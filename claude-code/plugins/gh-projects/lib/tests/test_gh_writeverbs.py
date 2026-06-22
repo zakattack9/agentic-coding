@@ -112,6 +112,10 @@ class TestOpenOrUpdatePr(Base):
         gh.RUN = runner
         res = gh.open_or_update_pr("acme/web", "feat/x", "main", 42)
         self.assertEqual(res["action"], "created")
+        # the PR number is parsed from the created URL (…/pull/101) so a fresh PR
+        # is immediately addressable by pr-checks / merge-pr.
+        self.assertEqual(res["number"], 101)
+        self.assertEqual(res["url"], "https://github.com/acme/web/pull/101")
         self.assertTrue(runner.count(lambda q: q.startswith("pr create")))
         self.assertFalse(runner.count(lambda q: q.startswith("pr edit")))
 
