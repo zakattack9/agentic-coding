@@ -22,7 +22,7 @@ exactly as it would with no second model. The bridge guarantees that — it can 
 ```
 codex_bridge.py --kind <judge-verify|judge-refine|write-requirements> \
                 --prompt-file <f> [--schema-file <f>] [--cd <repo>] \
-                [--model <m>] [--effort xhigh|medium] [--timeout 180]
+                [--model <m>] [--effort xhigh|medium] [--timeout 1170]
 ```
 
 - `--kind` selects the return contract the reply is validated against (via
@@ -80,7 +80,7 @@ Before invoking, the bridge checks, with **no network call and no browser**:
 |----------|--------|
 | `SPEC_OPS_CODEX=0` | disable **all** Codex cross-model checks (any kind ⇒ `10`); behavior byte-identical to no Codex |
 | `SPEC_OPS_CODEX_WRITE=0` | disable **only** the `write-requirements` discovery reviewer, independently of the verify/refine judges |
-| `SPEC_OPS_CODEX_TIMEOUT` | per-call Codex timeout in **seconds** (default `570`, set just under the harness cap). An explicit `--timeout` arg still wins; invalid / non-positive ⇒ default. **Effective ceiling ~600s** — the skill dispatches the bridge as a foreground Bash call the harness caps at 600s, so raising this past ~570 has no effect; a true longer budget needs the dispatch moved to a background poll. |
+| `SPEC_OPS_CODEX_TIMEOUT` | per-call Codex timeout in **seconds** (default `1170` / 19.5min, set 30s under a 20min cap). An explicit `--timeout` arg still wins; invalid / non-positive ⇒ default. **Effective ceiling = `BASH_MAX_TIMEOUT_MS`** — the skill dispatches the bridge as a foreground Bash call the harness caps at that env var (default 600000ms). For the full 1170s default to apply, raise `BASH_MAX_TIMEOUT_MS` to `>=1200000` (≥20min); under a lower Bash cap the dispatch is killed first. |
 | `CODEX_HOME` | respected when locating the user's `config.toml` |
 
 (Off is recognized for `0` / `false` / `no` / `off`.)
