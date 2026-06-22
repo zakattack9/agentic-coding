@@ -8,6 +8,15 @@ This file is the single source for the invocation contract, the exit taxonomy, m
 resolution, and the `--output-schema` caveats; the skills point here rather than restating
 any of it.
 
+## Contents
+
+- [Why a bridge at all](#why-a-bridge-at-all) — graceful-enhancement, never-a-dependency rationale
+- [Invocation](#invocation) — the CLI contract, every flag, and the `--probe` availability check
+- [Exit taxonomy](#exit-taxonomy--the-caller-branches-on-the-code-alone) — the `0/10/11/12` codes the caller branches on, plus [availability & auth](#availability--auth--probed-non-interactively) and [env switches](#env-switches)
+- [Verdict extraction](#verdict-extraction--three-channels-then-validate) — the three recovery channels and the real validation gate
+- [Model resolution](#model-resolution--runtime-never-hard-coded-at-a-call-site) — resolution order + the version-sensitive model facts
+- [Output-schema authoring note](#output-schema-authoring-note) — why the bundled schemas mark every field required
+
 ## Why a bridge at all
 
 Each spec-ops "done" check is otherwise **Claude auditing Claude**. Adding a second model

@@ -89,7 +89,13 @@ This closes the **verify→refine loop**: `verify-spec` (read-only) proposes the
 
 List every **checkable claim** in the spec: file paths, function / class / method names, table / column names, routes, config or env keys, library or framework behavior, "the system currently does X" statements, data shapes, and counts.
 
-Dispatch **parallel `Explore` subagents** (the `Task` tool, `subagent_type: Explore`) to check these claims against **ground truth, never against other docs** — they are read-only and fast. Ground truth, in order of authority: the **actual codebase at branch HEAD**; the **latest git commits** (`git log` / `git diff` on the working branch — specs drift after out-of-band commits and dev→infra merges, so re-ground against HEAD rather than trusting the spec's own history); and, for infra/ops specs, **live state via the named CLI** (e.g. `aws`, `gh`). Treat sibling or "completed" specs as **possibly stale — never as ground truth**. Split the claims by area (e.g. one agent per subsystem, model layer, or route group) and scale the agent count to the spec: a short spec may need a single verifier; a large one, several. Give each agent the relevant spec excerpt plus its claim list, and require each to return **strict JSON — one object per claim** — validating the fields before you trust them (never treat a subagent's prose as ground truth; pipe the return through `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/validate_return.py --kind grounder-refine` for a deterministic shape check):
+Dispatch **parallel `Explore` subagents** (the `Task` tool, `subagent_type: Explore`) to check these claims against **ground truth, never against other docs** — they are read-only and fast. Ground truth, in order of authority:
+
+1. the **actual codebase at branch HEAD**;
+2. the **latest git commits** (`git log` / `git diff` on the working branch — specs drift after out-of-band commits and dev→infra merges, so re-ground against HEAD rather than trusting the spec's own history);
+3. for infra/ops specs, **live state via the named CLI** (e.g. `aws`, `gh`).
+
+Treat sibling or "completed" specs as **possibly stale — never as ground truth**. Split the claims by area (e.g. one agent per subsystem, model layer, or route group) and scale the agent count to the spec: a short spec may need a single verifier; a large one, several. Give each agent the relevant spec excerpt plus its claim list, and require each to return **strict JSON — one object per claim** — validating the fields before you trust them (never treat a subagent's prose as ground truth; pipe the return through `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/validate_return.py --kind grounder-refine` for a deterministic shape check):
 
 ```json
 [ { "claim": "…", "verdict": "confirmed | wrong | not-found", "evidence": "file:line / commit SHA / CLI output — with the correct value when wrong" } ]

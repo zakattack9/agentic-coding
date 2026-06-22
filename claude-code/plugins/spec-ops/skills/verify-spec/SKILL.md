@@ -126,7 +126,14 @@ A **`Stop` hook blocks you from ending your turn** until the ledger shows a stru
 - `backwardSweep` records the **backward-coverage pass** (step 2's backward direction): `ran` true once it has run, `base` the diff base swept, `skippedReason` why it was skipped (if it was — e.g. no determinable base when running autonomously), and `findings` the substantive hunks that map to **no** `AC-id`. Omit `backwardSweep` entirely when the target is not a spec implementation with a diff to walk.
 - `specLinkageSweep` records the **spec-linkage hygiene pass** (step 2): `ran` true once it has run, and `findings` the delivered code/docs/tests/output lines that still point back at the **build spec** — `AC-id`s, build-phase / §-section numbers, spec ids or filenames, predecessor-component provenance, "newly / now / previously" build-increment framing (the detector's greppable patterns), plus the two **judgment** classes: `identifier` (a name after the spec/phase/predecessor rather than after what it does) and `background` (inert historical context in a comment that doesn't help a maintainer act) — each with its `file:line`, `patternType`, and a `suggested` rewrite that strips the linkage but keeps the rationale. Omit it when the target is not a spec implementation.
 
-**What the hook enforces vs. what you own.** The hook mechanically requires: no claim left `unchecked`; every `confirmed`/`contradicted` claim cites non-empty `evidence` **and records a non-empty `method`**; every `unverifiable` claim has a `disposition`; and the judge `ran` with `verdict: "complete"` and empty `missed`/`weakEvidence`. It checks the `method` is *present*, never whether it *fits* the claim — that the standard matches what the AC asserts is the judge's call. It **cannot** see whether you enumerated every claim or whether a citation is genuine — **that is the judge's job**, which is why the judge's sign-off is itself gated. The hook is a backstop against a shallow stop, not a substitute for an honest verification. `contradicted` claims do **not** block the stop — they are the findings you report; **`backwardSweep.findings` are the same — reported, never gate-blockers** (the hook shape-validates the field but never gates on it; the judge attests the sweep actually ran). **If the user redirects to unrelated work, delete the ledger file and stop.**
+**What the hook enforces vs. what you own.** The hook mechanically requires:
+
+- no claim left `unchecked`;
+- every `confirmed`/`contradicted` claim cites non-empty `evidence` **and records a non-empty `method`**;
+- every `unverifiable` claim has a `disposition`;
+- the judge `ran` with `verdict: "complete"` and empty `missed`/`weakEvidence`.
+
+It checks the `method` is *present*, never whether it *fits* the claim — that the standard matches what the AC asserts is the judge's call. It **cannot** see whether you enumerated every claim or whether a citation is genuine — **that is the judge's job**, which is why the judge's sign-off is itself gated. The hook is a backstop against a shallow stop, not a substitute for an honest verification. `contradicted` claims do **not** block the stop — they are the findings you report; **`backwardSweep.findings` are the same — reported, never gate-blockers** (the hook shape-validates the field but never gates on it; the judge attests the sweep actually ran). **If the user redirects to unrelated work, delete the ledger file and stop.**
 
 ### 1. Enumerate — list every checkable claim
 
@@ -144,7 +151,11 @@ Dispatch **parallel `Explore` subagents** (the `Task` tool, `subagent_type: Expl
 
 For a `contradicted` claim the `evidence` must state the **actual** value. Each subagent is **forbidden from citing the spec, an audit, a checklist, or any doc as evidence** — only real source; if it cannot ground a claim it returns `unverifiable` with the reason. Do not speculate.
 
-Ground truth, in order of authority: the **codebase at branch HEAD**; the **git history** (`git log` / `git diff` / `git show` on the working branch — re-ground against HEAD, since claims drift after out-of-band commits and merges); and, for infra / ops claims, **live state via read-only CLI** (e.g. `aws … describe/list/get`, `gh api`).
+Ground truth, in order of authority:
+
+1. the **codebase at branch HEAD**;
+2. the **git history** (`git log` / `git diff` / `git show` on the working branch — re-ground against HEAD, since claims drift after out-of-band commits and merges);
+3. for infra / ops claims, **live state via read-only CLI** (e.g. `aws … describe/list/get`, `gh api`).
 
 #### Evidence standard — scale grounding to what the claim asserts, and record the method
 
@@ -206,7 +217,15 @@ Finish only when **all** of these hold (the first four + the judge sign-off are 
 
 ## Handoff
 
-When the gate passes, report a **per-claim verdict table** — `claim | verdict | method | evidence (file:line / sha / CLI)` — plus a short discrepancy summary for every `contradicted` claim (expected vs actual). State plainly how many claims were confirmed vs contradicted vs unverifiable. When the target is a spec, render it as a compact **coverage matrix** keyed on `AC-id` — `AC-id | verdict | method | evidence | checklist-item` (the implementing Checklist task, from the spec's `AC-id` citations) — where an **empty cell is itself the finding**: an `AC-id` with no evidence is a forward gap, and one no Checklist item cites is a criterion nobody implemented. Keep the matrix *generated* from the ledger — never an author-maintained document. If the backward sweep ran, add a short **backward-coverage** section listing every unmapped substantive hunk with its proposed AC and triage (`intended` / `unintended` / `unsure`), or state "every change maps to an AC" when it found nothing (and note it if the sweep was skipped, with the reason). If the spec-linkage sweep ran, add a short **Spec-linkage hygiene** section listing each artifact reference back to the build spec with its `file:line`, `patternType`, and suggested rewrite — or state "the artifact is spec-clean" when it found nothing. **These proposed ACs are also recorded — by the `Stop` hook, to `/tmp` — as a spec-amendment handoff that `refine-spec` ingests on its next run, so the missed requirement reaches the spec without a manual re-key; verify-spec still edits nothing.** **If this was a drift run**, lead the report with a **Drift** line — counts of FRESH (carried) vs re-grounded vs **DRIFTED** — and list every DRIFTED criterion as `AC-id → baseline verdict → new verdict → evidence`, calling out any `confirmed → contradicted` **regression** first; if there was no baseline, say so plainly (a full verification ran). **Stop there — do not fix the discrepancies** unless the user asks; surfacing them is the deliverable (enumerate, then let the user decide). The `Stop` hook clears the ledger automatically once the gate passes.
+When the gate passes, report these components — drop any that doesn't apply, and when this was a drift run **lead with the Drift line**:
+
+- **Per-claim verdict table** — `claim | verdict | method | evidence (file:line / sha / CLI)`, plus a short discrepancy summary for every `contradicted` claim (expected vs actual). State plainly how many claims were confirmed vs contradicted vs unverifiable.
+- **Coverage matrix** (when the target is a spec) — a compact matrix keyed on `AC-id`: `AC-id | verdict | method | evidence | checklist-item` (the implementing Checklist task, from the spec's `AC-id` citations). An **empty cell is itself the finding**: an `AC-id` with no evidence is a forward gap, and one no Checklist item cites is a criterion nobody implemented. Keep the matrix *generated* from the ledger — never an author-maintained document.
+- **Backward-coverage** (if the backward sweep ran) — every unmapped substantive hunk with its proposed AC and triage (`intended` / `unintended` / `unsure`); or "every change maps to an AC" when it found nothing; note it if the sweep was skipped, with the reason.
+- **Spec-linkage hygiene** (if that sweep ran) — each artifact reference back to the build spec with its `file:line`, `patternType`, and suggested rewrite; or "the artifact is spec-clean" when it found nothing.
+- **Drift** (if this was a drift run) — counts of FRESH (carried) vs re-grounded vs **DRIFTED**, then every DRIFTED criterion as `AC-id → baseline verdict → new verdict → evidence`, calling out any `confirmed → contradicted` **regression** first. If there was no baseline, say so plainly (a full verification ran).
+
+The proposed ACs are also recorded — by the `Stop` hook, to `/tmp` — as a spec-amendment handoff that `refine-spec` ingests on its next run, so the missed requirement reaches the spec without a manual re-key; verify-spec still edits nothing. **Stop there — do not fix the discrepancies** unless the user asks; surfacing them is the deliverable (enumerate, then let the user decide). The `Stop` hook clears the ledger automatically once the gate passes.
 
 ## Guardrails
 
