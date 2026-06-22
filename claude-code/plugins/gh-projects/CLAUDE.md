@@ -18,9 +18,10 @@ creds — every round-trip goes through the injectable `gh.RUN` seam). Keep it g
 
 - `lib/` — the deterministic engine; **stdlib only**, exit codes `0/2/3/1`. `gh.py`
   (GraphQL/REST core + all write verbs), `sprint.py`, `scaffold.py`, `dag.py`,
-  `pm.py`, `setup_board.py` (one-shot golden-template builder, run by the user — not
+  `pm.py`, `analysis.py` (READ-ONLY ranked-findings engine for the `analyze-*`
+  skills), `setup_board.py` (one-shot golden-template builder, run by the user — not
   the App), `engine.sh` (the dry-by-default rail), `lib/tests/`.
-- `skills/` — six **thin** SKILL.md orchestrators over the engine. Put no decision
+- `skills/` — eight **thin** SKILL.md orchestrators over the engine. Put no decision
   logic in prose; every load-bearing step is a checked-in engine verb.
 - `templates/` — golden-template `project/*` + per-repo `github/*`. `hooks/guard.sh`,
   `rules/`.
@@ -45,8 +46,11 @@ creds — every round-trip goes through the injectable `gh.RUN` seam). Keep it g
 
 ## Skills
 
-- All declare `model: claude-opus-4-8` + a deliberate `effort`. Only `create-issues`
-  is model-invocable; the other five are Explicit (`disable-model-invocation: true`).
+- All declare `model: claude-opus-4-8` + a deliberate `effort`. `create-issues` and
+  the two **read-only** analysis skills (`analyze-board` + `analyze-sprint`) are
+  model-invocable; the other five are Explicit (`disable-model-invocation: true`).
+  The `analyze-*` skills only READ (deterministic findings via `lib/analysis.py`) —
+  they never write a field, post a Status update, or emit a digest.
 - `hooks/guard.sh` (PreToolUse) is wired **only** into `start-issue` + `create-pr`
   frontmatter — **not** `plan-sprint`.
 - Field-home split: `start-issue` sets the intake fields (Type/Size/Tier/PM-ID/Spec/

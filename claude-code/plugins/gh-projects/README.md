@@ -126,7 +126,9 @@ writes nothing. Re-run with **`--force`** to apply. A second run is a clean no-o
 ## The skills
 
 All skills are thin orchestrators over the deterministic engine (`lib/`), run on
-`model: opus`, and (except `create-issues`) are **Explicit** — user-invoked only.
+`model: opus`. `create-issues` and the two read-only analysis skills
+(`analyze-board`, `analyze-sprint`) are **Model-invocable**; the rest are
+**Explicit** — user-invoked only.
 
 | Skill | What it does | Invocation |
 |---|---|---|
@@ -136,6 +138,8 @@ All skills are thin orchestrators over the deterministic engine (`lib/`), run on
 | `start-issue` | Project one issue onto the board, populate its intake-time fields (Type/Size/Tier/PM-ID/Spec/Priority/Status), optionally self-assign, and cut its authoritative linked branch. Monotonic Status, dry-by-default, guard-scoped. | Explicit |
 | `create-pr` | Open/update the issue-linked PR (non-closing `Relates to #N`), advance board Status across the PR lifecycle, surface the PR's check state, and offer a **non-squash** merge only when checks are green. Dry-by-default, guard-scoped. | Explicit |
 | `sync-signals` | Recompute the auto Gantt signals (Schedule health, Slippage, Slippage days, Blast radius, Blast count, **Blocked**) from the blocked-by graph and post the project Status update. Also runs automatically via `signals-sync.yml` on events + cron. | Explicit |
+| `analyze-board` | **Read-only** whole-program digest: rollup health, the critical chain (release-blockers that are themselves blocked), overdue × high-blast-radius items, intake-hygiene gaps, unassigned in-sprint work, stalled epics, and every `Decision needed ≠ No` — each line with its evidence and the one-command resolving skill. Never writes the board. | Model-invocable |
+| `analyze-sprint` | **Read-only** current-iteration read: per-assignee working-day capacity vs load, over-allocation, what won't land this sprint, and a suggested rebalancing. Reuses the working-day capacity engine. Never writes the board. | Model-invocable |
 
 ---
 
@@ -168,9 +172,14 @@ create-issues  →  plan-sprint  →  start-issue  →  (dev codes)  →  create
    success.
 7. **Signals** — refresh on their own; run `sync-signals --owner <org> --number
    <project#>` to force a recompute + Status-update post.
+8. **Analyze** (read-only) — `analyze-board --owner <org> --number <project#>` for
+   the whole-program digest (what to decide / act on, each with a one-command
+   resolving skill), and `analyze-sprint …` for the current-iteration capacity vs
+   load. These only read and report — they never write the board.
 
 Preview first, every time; add `--force` (or `--apply` for `sync-signals`) only
-after reviewing the dry-run manifest.
+after reviewing the dry-run manifest. The `analyze-*` skills are read-only — no
+`--force`.
 
 ---
 
@@ -210,7 +219,7 @@ replayed event is a no-op; only an explicit reopen moves Status back. Issues are
 
 ## Layout
 
-- `skills/` — the six skills above (`SKILL.md` each).
+- `skills/` — the eight skills above (`SKILL.md` each).
 - `lib/` — Python **stdlib only**, exit codes `0` ok / `2` usage / `3` not-found /
   `1` unexpected:
   - `gh.py` — GraphQL/REST core: ID resolution + cache, two-phase field writes,
@@ -220,6 +229,8 @@ replayed event is a no-op; only an explicit reopen moves Status back. Issues are
   - `scaffold.py` — golden-template copy + idempotent file install.
   - `dag.py` — blocked-by graph → Blocked / Blast radius / Blast count.
   - `pm.py` — `PM-####` id allocator + flow-style front-matter I/O.
+  - `analysis.py` — read-only ranked-findings engine over existing signals + the
+    blocked-by DAG (the `analyze-*` skills' deterministic core).
   - `engine.sh` — the dry-by-default / `--force` rail the skills call.
 - `templates/` — the golden-template `project/*` and the per-repo `github/*` files
   (issue forms, PR template, `board-sync.yml`, `signals-sync.yml`,
