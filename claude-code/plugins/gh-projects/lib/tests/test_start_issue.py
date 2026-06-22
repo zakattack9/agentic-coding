@@ -8,9 +8,11 @@ CountingRunner / fake-RUN pattern from test_gh_writeverbs.py + test_scaffold.py)
 
 Covers:
   - project the issue (add_item REUSES the existing board item on re-add —
-    same item id), populate the intake-time fields Type/Size/Tier/PM-ID/
-    Spec/Priority/Status read-back-identical, optionally self-assign the
-    actor when --assignee is given.
+    same item id), advance Status to In Progress read-back-identical, optionally
+    self-assign the actor when --assignee is given. start-issue sets ONLY
+    work-start state (Status/assignee/branch) — it does NOT write the triage
+    fields Type/Size/Tier/PM-ID/Spec/Priority (create-issues sets those at
+    promote, landing the item at Backlog).
   - create the authoritative linked branch — BOTH capability paths (native
     `gh issue develop` + GraphQL createLinkedBranch); a re-run on an
     existing linked branch is a no-op (exit 0), never an error.
@@ -40,17 +42,18 @@ import gh  # noqa: E402
 ENGINE = os.path.join(LIB, "engine.sh")
 SKILL_MD = os.path.join(PLUGIN, "skills", "start-issue", "SKILL.md")
 
-# The intake-time fields start-issue owns (the field-home split: start-issue sets
-# ONLY these; plan-sprint owns Sprint/Milestone/Start/Target).
-INTAKE_FIELDS = {
-    "Type": "Feature",
-    "Size": "M",
-    "Tier": "T2",
-    "PM-ID": "PM-0042",
-    "Spec": "specs/pm-0042.md",
-    "Priority": "P1",
+# The work-start state start-issue owns (the field-home split: start-issue sets
+# ONLY Status here — plus the assignee + linked branch handled separately). It
+# does NOT set the triage fields below; create-issues sets those at promote.
+WORK_START_FIELDS = {
     "Status": "In Progress",
 }
+
+# The triage fields start-issue must NOT touch (create-issues sets these at
+# promote, landing the item at Backlog), and the scheduling fields plan-sprint
+# owns. Asserting start-issue stays out of both.
+TRIAGE_FIELDS = ("Type", "Size", "Tier", "PM-ID", "Spec", "Priority")
+SCHEDULING_FIELDS = ("Sprint", "Milestone", "Start", "Target")
 
 
 def _q(args):
@@ -232,25 +235,37 @@ class TestProjection(Base):
         self.assertEqual(second, first,
                          "re-add must reuse the existing board item id")
 
-    def test_field_dump_matches_inputs(self):
-        # Populate every intake-time field; each write reads back identical
-        # (write_field raises on a read-back mismatch). The dump == the inputs.
+    def test_work_start_status_reads_back_identical(self):
+        # start-issue's one field write is Status -> In Progress; it reads back
+        # identical (write_field raises on a read-back mismatch).
         runner = RouteRunner()
         proj = self._project(runner)
         dump = {}
-        for fname, value in INTAKE_FIELDS.items():
+        for fname, value in WORK_START_FIELDS.items():
             res = gh.write_field(proj, CONTENT_ID, fname, value)
             self.assertTrue(res["verified"], f"{fname} must read back identical")
             dump[fname] = value
-        self.assertEqual(dump, INTAKE_FIELDS)
+        self.assertEqual(dump, WORK_START_FIELDS)
 
-    def test_only_intake_fields_no_scheduling_fields(self):
-        # Field-home split: start-issue sets ONLY intake-time fields, never the
-        # scheduling fields (Sprint/Milestone/Start/Target = plan-sprint's home).
-        for sched in ("Sprint", "Milestone", "Start", "Target"):
-            self.assertNotIn(sched, INTAKE_FIELDS)
-        self.assertEqual(set(INTAKE_FIELDS),
-                         {"Type", "Size", "Tier", "PM-ID", "Spec", "Priority", "Status"})
+    def test_sets_only_status_not_triage_or_scheduling_fields(self):
+        # Field-home split: start-issue's work-start state is Status only (plus
+        # the assignee + branch). It does NOT write the triage fields (create-
+        # issues sets those at promote) nor the scheduling fields (plan-sprint).
+        self.assertEqual(set(WORK_START_FIELDS), {"Status"})
+        for triage in TRIAGE_FIELDS:
+            self.assertNotIn(triage, WORK_START_FIELDS)
+        for sched in SCHEDULING_FIELDS:
+            self.assertNotIn(sched, WORK_START_FIELDS)
+
+    def test_skill_does_not_write_triage_fields(self):
+        # The SKILL.md must not instruct a write-field for any triage field — those
+        # moved to create-issues' promote. (A `--field Type` write-field line would
+        # mean start-issue still owns the triage fields.)
+        with open(SKILL_MD, "r", encoding="utf-8") as fh:
+            text = fh.read()
+        for triage in TRIAGE_FIELDS:
+            self.assertNotIn(f"--field {triage}", text,
+                             f"start-issue must not write the triage field {triage}")
 
     def test_assignee_path_sets_assignee(self):
         # The --assignee path self-assigns the actor (set_assignee), add when absent.

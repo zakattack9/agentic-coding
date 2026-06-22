@@ -1,6 +1,6 @@
 ---
 name: start-issue
-description: Start one GitHub issue onto the org board and create its authoritative linked branch — project the item, populate its intake-time fields, optionally self-assign, advance Status monotonically. Use when the user says "start this issue", "put #N on the board", "start work on issue N", "add issue N to the project + cut its branch", or "project this ticket". Dry-by-default — previews the full projection + branch plan and writes nothing until you re-run with --force. Does NOT intake/triage a backlog dump (create-issues), assign sprints/dates/Milestone (plan-sprint), or open/merge the PR (create-pr).
+description: Start one GitHub issue onto the org board and create its authoritative linked branch — project the item, advance Status to In Progress monotonically, and optionally self-assign. Use when the user says "start this issue", "put #N on the board", "start work on issue N", "add issue N to the project + cut its branch", or "project this ticket". Dry-by-default — previews the full projection + branch plan and writes nothing until you re-run with --force. Does NOT set the triage fields Type/Size/Tier/PM-ID/Spec/Priority (create-issues sets those at promote), assign sprints/dates/Milestone (plan-sprint), or open/merge the PR (create-pr).
 disable-model-invocation: true
 model: claude-opus-4-8
 effort: medium
@@ -16,8 +16,9 @@ hooks:
 
 # start-issue
 
-Project **one** issue onto the org board and create its **authoritative linked
-branch**. This is a thin orchestrator over the deterministic engine — every
+Project **one** issue onto the org board, move it into **In Progress**, and create
+its **authoritative linked branch**. This is a thin orchestrator over the
+deterministic engine — every
 load-bearing operation is a checked-in `lib/gh.py` verb run behind
 `${CLAUDE_PLUGIN_ROOT}/lib/engine.sh`'s **dry-by-default / `--force`** rail. Leave
 no decision logic in this prose.
@@ -35,9 +36,12 @@ even in dry mode; write verbs mutate nothing without `--force`.
   installation token (`GH_APP_TOKEN`, or `APP_ID`+`APP_PRIVATE_KEY`), **never**
   `GITHUB_TOKEN` — it cannot write org Projects v2. The token is never
   printed.
-- **Field-home split.** start-issue sets **only** the intake-time fields —
-  `Type / Size / Tier / PM-ID / Spec / Priority / Status`. It does **not** touch
-  `Sprint / Milestone / Start / Target` (that is `plan-sprint`).
+- **Field-home split.** start-issue sets **only** work-start state — `Status` (→
+  In Progress, monotonically), the optional **assignee**, and the **linked
+  branch**. It does **not** set the triage fields `Type / Size / Tier / PM-ID /
+  Spec / Priority` (create-issues sets those at promote, landing the item at
+  Backlog), and does **not** touch `Sprint / Milestone / Start / Target` (that is
+  `plan-sprint`).
 - **Monotonic Status.** Status advances only along
   `Backlog < Ready < In Progress < In Review < On Staging < Done`; a re-route
   never regresses an item already at/past the target.
@@ -71,10 +75,8 @@ Preview the **full projection + branch plan** without `--force`. Show the user:
 
 - the **board item** the issue projects to (reusing the existing item if the
   issue is already on the board — same item id),
-- the **intake-time field** values to set — `Type / Size / Tier / PM-ID / Spec /
-  Priority / Status` — each read back identical by the engine,
-- the **Status** transition, computed monotonically (no write if the item is
-  already at/past the target),
+- the **Status** transition, computed monotonically (→ In Progress; no write if
+  the item is already at/past the target),
 - the **linked branch** plan — native `gh issue develop` when the installed `gh`
   supports it, else the `createLinkedBranch` GraphQL fallback (probed via
   `bash "$ENGINE" capabilities`); a re-run on an existing linked branch is a
@@ -98,30 +100,19 @@ item id):
 bash "$ENGINE" add-item --owner <org> --number <project#> --repo owner/name --issue <n> --force
 ```
 
-**(b) Write each intake-time field** (`write-field` — the engine reads each value
-back identical; an unchanged value is a no-op). One command **per field** — set
-only the fields you have values for:
+**(b) Advance Status to In Progress monotonically** (`advance-status` — reads the
+current Status and writes only a forward move; an item already at/past the target
+is a no-op, no write):
 
 ```bash
-bash "$ENGINE" write-field --owner <org> --number <project#> --repo owner/name --issue <n> --field Type     --value <Feature|Bug|Chore|Infra> --force
-bash "$ENGINE" write-field --owner <org> --number <project#> --repo owner/name --issue <n> --field Size     --value <S|M|L>                 --force
-bash "$ENGINE" write-field --owner <org> --number <project#> --repo owner/name --issue <n> --field Tier     --value <T1|T2|T3>              --force
-bash "$ENGINE" write-field --owner <org> --number <project#> --repo owner/name --issue <n> --field PM-ID    --value <PM-XXXX>               --force
-bash "$ENGINE" write-field --owner <org> --number <project#> --repo owner/name --issue <n> --field Spec     --value <specs/...md>           --force
-bash "$ENGINE" write-field --owner <org> --number <project#> --repo owner/name --issue <n> --field Priority --value <P0|P1|P2|P3>           --force
+bash "$ENGINE" advance-status --owner <org> --number <project#> --repo owner/name --issue <n> --to "In Progress" --force
 ```
 
-(For single-select fields `--value` is the OPTION NAME; the engine resolves it.)
+> start-issue does **not** write the triage fields `Type / Size / Tier / PM-ID /
+> Spec / Priority` — those are set at promote by `create-issues`, which lands the
+> item at Backlog. start-issue moves an already-triaged item into In Progress.
 
-**(c) Advance Status monotonically** (`advance-status` — reads the current Status
-and writes only a forward move; an item already at/past the target is a no-op, no
-write):
-
-```bash
-bash "$ENGINE" advance-status --owner <org> --number <project#> --repo owner/name --issue <n> --to "<Status>" --force
-```
-
-**(d) Create the authoritative linked branch** (`create-linked-branch` — native
+**(c) Create the authoritative linked branch** (`create-linked-branch` — native
 `gh issue develop` when supported, else GraphQL; an existing linked branch is
 detected and is a no-op, exit 0). `--name` is optional:
 
@@ -129,7 +120,7 @@ detected and is a no-op, exit 0). `--name` is optional:
 bash "$ENGINE" create-linked-branch --repo owner/name --issue <n> [--name <branch>] --force
 ```
 
-**(e) Self-assign the actor** (optional, only when `--assignee` was given —
+**(d) Self-assign the actor** (optional, only when `--assignee` was given —
 `set-assignee`; adding an already-present assignee is a no-op):
 
 ```bash
@@ -139,18 +130,20 @@ bash "$ENGINE" set-assignee --repo owner/name --number <n> --login <login> --for
 ## 4. Report
 
 State: the board item id (and whether it was **reused** vs newly added), the
-intake-time fields set (with the read-back confirmation), the Status transition
-(or "already at/past target — no write"), the linked branch name (created vs
-already-linked no-op), and the self-assign if requested. If you re-ran on an
-already-routed issue, confirm it was a clean no-op (same item id, branch
-detected, no field/assignee/Status write).
+Status transition (→ In Progress, or "already at/past target — no write"), the
+linked branch name (created vs already-linked no-op), and the self-assign if
+requested. If you re-ran on an already-routed issue, confirm it was a clean no-op
+(same item id, branch detected, no Status/assignee write).
 
 ## Guardrails
 - Dry run first, every time; `--force` only after the user confirms.
 - Never call `gh` to mutate the board directly — go through `engine.sh` (the
   `gh.py` verbs ride its `--force` rail).
-- start-issue sets **only** intake-time fields — never `Sprint/Milestone/Start/
-  Target` (that is `plan-sprint`), never the PR (that is `create-pr`).
+- start-issue sets **only** work-start state — Status (→ In Progress), the
+  assignee, and the linked branch. Never the triage fields `Type/Size/Tier/PM-ID/
+  Spec/Priority` (those are set at promote by `create-issues`), never
+  `Sprint/Milestone/Start/Target` (that is `plan-sprint`), never the PR (that is
+  `create-pr`).
 - Status is **monotonic** — never regress an item already past the target.
 - **Non-closing links only** — never `Closes/Fixes/Resolves`; closure is
   the prod-time `board-status` job's responsibility.

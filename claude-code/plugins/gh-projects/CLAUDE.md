@@ -53,8 +53,9 @@ creds — every round-trip goes through the injectable `gh.RUN` seam). Keep it g
   they never write a field, post a Status update, or emit a digest.
 - `hooks/guard.sh` (PreToolUse) is wired **only** into `start-issue` + `create-pr`
   frontmatter — **not** `plan-sprint`.
-- Field-home split: `start-issue` sets the intake fields (Type/Size/Tier/PM-ID/Spec/
-  Priority/Status); `plan-sprint` owns scheduling (Sprint/Milestone/Start/Target) +
+- Field-home split: `create-issues` (promote) sets Type/Tier/Priority/Size/PM-ID/Spec
+  (lands the item at Backlog); `start-issue` sets Status→In Progress + assignee +
+  linked branch; `plan-sprint` owns scheduling (Sprint/Milestone/Start/Target) +
   Ready order; `create-pr` touches only Status, monotonically.
 - `create-issues` delegates issue body + acceptance criteria to the **spec-ops**
   plugin (a dependency) — never author bodies inline. The interface is **narrow and
