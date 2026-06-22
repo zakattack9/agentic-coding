@@ -102,7 +102,7 @@ class AC25_GuardFrontmatter(unittest.TestCase):
             and "${CLAUDE_PLUGIN_ROOT}/hooks/guard.sh" in fm
         )
 
-    def test_guard_wired_into_route_issue_and_promote_pr(self):
+    def test_guard_wired_into_start_issue_and_create_pr(self):
         for name in sorted(GUARD_SKILLS):
             fm = _frontmatter(_read_skill(name))
             self.assertTrue(
