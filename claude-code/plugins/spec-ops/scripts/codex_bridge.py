@@ -36,8 +36,8 @@ Design contract (why it is shaped this way):
 Usage:
     codex_bridge.py --kind <judge-verify|judge-refine|write-requirements> \
                     --prompt-file <f> [--schema-file <f>] [--cd <repo>] \
-                    [--model <m>] [--effort xhigh|medium] [--timeout 180]
-                    # default timeout is SPEC_OPS_CODEX_TIMEOUT (seconds) or 180; --timeout wins
+                    [--model <m>] [--effort xhigh|medium] [--timeout 570]
+                    # default timeout is SPEC_OPS_CODEX_TIMEOUT (seconds) or 570; --timeout wins
     codex_bridge.py --probe --kind <kind>    # one-line availability verdict, no Codex call
 
 The `--probe` mode prints a single deterministic line — `CODEX: YES …` or
@@ -91,12 +91,12 @@ UNPARSEABLE = 12
 DEFAULT_MODEL = "gpt-5.5"
 
 # Per-call ceiling so a hung turn can never stall the loop the caller is waiting on.
-# Overridable per-environment via SPEC_OPS_CODEX_TIMEOUT (seconds); an explicit
-# --timeout arg still wins. Raise it when xhigh reasoning on a large spec needs
-# longer than the default. NOTE: a skill dispatches this bridge as a *foreground*
-# Bash call, which the harness caps at 600s — so the effective ceiling is ~600s
-# unless the dispatch is moved to a background poll.
-DEFAULT_TIMEOUT = 180
+# Set just under 600s: a skill dispatches this bridge as a *foreground* Bash call,
+# which the harness caps at 600s — so ~570s is the most a slow xhigh run can use
+# without the dispatch being moved to a background poll. Overridable per-environment
+# via SPEC_OPS_CODEX_TIMEOUT (seconds); an explicit --timeout arg still wins. Raising
+# it past ~570 has no effect under the foreground cap.
+DEFAULT_TIMEOUT = 570
 
 VALID_EFFORTS = ("xhigh", "medium", "high", "low", "minimal")
 
