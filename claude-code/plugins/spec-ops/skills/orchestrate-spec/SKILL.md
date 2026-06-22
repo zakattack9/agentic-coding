@@ -86,6 +86,8 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/spec_amendments.py" load "$CANON"        
 
 **Delegated stages invoke the real skills** (`refine-spec`, `verify-spec`) rather than reimplementing their logic — the subagent's job is to *run the skill* and *return its structured result*, not to re-derive it.
 
+**Cross-model judge (Codex) is inherited, not re-wired.** Because delegated stages invoke the real skills, `refine-spec` and `verify-spec` run their own optional Codex second judge — orchestrate adds nothing. A stubborn Claude/Codex split on the **refine** stage arrives as the normal `blocked` result above and you disposition it in one `AskUserQuestion`, exactly like any other blocked stage. On the **build ⇄ verify** stage the loop gates on `contradicted == 0` (below) — **not** on verify-spec's cross-model `complete` — so Codex's non-`contradicted` findings (missed claims, weak evidence, an unresolved split) are **surfaced with the verify findings** (step 4) rather than holding the loop. The autonomous loop therefore can't deadlock on a split, and you still see every cross-model finding before any outer loop; the cross-model gate is correspondingly *advisory* here, not loop-blocking.
+
 ## Build ⇄ verify — always a Workflow
 
 The build ⇄ verify stage **always executes via the Workflow tool** — the same dynamic-workflow mechanism (`pipeline()` / `parallel()` JS spawning subagents) that `launch-spec`'s `ultracode` driver emits — **never as a main-session `/goal` or `/batch` run**. This skill's own instruction to use it satisfies the Workflow tool's opt-in.
