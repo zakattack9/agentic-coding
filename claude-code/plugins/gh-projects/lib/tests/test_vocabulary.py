@@ -16,11 +16,10 @@ drift from the schema or the code:
 It also asserts the staging-lifecycle terms (stub / drafting / ready / promoted),
 which are prose-only (not fields.json fields), are documented.
 
-Dash-glyph note: a few Slippage buckets are written with an en-dash in the engine
-constants ("1<en-dash>2d") but a hyphen in fields.json ("1-2d"). The code <-> schema
-comparison normalizes dash glyphs so the NAMES are locked without depending on which
-dash character a given source happens to use; the vocabulary.md coverage check uses
-the fields.json (hyphen) spelling, which is the canonical board option name.
+Dash-glyph guard: all three sources spell the Slippage buckets with an ASCII hyphen
+("1-2d", "3-5d") — fields.json, the signals.py constants, and vocabulary.md agree.
+The code <-> schema comparison still normalizes dash glyphs as a defensive guard so a
+future en-dash/em-dash typo in any one source can't silently unlock the name match.
 """
 from __future__ import annotations
 

@@ -49,8 +49,8 @@ HEALTH_OVERDUE = "Overdue"
 HEALTH_DONE = "Done"
 
 SLIP_NOT_LATE = "Not late"
-SLIP_1_2 = "1–2d"
-SLIP_3_5 = "3–5d"
+SLIP_1_2 = "1-2d"
+SLIP_3_5 = "3-5d"
 SLIP_1WK = "1+wk"
 SLIP_2WK = "2+wk"
 

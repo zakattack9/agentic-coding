@@ -120,10 +120,10 @@ class TestSignalValues(unittest.TestCase):
 
     def test_slippage_buckets_exhaustive(self):
         self.assertEqual(signals.slippage_bucket(0), "Not late")
-        self.assertEqual(signals.slippage_bucket(1), "1–2d")
-        self.assertEqual(signals.slippage_bucket(2), "1–2d")
-        self.assertEqual(signals.slippage_bucket(3), "3–5d")
-        self.assertEqual(signals.slippage_bucket(5), "3–5d")
+        self.assertEqual(signals.slippage_bucket(1), "1-2d")
+        self.assertEqual(signals.slippage_bucket(2), "1-2d")
+        self.assertEqual(signals.slippage_bucket(3), "3-5d")
+        self.assertEqual(signals.slippage_bucket(5), "3-5d")
         self.assertEqual(signals.slippage_bucket(6), "1+wk")
         self.assertEqual(signals.slippage_bucket(13), "1+wk")
         self.assertEqual(signals.slippage_bucket(14), "2+wk")
@@ -389,7 +389,7 @@ class FakeRunner:
             ss("Blast radius", ["Blocks none", "Blocks 1", "Blocks many", "Blocks release"]),
             num("Blast count"),
             ss("Schedule health", ["On track", "At risk", "Blocked", "Overdue", "Done"]),
-            ss("Slippage", ["Not late", "1–2d", "3–5d", "1+wk", "2+wk"]),
+            ss("Slippage", ["Not late", "1-2d", "3-5d", "1+wk", "2+wk"]),
             num("Slippage days"),
         ]
         return {"data": {"organization": {"projectV2": {"id": "PVT_proj1",
