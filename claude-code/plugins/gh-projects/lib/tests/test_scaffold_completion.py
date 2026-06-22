@@ -231,6 +231,52 @@ class TestAddToProjectWorkflow(CompletionBase):
 
 
 # --------------------------------------------------------------------------- #
+# board-language card: registered, on disk, installed beside the project README.
+# --------------------------------------------------------------------------- #
+class TestBoardLanguageCard(CompletionBase):
+    DEST = "project/board-language.md"
+    SRC = "project/board-language.md"
+    README_DEST = "project/README.md"
+
+    def test_registered_in_install_files(self):
+        srcs = {s for s, _ in scaffold.INSTALL_FILES}
+        dests = {d for _, d in scaffold.INSTALL_FILES}
+        self.assertIn(self.SRC, srcs)
+        self.assertIn(self.DEST, dests)
+
+    def test_template_file_exists_on_disk(self):
+        self.assertTrue((scaffold.templates_dir() / self.SRC).is_file())
+
+    def test_installed_beside_the_board_readme(self):
+        # The card lands at the SAME project/ path the board README installs into,
+        # via the same manifest mechanism, and both are actually written.
+        with tempfile.TemporaryDirectory() as d:
+            rows = scaffold.plan_file_install(d)
+            card = next(r for r in rows if r["dest"] == self.DEST)
+            readme = next(r for r in rows if r["dest"] == self.README_DEST)
+            self.assertEqual(card["action"], "install")
+            written = scaffold.apply_file_install(d, rows)
+            self.assertIn(self.DEST, written)
+            self.assertIn(self.README_DEST, written)
+            self.assertTrue((Path(d) / self.DEST).is_file())
+            # Same parent dir as the README (installed alongside it).
+            self.assertEqual((Path(d) / self.DEST).parent,
+                             (Path(d) / self.README_DEST).parent)
+
+    def test_rerun_install_manifest_skips_the_card(self):
+        # After a first --force install, the card is identical -> the second run's
+        # install manifest SKIPs it (re-run no-op, parity with the other files).
+        runner = CompletionRunner()
+        with tempfile.TemporaryDirectory() as d:
+            plan1 = self._plan(runner, d, repo="acme/web")
+            scaffold.apply_plan(plan1, repo_dir=d, force=True)
+            plan2 = self._plan(runner, d, repo="acme/web")
+            row = next(r for r in plan2["files"] if r["dest"] == self.DEST)
+            self.assertEqual(row["action"], "skip",
+                             "second run: board-language.md already installed -> skip")
+
+
+# --------------------------------------------------------------------------- #
 # Team link (real linkProjectV2ToTeam) + base-role manual + app-access
 #         stays a confirmation.
 # --------------------------------------------------------------------------- #

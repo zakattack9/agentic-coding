@@ -94,6 +94,8 @@ INSTALL_FILES = [
     ("github/actions/board-status/action.yml", ".github/actions/board-status/action.yml"),
     # Project README (board legend) lives in the repo at project/.
     ("project/README.md", "project/README.md"),
+    # Shared board-language card (condensed field/option definitions) sits beside it.
+    ("project/board-language.md", "project/board-language.md"),
 ]
 
 

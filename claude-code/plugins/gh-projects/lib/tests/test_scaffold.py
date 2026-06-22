@@ -379,6 +379,7 @@ class TestInstallManifest(ScaffoldTestBase):
         ".github/release.yml",
         ".github/CODEOWNERS",
         "project/README.md",
+        "project/board-language.md",
     ]
 
     def test_manifest_lists_all_required_destinations(self):

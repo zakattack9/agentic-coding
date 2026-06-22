@@ -16,6 +16,9 @@ model: claude-opus-4-8
 effort: high
 allowed-tools: Bash(python3 *), Bash(bash *), Bash(gh issue create *), Bash(gh issue view *), Read, Edit, AskUserQuestion, Skill
 argument-hint: "[raw dump text or path to a file/PRD] (creates nothing until you confirm)"
+references:
+  - ${CLAUDE_PLUGIN_ROOT}/rules/vocabulary.md
+  - ${CLAUDE_PLUGIN_ROOT}/rules/composition.md
 ---
 
 # create-issues
@@ -37,6 +40,12 @@ Let `INTAKE=${CLAUDE_PLUGIN_ROOT}/lib/intake.py`,
 with a **GitHub App installation token** (never `GITHUB_TOKEN`). **No model/metered
 call happens in any workflow this skill installs** — the AI work is your own
 reasoning here, at intake time only.
+
+Read `${CLAUDE_PLUGIN_ROOT}/rules/composition.md` for the split / Epic-vs-Milestone /
+reduce-scope-vs-move-date / Decision-needed / `Type`-boundary judgment calls, and
+`${CLAUDE_PLUGIN_ROOT}/rules/vocabulary.md` for the exact field/option terms and the
+orthogonal-axis distinctions (Size vs Tier vs Priority, Impact level vs Blast
+radius, Blast radius vs Blocked).
 
 ## 1. Split the dump into atomic items
 
