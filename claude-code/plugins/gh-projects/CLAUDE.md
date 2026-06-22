@@ -65,12 +65,16 @@ creds — every round-trip goes through the injectable `gh.RUN` seam). Keep it g
 - `create-issues` delegates issue body + acceptance criteria to the **spec-ops**
   plugin (a dependency) — never author bodies inline. The interface is **narrow and
   pinned**: the two skill ids (`WRITE_SPEC_SKILL` / `REFINE_SPEC_SKILL`) and three
-  rigor names (`TIER_RIGOR`: `light`/`standard`/`full`) in `lib/intake.py`. spec-ops's
+  rigor names (`TIER_RIGOR`: `light`/`standard`/`full`) in `lib/intake.py`, plus the
+  **`--disable-questions`** flag `create-issues` always passes to `write-spec` (intake
+  is a batch pipeline — spec-ops must elicit nothing interactively and leave
+  `[NEEDS CLARIFICATION]` markers instead). spec-ops's
   own *spec format* may churn freely — `templates/{issue-body,deep-spec}.md` are
   gh-projects' target shape that spec-ops *fills*, not a mirror of its output. But a
-  spec-ops **skill or rigor rename** breaks delegation at runtime, and the offline
-  suite **won't catch it** (spec-ops is stubbed) → if spec-ops renames a skill or
-  rigor level, update that map here.
+  spec-ops **skill / rigor / flag rename** breaks delegation at runtime, and the offline
+  suite **won't catch it** (spec-ops is stubbed) → if spec-ops renames a skill, rigor
+  level, or the `--disable-questions` flag, update that map (and the `create-issues`
+  delegation) here.
 
 ## Versioning
 

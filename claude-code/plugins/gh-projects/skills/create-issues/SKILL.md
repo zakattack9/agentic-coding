@@ -113,8 +113,11 @@ python3 "$INTAKE" rigor "<T1|T2|T3>"
 
 Pass spec-ops the item's intent + the **shape** to fill —
 `${CLAUDE_PLUGIN_ROOT}/templates/issue-body.md` (T1/T2) or
-`${CLAUDE_PLUGIN_ROOT}/templates/deep-spec.md` (T3) — and resolve any clarifying
-questions **against the local draft file** (no GitHub issue exists yet). Write
+`${CLAUDE_PLUGIN_ROOT}/templates/deep-spec.md` (T3), and **always pass `--disable-questions`** —
+intake is a batch pipeline with no per-draft Q&A loop, so spec-ops elicits nothing
+interactively and instead leaves `[NEEDS CLARIFICATION: …]` markers. Resolve those
+markers **against the local draft file** (no GitHub issue exists yet); answer from the
+draft/triage context, or batch a genuine blocker into your own `AskUserQuestion`. Write
 spec-ops's returned body into the draft file (`Edit`), and persist the proposed
 triage fields:
 
