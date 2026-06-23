@@ -362,25 +362,46 @@ is a **skill** name, not a CLI binary — the runnable engine behind it is
 `lib/scaffold.py` (`scaffold` subcommand). Run it directly, the same way you ran
 `setup_board.py` above, but with the **org's App token** in your env (`GH_APP_TOKEN`,
 or `APP_ID` + `APP_PRIVATE_KEY[_PATH]`), **not** your user auth — every board write
-goes through the App installation token:
+goes through the App installation token.
+
+> ⚠️ **Run it from inside the local checkout of the repo the board is for.** When you
+> pass `--repo owner/name`, scaffold installs the per-repo automation (`.github/…` +
+> `project/…`) into the **current working directory** (`--repo-dir` defaults to CWD).
+> Run it from anywhere else — e.g. this agentic-coding checkout — and those files get
+> written into the **wrong tree**. So `cd` into that repo's clone first. Because of
+> that `cd`, capture the engine path as an **absolute** path *before* you move (the
+> `git rev-parse` below resolves against agentic-coding, not the target repo):
 
 ```bash
+# 1. Capture the engine path ABSOLUTELY — run this once, from your agentic-coding checkout:
 SCAFFOLD="$(git rev-parse --show-toplevel)/claude-code/plugins/gh-projects/lib/scaffold.py"
-# preview the full change manifest (mutates nothing):
+
+# 2. cd into the LOCAL CLONE of the repo the board will exist in (owner/name):
+cd /path/to/your/clone/of/owner-name
+
+# 3. Preview the full change manifest (mutates nothing):
 python3 "$SCAFFOLD" scaffold --org <login> --template "GitHub Projects Golden Template" \
-  --title "<new board title>" [--repo owner/name] [--team <slug>]
-# apply it (only after reviewing the manifest):
+  --title "<new board title>" --repo owner/name [--team <slug>]
+# 4. Apply it (only after reviewing the manifest):
 python3 "$SCAFFOLD" scaffold --org <login> --template "GitHub Projects Golden Template" \
-  --title "<new board title>" [--repo owner/name] [--team <slug>] --force
+  --title "<new board title>" --repo owner/name [--team <slug>] --force
 ```
 
-It `copyProjectV2`s the template, re-resolves IDs against the copy, ensures the org
-Issue Type + Issue Fields, re-plans the Sprint iterations, links the repo (and team),
-sets the no-squash merge setting, and installs the per-repo automation. **Dry-by-default**
-— the first command prints the manifest and changes nothing; the second (`--force`)
-applies it. It **verifies** the field schema (diffed against `fields.json`) and each
-view's presence + filter/group/slice resolution; it **cannot** verify charts (no API)
-— hence the eyeball step.
+> Standing up a board with **no** repo files (just the Project) is the one case you can
+> run from anywhere: omit `--repo` (and `--team`). With `--repo` set, location matters —
+> alternatively pass `--repo-dir /path/to/clone` explicitly instead of `cd`-ing.
+
+It `copyProjectV2`s the template (**idempotent** — a re-run reuses the existing
+same-titled board instead of creating a duplicate), re-resolves IDs against the copy,
+ensures the org Issue Type + Issue Fields, re-plans the Sprint iterations, links the
+repo (and team), sets the no-squash merge setting, and installs the per-repo automation
+into the current repo. **Dry-by-default** — the first command prints the manifest and
+changes nothing; the second (`--force`) applies it. `--repo` must be `owner/name` (a
+bare repo name is rejected up front). It **verifies** the field schema (diffed against
+`fields.json`) and each view's presence + filter/group/slice resolution — a board view
+grouped by the default **Status** column and a slice by the **Type** issue-type field
+can't be read back via the API, so those surface as **confirm-by-eye** checklist items
+rather than failures; it also **cannot** verify charts (no API) — hence the eyeball step.
 
 > `scaffold-repo` installs the workflow **files** but does **not** set any Actions
 > secrets or variables — that's the manual step next, and it's why the board variables
@@ -468,6 +489,6 @@ won't repopulate.
 - [ ] **Eyeball the 3 charts**; rebuild any that didn't carry
 
 **Per repo/board:**
-- [ ] `python3 "$SCAFFOLD" scaffold --org <org> --template "…" … --force` (creates the board + installs workflow files; uses the org's App token — `$SCAFFOLD` = `…/gh-projects/lib/scaffold.py`, dry-run first)
+- [ ] **From inside the board repo's local clone** (`cd` there first — per-repo files install into CWD): `python3 "$SCAFFOLD" scaffold --org <org> --template "…" --repo owner/name … --force` (creates the board + installs workflow files; uses the org's App token — `$SCAFFOLD` = absolute `…/gh-projects/lib/scaffold.py` captured in the agentic-coding checkout, dry-run first)
 - [ ] **Wire the board variables** (`GH_PROJECT_OWNER` / `GH_PROJECT_NUMBER` / `GH_PROJECT_URL`) from scaffold's reported board number — org-level (Path A) or per repo (Path B)
 - [ ] *(Free org)* if App secrets were deferred, set them on this repo too (Phase 0.0 "Store the App secrets" Path B)
