@@ -16,6 +16,8 @@ The strength of evidence a claim needs is a function of **what it asserts** — 
 - A plain **behavior** ("clicking X does Y", "route returns Z") grounds against code/git or an exercise of the path → `method: static-read` / `test-run`.
 - Keep **read-only CLI observation a first-class method** — an infra AC ("the bucket blocks public access") is verified by `aws … get-public-access-block`, never forced into a test suite → `method: cli-observation`.
 
+**Ground the behavior, not the existence of a symbol — and check the blast radius.** A grep hit or a definition proves the code *exists*, not that the claim *holds*. Confirm the cited code is **reachable / wired** (called, registered, exported, on the live path — not defined-but-dead), that it behaves as asserted **for the conditions the claim implies** (empty / limit / error / permission, not just the happy line), and that satisfying the AC did not **regress a sibling AC or a pre-existing behavior** — a shared helper changed, a default flipped, a guard dropped, a column repurposed. A `confirmed` resting on an existence-grep is the shallow verdict the judge bounces back as `weakEvidence`; produce the deeper evidence here so the gate enforces depth instead of looping.
+
 This is the real value of "typing" without the formality: it closes the gap where a perf or security constraint gets **rubber-stamped by code-reading**. Record the technique in each claim's `method`; the judge (step 4) flags any whose method falls short of what the assertion demands.
 
 ## Backward sweep — delivered code that owns no AC
