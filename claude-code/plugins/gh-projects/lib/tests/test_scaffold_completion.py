@@ -231,12 +231,13 @@ class TestAddToProjectWorkflow(CompletionBase):
 
 
 # --------------------------------------------------------------------------- #
-# board-language card: registered, on disk, installed beside the project README.
+# board-language card: registered, on disk, installed beside the board README —
+# both consolidated under .gh-projects/ (off the repo root).
 # --------------------------------------------------------------------------- #
 class TestBoardLanguageCard(CompletionBase):
-    DEST = "project/board-language.md"
+    DEST = ".gh-projects/board-language.md"
     SRC = "project/board-language.md"
-    README_DEST = "project/README.md"
+    README_DEST = ".gh-projects/README.md"
 
     def test_registered_in_install_files(self):
         srcs = {s for s, _ in scaffold.INSTALL_FILES}
@@ -274,6 +275,32 @@ class TestBoardLanguageCard(CompletionBase):
             row = next(r for r in plan2["files"] if r["dest"] == self.DEST)
             self.assertEqual(row["action"], "skip",
                              "second run: board-language.md already installed -> skip")
+
+
+# --------------------------------------------------------------------------- #
+# board-status action: BOTH action.yml AND the board_status.py it runs must be
+# installed, or the action is broken in the target repo (it invokes
+# `${{ github.action_path }}/board_status.py`).
+# --------------------------------------------------------------------------- #
+class TestBoardStatusActionInstall(CompletionBase):
+    ACTION_DEST = ".github/actions/board-status/action.yml"
+    SCRIPT_DEST = ".github/actions/board-status/board_status.py"
+
+    def test_both_action_and_script_registered(self):
+        dests = {d for _, d in scaffold.INSTALL_FILES}
+        self.assertIn(self.ACTION_DEST, dests, "action.yml must install")
+        self.assertIn(self.SCRIPT_DEST, dests,
+                      "board_status.py must install beside action.yml or the action breaks")
+
+    def test_both_install_to_disk(self):
+        with tempfile.TemporaryDirectory() as d:
+            rows = scaffold.plan_file_install(d)
+            written = scaffold.apply_file_install(d, rows)
+            self.assertIn(self.SCRIPT_DEST, written)
+            self.assertTrue((Path(d) / self.SCRIPT_DEST).is_file())
+            # The action references the script by name; both land in the same dir.
+            self.assertEqual((Path(d) / self.SCRIPT_DEST).parent,
+                             (Path(d) / self.ACTION_DEST).parent)
 
 
 # --------------------------------------------------------------------------- #

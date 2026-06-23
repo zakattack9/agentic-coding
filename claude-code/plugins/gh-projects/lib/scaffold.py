@@ -37,6 +37,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -90,12 +92,17 @@ INSTALL_FILES = [
     ("github/workflows/signals-sync.yml", ".github/workflows/signals-sync.yml"),
     # Per-repo auto-add: new issues/PRs auto-add to the org board.
     ("github/workflows/add-to-project.yml", ".github/workflows/add-to-project.yml"),
-    # Self-contained composable deploy bridge (authored elsewhere — listed by dest).
+    # Self-contained composable deploy bridge: the action AND the script it runs.
+    # action.yml invokes `${{ github.action_path }}/board_status.py`, so the script
+    # MUST ship beside it or the action is broken in the target repo.
     ("github/actions/board-status/action.yml", ".github/actions/board-status/action.yml"),
-    # Project README (board legend) lives in the repo at project/.
-    ("project/README.md", "project/README.md"),
-    # Shared board-language card (condensed field/option definitions) sits beside it.
-    ("project/board-language.md", "project/board-language.md"),
+    ("github/actions/board-status/board_status.py", ".github/actions/board-status/board_status.py"),
+    # Board self-documentation (board legend + condensed field/option card) —
+    # consolidated under .gh-projects/ (off the repo root, beside the
+    # .gh-projects/backlog/ staging the engine writes). Not read by any workflow
+    # or skill; ships as in-repo reference for a clone WITHOUT the plugin.
+    ("project/README.md", ".gh-projects/README.md"),
+    ("project/board-language.md", ".gh-projects/board-language.md"),
 ]
 
 
@@ -479,6 +486,68 @@ def resolve_repo_id(repo: str) -> str:
     if not rid:
         raise ScaffoldError(f"repository '{repo}' not found", code=3)
     return rid
+
+
+# --------------------------------------------------------------------------- #
+# Where per-repo files install — kept HONEST so files never land in the wrong
+# tree. `--repo` is a GitHub owner/name (it does NOT name a local path); the file
+# install target is `--repo-dir`, which defaults to CWD ONLY when CWD is a clone
+# of `--repo`. Standing in that clone, `--repo` alone is enough (no redundant
+# `--repo-dir`); standing anywhere else, scaffold refuses rather than scatter the
+# files (the bug where running from an unrelated repo installed into it).
+# --------------------------------------------------------------------------- #
+def _parse_repo_slug(url: str) -> str | None:
+    """`owner/name` from a GitHub remote URL (ssh or https), else None.
+
+    Handles `git@github.com:owner/name(.git)`, `https://github.com/owner/name(.git)`,
+    and `ssh://git@github.com/owner/name`.
+    """
+    u = str(url or "").strip()
+    if u.endswith(".git"):
+        u = u[:-4]
+    m = re.search(r"[:/]([^/:\s]+/[^/:\s]+)$", u)
+    return m.group(1) if m else None
+
+
+def _dir_repo_slug(path: str) -> str | None:
+    """`owner/name` of the git `origin` remote of the clone at `path`, or None.
+
+    Read-only local git; None when `path` is not a git repo / has no origin.
+    Isolated in its own function so tests can patch it (no real git needed).
+    """
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(path), "remote", "get-url", "origin"],
+            capture_output=True, text=True, timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0:
+        return None
+    return _parse_repo_slug(out.stdout)
+
+
+def _resolve_install_dir(repo: str | None, repo_dir: str | None) -> str | None:
+    """Resolve the local dir per-repo files install into (None = nothing to install).
+
+    - An explicit `--repo-dir` is trusted (the operator owns that choice).
+    - No `--repo` -> no files install (a Project-only scaffold).
+    - `--repo` but no `--repo-dir` -> use CWD ONLY if CWD's git origin IS `--repo`;
+      otherwise refuse (code 2) so the files never scatter into an unrelated tree.
+    """
+    if repo_dir:
+        return repo_dir
+    if not repo:
+        return None
+    cwd = os.getcwd()
+    slug = _dir_repo_slug(cwd)
+    if slug and slug.lower() == str(repo).lower():
+        return cwd
+    raise ScaffoldError(
+        f"refusing to install {repo!r}'s files into {cwd} — its git origin is "
+        f"{slug or 'not a GitHub repo'}, not {repo!r}. cd into your local clone of "
+        f"{repo} (then --repo alone is enough), or pass --repo-dir <path to that clone>.",
+        code=2,
+    )
 
 
 def plan_repo_link(project_id: str | None, repo: str | None) -> dict | None:
@@ -1244,7 +1313,10 @@ def cmd_scaffold(args) -> int:
             f"did you mean --repo {args.org}/{args.repo}?",
             code=2,
         )
-    repo_dir = args.repo_dir or (os.getcwd() if args.repo else None)
+    # File-install target: explicit --repo-dir, else CWD only if it's a clone of
+    # --repo (so files never scatter into an unrelated tree). Raises code 2 on a
+    # CWD/repo mismatch.
+    repo_dir = _resolve_install_dir(args.repo, args.repo_dir)
     plan = build_plan(
         org=args.org,
         template_title=args.template,

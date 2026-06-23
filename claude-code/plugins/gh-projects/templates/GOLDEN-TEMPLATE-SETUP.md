@@ -364,13 +364,15 @@ is a **skill** name, not a CLI binary — the runnable engine behind it is
 or `APP_ID` + `APP_PRIVATE_KEY[_PATH]`), **not** your user auth — every board write
 goes through the App installation token.
 
-> ⚠️ **Run it from inside the local checkout of the repo the board is for.** When you
-> pass `--repo owner/name`, scaffold installs the per-repo automation (`.github/…` +
-> `project/…`) into the **current working directory** (`--repo-dir` defaults to CWD).
-> Run it from anywhere else — e.g. this agentic-coding checkout — and those files get
-> written into the **wrong tree**. So `cd` into that repo's clone first. Because of
-> that `cd`, capture the engine path as an **absolute** path *before* you move (the
-> `git rev-parse` below resolves against agentic-coding, not the target repo):
+> ⚠️ **Run it from inside the local clone of the repo the board is for.** `--repo
+> owner/name` is a **GitHub identifier, not a path** — it does not say where files go.
+> The per-repo automation (`.github/…` + `.gh-projects/…`) installs into the **current
+> working directory**. To keep files out of the wrong tree, scaffold only uses CWD when
+> **CWD's git origin matches `--repo`**; standing anywhere else (e.g. this agentic-coding
+> checkout) it **refuses with exit 2** and tells you to `cd` into the clone or pass
+> `--repo-dir`. So: `cd` into the target repo's clone first — then `--repo` alone is
+> enough. Because of that `cd`, capture the engine path as an **absolute** path *before*
+> you move (the `git rev-parse` below resolves against agentic-coding, not the target repo):
 
 ```bash
 # 1. Capture the engine path ABSOLUTELY — run this once, from your agentic-coding checkout:
@@ -389,19 +391,30 @@ python3 "$SCAFFOLD" scaffold --org <login> --template "GitHub Projects Golden Te
 
 > Standing up a board with **no** repo files (just the Project) is the one case you can
 > run from anywhere: omit `--repo` (and `--team`). With `--repo` set, location matters —
-> alternatively pass `--repo-dir /path/to/clone` explicitly instead of `cd`-ing.
+> alternatively pass `--repo-dir /path/to/clone` explicitly (an explicit `--repo-dir` is
+> trusted as-is and skips the CWD-origin check) instead of `cd`-ing.
 
 It `copyProjectV2`s the template (**idempotent** — a re-run reuses the existing
 same-titled board instead of creating a duplicate), re-resolves IDs against the copy,
 ensures the org Issue Type + Issue Fields, re-plans the Sprint iterations, links the
 repo (and team), sets the no-squash merge setting, and installs the per-repo automation
-into the current repo. **Dry-by-default** — the first command prints the manifest and
+into the target repo. **Dry-by-default** — the first command prints the manifest and
 changes nothing; the second (`--force`) applies it. `--repo` must be `owner/name` (a
 bare repo name is rejected up front). It **verifies** the field schema (diffed against
 `fields.json`) and each view's presence + filter/group/slice resolution — a board view
 grouped by the default **Status** column and a slice by the **Type** issue-type field
 can't be read back via the API, so those surface as **confirm-by-eye** checklist items
 rather than failures; it also **cannot** verify charts (no API) — hence the eyeball step.
+
+**What lands in the repo.** Only GitHub-functional files plus the board's self-docs —
+nothing reference-only. Under `.github/`: the issue forms, PR template, `release.yml`,
+`CODEOWNERS`, the three board workflows (`board-sync` / `signals-sync` / `add-to-project`),
+and the `board-status` composite action (its `action.yml` **and** the `board_status.py`
+it runs — both required). Under `.gh-projects/`: the board `README.md` (legend) and
+`board-language.md` (field/option card) — in-repo reference for a clone without the
+plugin, kept off the repo root beside the `.gh-projects/backlog/` staging that
+`create-issues` writes. The `.github/` special paths are fixed by GitHub and can't be
+relocated; everything else gh-projects touches lives under `.gh-projects/`.
 
 > `scaffold-repo` installs the workflow **files** but does **not** set any Actions
 > secrets or variables — that's the manual step next, and it's why the board variables

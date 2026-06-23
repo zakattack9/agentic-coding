@@ -420,10 +420,11 @@ class TestInstallManifest(ScaffoldTestBase):
         ".github/workflows/board-sync.yml",
         ".github/workflows/signals-sync.yml",
         ".github/actions/board-status/action.yml",
+        ".github/actions/board-status/board_status.py",
         ".github/release.yml",
         ".github/CODEOWNERS",
-        "project/README.md",
-        "project/board-language.md",
+        ".gh-projects/README.md",
+        ".gh-projects/board-language.md",
     ]
 
     def test_manifest_lists_all_required_destinations(self):
@@ -550,6 +551,24 @@ class TestCli(ScaffoldTestBase):
                  "--title", "Acme Board", "--repo-dir", d])
         self.assertEqual(code, 3)
 
+    def test_repo_mismatch_cwd_refuses_and_makes_no_copy(self):
+        # --repo set, no --repo-dir, and CWD is NOT a clone of --repo -> refuse
+        # before any copy, so files never scatter into an unrelated tree.
+        orig = scaffold._dir_repo_slug
+        scaffold._dir_repo_slug = lambda p: "someone/unrelated"
+        try:
+            runner = ScaffoldRunner()
+            gh.RUN = runner
+            code, _, err = self._run_main(
+                ["scaffold", "--org", "acme", "--template", TEMPLATE_TITLE,
+                 "--title", "Acme Board", "--repo", "acme/web", "--force"])
+        finally:
+            scaffold._dir_repo_slug = orig
+        self.assertEqual(code, 2)
+        self.assertIn("acme/web", err)
+        self.assertEqual(runner.writes, [],
+                         "a CWD/repo mismatch must orphan NO copy")
+
     def test_repo_without_owner_fails_fast_and_makes_no_copy(self):
         # A --repo missing its owner (e.g. 'web' instead of 'acme/web') must be
         # rejected BEFORE build_plan runs copy_project under --force — otherwise
@@ -575,6 +594,62 @@ class TestCli(ScaffoldTestBase):
             ["scaffold", "--org", "acme", "--template", TEMPLATE_TITLE,
              "--title", "x"])
         self.assertNotIn("ghs_leakyinstalltoken1234567890abcdef", out + err)
+
+
+class TestInstallDirResolution(unittest.TestCase):
+    """Where per-repo files install: explicit --repo-dir trusted; CWD used only
+    when it is a clone of --repo; a mismatch refuses (no wrong-tree install)."""
+
+    def setUp(self):
+        self._orig_slug = scaffold._dir_repo_slug
+
+    def tearDown(self):
+        scaffold._dir_repo_slug = self._orig_slug
+
+    def test_no_repo_installs_nothing(self):
+        self.assertIsNone(scaffold._resolve_install_dir(None, None))
+
+    def test_explicit_repo_dir_is_trusted_even_on_mismatch(self):
+        scaffold._dir_repo_slug = lambda p: "someone/else"
+        self.assertEqual(
+            scaffold._resolve_install_dir("acme/web", "/tmp/clone"), "/tmp/clone")
+
+    def test_cwd_used_when_it_is_a_clone_of_repo(self):
+        scaffold._dir_repo_slug = lambda p: "acme/web"
+        self.assertEqual(scaffold._resolve_install_dir("acme/web", None), os.getcwd())
+
+    def test_cwd_match_is_case_insensitive(self):
+        scaffold._dir_repo_slug = lambda p: "Acme/Web"
+        self.assertEqual(scaffold._resolve_install_dir("acme/web", None), os.getcwd())
+
+    def test_cwd_mismatch_refuses_exit_2(self):
+        scaffold._dir_repo_slug = lambda p: "other/repo"
+        with self.assertRaises(scaffold.ScaffoldError) as ctx:
+            scaffold._resolve_install_dir("acme/web", None)
+        self.assertEqual(ctx.exception.code, 2)
+        self.assertIn("acme/web", str(ctx.exception))
+
+    def test_cwd_not_a_git_repo_refuses(self):
+        scaffold._dir_repo_slug = lambda p: None
+        with self.assertRaises(scaffold.ScaffoldError) as ctx:
+            scaffold._resolve_install_dir("acme/web", None)
+        self.assertEqual(ctx.exception.code, 2)
+
+
+class TestRepoSlugParse(unittest.TestCase):
+    def test_parses_ssh_https_and_git_suffix(self):
+        cases = {
+            "git@github.com:acme/web.git": "acme/web",
+            "https://github.com/acme/web.git": "acme/web",
+            "https://github.com/acme/web": "acme/web",
+            "ssh://git@github.com/acme/web": "acme/web",
+        }
+        for url, want in cases.items():
+            self.assertEqual(scaffold._parse_repo_slug(url), want, url)
+
+    def test_garbage_returns_none(self):
+        self.assertIsNone(scaffold._parse_repo_slug(""))
+        self.assertIsNone(scaffold._parse_repo_slug("not-a-url"))
 
 
 if __name__ == "__main__":
