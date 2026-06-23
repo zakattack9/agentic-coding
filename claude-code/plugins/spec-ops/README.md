@@ -40,6 +40,21 @@ flowchart LR
 - **Commits at every stage, scoped.** `write-spec` commits the draft, `refine-spec` the implementation-ready spec (its `Stop` hook won't release until it's committed), and `launch-spec` bakes a per-phase commit cadence into the driver. Every spec commit is **path-scoped** to the spec file (never `-A`) and never pushes; the shared `scripts/spec_git.py` is the single source. `verify-spec` stays read-only and commits nothing.
 - **Emit-only, and ask before guessing.** `launch-spec` compiles the driver and quits — at most a `tasks.md`, never code, never the spec, never running it. Genuine ambiguities go to you via `AskUserQuestion` (at `full` rigor; lighter specs defer to `[NEEDS CLARIFICATION]` markers) — a gap is never filled with an assumption.
 
+## Enabling the Codex second judge
+
+The cross-provider judge activates automatically once the OpenAI Codex CLI is installed and authenticated — but it needs **one environment change** so a Codex review isn't cut short. The bridge allows the judge up to **19.5 min** (`1170s`), while Claude Code caps a foreground `Bash` call at `BASH_MAX_TIMEOUT_MS` (default `600000` / 10 min) and kills it first. Raise the cap to **≥20 min** in your `~/.claude/settings.json`:
+
+```json
+{
+  "env": {
+    "BASH_DEFAULT_TIMEOUT_MS": "1200000",
+    "BASH_MAX_TIMEOUT_MS": "1200000"
+  }
+}
+```
+
+`BASH_MAX_TIMEOUT_MS` (`1200000` ms = 20 min) is the hard ceiling the bridge call needs; `BASH_DEFAULT_TIMEOUT_MS` raises the default so a call that sets no explicit timeout also gets the full window. Without it the second judge still **fails open** — a killed call is a no-op and the Claude verdict stands — you just never get the cross-model check. You can disable Codex entirely with `SPEC_OPS_CODEX=0`. Full bridge contract and env switches: `references/codex-bridge.md`.
+
 ## Choosing the implementation driver (`launch-spec`)
 
 `launch-spec` defaults to **`/goal`** and steps up only on **structural** signals — *how the work is shaped, never how big it is*. A broad-but-shallow change (one mechanical edit across many files) stays in `/goal` regardless of file count.
