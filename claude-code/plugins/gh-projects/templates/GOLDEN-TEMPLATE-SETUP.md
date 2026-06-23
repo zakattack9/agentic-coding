@@ -357,20 +357,30 @@ and (possibly) the charts are per-org work.
 
 ## After the template: scaffold real boards
 
-With the org's template in place, standing up a board is one command — and uses the
-**org's App token**, not your user auth:
+With the org's template in place, standing up a board is one command. `scaffold-repo`
+is a **skill** name, not a CLI binary — the runnable engine behind it is
+`lib/scaffold.py` (`scaffold` subcommand). Run it directly, the same way you ran
+`setup_board.py` above, but with the **org's App token** in your env (`GH_APP_TOKEN`,
+or `APP_ID` + `APP_PRIVATE_KEY[_PATH]`), **not** your user auth — every board write
+goes through the App installation token:
 
 ```bash
-scaffold-repo --org <login> --template "GitHub Projects Golden Template" \
-              --title "<new board title>" [--repo owner/name] [--team <slug>]
+SCAFFOLD="$(git rev-parse --show-toplevel)/claude-code/plugins/gh-projects/lib/scaffold.py"
+# preview the full change manifest (mutates nothing):
+python3 "$SCAFFOLD" scaffold --org <login> --template "GitHub Projects Golden Template" \
+  --title "<new board title>" [--repo owner/name] [--team <slug>]
+# apply it (only after reviewing the manifest):
+python3 "$SCAFFOLD" scaffold --org <login> --template "GitHub Projects Golden Template" \
+  --title "<new board title>" [--repo owner/name] [--team <slug>] --force
 ```
 
 It `copyProjectV2`s the template, re-resolves IDs against the copy, ensures the org
 Issue Type + Issue Fields, re-plans the Sprint iterations, links the repo (and team),
 sets the no-squash merge setting, and installs the per-repo automation. **Dry-by-default**
-— review the manifest, then re-run with `--force`. It **verifies** the field schema
-(diffed against `fields.json`) and each view's presence + filter/group/slice
-resolution; it **cannot** verify charts (no API) — hence the eyeball step.
+— the first command prints the manifest and changes nothing; the second (`--force`)
+applies it. It **verifies** the field schema (diffed against `fields.json`) and each
+view's presence + filter/group/slice resolution; it **cannot** verify charts (no API)
+— hence the eyeball step.
 
 > `scaffold-repo` installs the workflow **files** but does **not** set any Actions
 > secrets or variables — that's the manual step next, and it's why the board variables
@@ -458,6 +468,6 @@ won't repopulate.
 - [ ] **Eyeball the 3 charts**; rebuild any that didn't carry
 
 **Per repo/board:**
-- [ ] `scaffold-repo --org <org> --template "…" … --force` (creates the board + installs workflow files; uses the org's App token)
+- [ ] `python3 "$SCAFFOLD" scaffold --org <org> --template "…" … --force` (creates the board + installs workflow files; uses the org's App token — `$SCAFFOLD` = `…/gh-projects/lib/scaffold.py`, dry-run first)
 - [ ] **Wire the board variables** (`GH_PROJECT_OWNER` / `GH_PROJECT_NUMBER` / `GH_PROJECT_URL`) from scaffold's reported board number — org-level (Path A) or per repo (Path B)
 - [ ] *(Free org)* if App secrets were deferred, set them on this repo too (Phase 0.0 "Store the App secrets" Path B)

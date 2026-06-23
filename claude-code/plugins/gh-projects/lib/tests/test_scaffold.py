@@ -107,6 +107,11 @@ def _project_fields_payload(id_suffix: str, *, with_iterations: bool):
 # field). A faithful golden-template copy resolves all 8 — these match views.json.
 def _project_views_payload(id_suffix: str, *, detail: bool = False):
     schema = json.loads((scaffold.templates_dir() / "project" / "views.json").read_text())
+    # Mirror reality: the API omits a BOARD view's default Status grouping and any
+    # issue_type group/slice (Type) from group/slice readback, even when set
+    # correctly — so verify_views must treat those as manual-confirm, not defects.
+    issue_types = {f["name"] for f in scaffold.load_fields_schema().get("fields", [])
+                   if f.get("home") == "issue_type"}
     nodes = []
     for i, v in enumerate(schema["views"]):
         node = {"number": i + 1, "name": v["name"],
@@ -115,8 +120,12 @@ def _project_views_payload(id_suffix: str, *, detail: bool = False):
             node["filter"] = v.get("filter", "")
             group = v.get("group", "")
             slc = v.get("slice", "")
-            node["groupByFields"] = {"nodes": ([{"name": group}] if group else [])}
-            node["verticalGroupByFields"] = {"nodes": ([{"name": slc}] if slc else [])}
+            layout = v.get("layout", "TABLE_LAYOUT")
+            group_reported = bool(group) and not (
+                (layout == "BOARD_LAYOUT" and group == "Status") or group in issue_types)
+            slice_reported = bool(slc) and slc not in issue_types
+            node["groupByFields"] = {"nodes": ([{"name": group}] if group_reported else [])}
+            node["verticalGroupByFields"] = {"nodes": ([{"name": slc}] if slice_reported else [])}
         nodes.append(node)
     return nodes
 
@@ -129,11 +138,15 @@ class ScaffoldRunner:
     COPY exists from the start (copyProjectV2 is what creates it) so resolving it
     yields the copy's ids."""
 
-    def __init__(self, *, copy_has_iterations=True):
+    def __init__(self, *, copy_has_iterations=True, existing_projects=None):
         self.calls = []
         self.writes = []  # mutation/REST-write round-trips
         self.copy_has_iterations = copy_has_iterations
         self.issue_fields_present = set()  # org has none initially
+        # Same-titled boards the org ALREADY has (idempotency lookup). Default
+        # none -> the copy step runs copyProjectV2; inject one to exercise reuse,
+        # two+ to exercise the ambiguous-duplicates guard.
+        self.existing_projects = list(existing_projects or [])
 
     def __call__(self, args):
         self.calls.append(list(args))
@@ -162,6 +175,10 @@ class ScaffoldRunner:
                     {"id": TEMPLATE_PROJECT_ID, "number": TEMPLATE_NUMBER, "title": TEMPLATE_TITLE},
                 ]},
             }}})
+        # org projects by title — the idempotency lookup (NON-template projectsV2)
+        if "projectsV2(first:100" in body and "is:template" not in body:
+            return json.dumps({"data": {"organization": {
+                "projectsV2": {"nodes": list(self.existing_projects)}}}})
         # copyProjectV2 — the WRITE that creates the copy
         if "copyProjectV2" in body:
             self.writes.append(("graphql", "copyProjectV2"))
@@ -245,6 +262,33 @@ class TestCopyFromTemplate(ScaffoldTestBase):
         with tempfile.TemporaryDirectory() as d:
             self._plan(runner, d)
         self.assertIn(("graphql", "copyProjectV2"), runner.writes)
+
+    def test_reuses_existing_board_instead_of_copying_again(self):
+        # A same-titled board already exists -> IDEMPOTENT: reuse it, do NOT
+        # call copyProjectV2 again (so a re-run after a partial apply doesn't
+        # pile up duplicate boards).
+        runner = ScaffoldRunner(existing_projects=[
+            {"id": COPY_PROJECT_ID, "number": COPY_NUMBER, "title": "Acme Board"}])
+        with tempfile.TemporaryDirectory() as d:
+            plan = self._plan(runner, d)
+        self.assertNotIn(("graphql", "copyProjectV2"), runner.writes,
+                         "an existing same-titled board must be reused, not re-copied")
+        self.assertTrue(plan["copy"]["reused"])
+        self.assertEqual(plan["copy"]["number"], COPY_NUMBER)
+        self.assertEqual(plan["copy"]["id"], COPY_PROJECT_ID)
+
+    def test_duplicate_existing_boards_fail_loudly(self):
+        # Two+ same-titled boards -> the engine refuses to guess which to reuse.
+        runner = ScaffoldRunner(existing_projects=[
+            {"id": "PVT_dupe_a", "number": 51, "title": "Acme Board"},
+            {"id": "PVT_dupe_b", "number": 52, "title": "Acme Board"}])
+        with tempfile.TemporaryDirectory() as d:
+            with self.assertRaises(scaffold.ScaffoldError) as ctx:
+                self._plan(runner, d)
+        self.assertEqual(ctx.exception.code, 2)
+        self.assertIn("51", str(ctx.exception))
+        self.assertIn("52", str(ctx.exception))
+        self.assertNotIn(("graphql", "copyProjectV2"), runner.writes)
 
     def test_copy_carries_all_8_views(self):
         # View-catalog half: the copy's saved-view catalog, read read-only
@@ -505,6 +549,22 @@ class TestCli(ScaffoldTestBase):
                 ["scaffold", "--org", "acme", "--template", "Nonexistent Template",
                  "--title", "Acme Board", "--repo-dir", d])
         self.assertEqual(code, 3)
+
+    def test_repo_without_owner_fails_fast_and_makes_no_copy(self):
+        # A --repo missing its owner (e.g. 'web' instead of 'acme/web') must be
+        # rejected BEFORE build_plan runs copy_project under --force — otherwise
+        # the failure surfaces mid-apply on the no-squash PATCH /repos/<repo> and
+        # orphans a freshly-created board copy. Fail fast, exit 2, zero writes.
+        runner = ScaffoldRunner()
+        gh.RUN = runner
+        code, _, err = self._run_main(
+            ["scaffold", "--org", "acme", "--template", TEMPLATE_TITLE,
+             "--title", "Acme Board", "--repo", "web", "--force"])
+        self.assertEqual(code, 2)
+        self.assertIn("owner/name", err)
+        self.assertIn("acme/web", err)  # the corrected suggestion
+        self.assertEqual(runner.writes, [],
+                         "a malformed --repo must orphan NO copy (no copyProjectV2)")
 
     def test_no_token_shaped_string_in_output(self):
         # Drive a run whose stderr would carry a token; assert it is scrubbed.

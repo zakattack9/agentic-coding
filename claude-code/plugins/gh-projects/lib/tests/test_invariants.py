@@ -201,7 +201,7 @@ class AC29_Manifest(unittest.TestCase):
         plugins = {p["name"]: p for p in mk["plugins"]}
         self.assertIn("gh-projects", plugins, "gh-projects must be registered in marketplace.json")
         gp = plugins["gh-projects"]
-        self.assertEqual(gp["version"], "0.3.4")
+        self.assertEqual(gp["version"], "0.3.6")
         self.assertEqual(gp["source"], "./claude-code/plugins/gh-projects")
         self.assertTrue(gp.get("description"))
 

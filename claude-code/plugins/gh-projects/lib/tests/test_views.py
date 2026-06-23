@@ -76,21 +76,37 @@ def _copy_field_nodes():
     return nodes
 
 
+def _blind_spots():
+    """Names of issue_type fields the group/slice API never reports back."""
+    fields = scaffold.load_fields_schema().get("fields", [])
+    return {f["name"] for f in fields if f.get("home") == "issue_type"}
+
+
 def _views_detail_nodes(views_schema: dict):
     """Build the live (resolved) views-detail nodes from a views.json-shaped
-    schema: each declared group/slice becomes a NON-EMPTY live field (the
-    platform resolved it), exactly what a faithful golden-template copy yields."""
+    schema, mirroring what GitHub's API ACTUALLY reports for a faithful copy: it
+    resolves each declared group/slice EXCEPT the two API blind spots, which it
+    omits (empty nodes) even when the view is configured correctly —
+      * a BOARD_LAYOUT view's default Status column grouping, and
+      * any issue_type group/slice (e.g. Grooming's Type).
+    Fabricating non-empty nodes for these (the old behavior) hid a real false
+    positive in verify_views."""
+    issue_types = _blind_spots()
     out = []
     for i, v in enumerate(views_schema["views"]):
         group = v.get("group", "")
         slc = v.get("slice", "")
+        layout = v.get("layout", "TABLE_LAYOUT")
+        group_reported = bool(group) and not (
+            (layout == "BOARD_LAYOUT" and group == "Status") or group in issue_types)
+        slice_reported = bool(slc) and slc not in issue_types
         out.append({
             "number": i + 1,
             "name": v["name"],
-            "layout": v.get("layout", "TABLE_LAYOUT"),
+            "layout": layout,
             "filter": v.get("filter", ""),
-            "groupByFields": {"nodes": ([{"name": group}] if group else [])},
-            "verticalGroupByFields": {"nodes": ([{"name": slc}] if slc else [])},
+            "groupByFields": {"nodes": ([{"name": group}] if group_reported else [])},
+            "verticalGroupByFields": {"nodes": ([{"name": slc}] if slice_reported else [])},
         })
     return out
 
@@ -285,19 +301,48 @@ class TestVerifyViewsFailsLoudly(ViewsTestBase):
         self.assertIn("re-copy", str(ctx.exception))
 
     def test_unresolved_group_fails_when_live_view_groups_by_nothing(self):
-        # A view documents a group but the live copy resolved no group field
-        # (empty groupByFields) — an unresolved group, must FAIL loudly.
+        # A TABLE view documents a group the API CAN report (Blockers groups by
+        # the Blast radius project field) but the live copy resolved no group
+        # field (empty groupByFields) — a genuine unresolved group, must FAIL
+        # loudly. (Contrast the two API blind spots below, which are manual-only.)
         nodes = _views_detail_nodes(scaffold.load_views_schema())
         for n in nodes:
-            if n["name"] == "Sprint":
-                n["groupByFields"] = {"nodes": []}  # platform resolved no column field
+            if n["name"] == "Blockers":
+                n["groupByFields"] = {"nodes": []}  # platform resolved no group field
         runner = ViewsRunner(views_override=nodes)
         res = self._verify(runner)
         self.assertFalse(res["ok"])
-        self.assertFalse(res["views"]["Sprint"]["group_ok"])
-        self.assertTrue(any("group" in e and "Sprint" in e for e in res["errors"]))
+        self.assertFalse(res["views"]["Blockers"]["group_ok"])
+        self.assertTrue(any("group" in e and "Blockers" in e for e in res["errors"]))
         with self.assertRaises(scaffold.ScaffoldError):
             scaffold.raise_for_views(res)
+
+    def test_board_default_status_group_is_manual_not_a_failure(self):
+        # Sprint is a BOARD view grouped by the default Status column — the API
+        # reports an EMPTY groupByFields even when configured correctly, so it is
+        # a manual-confirm item, NEVER a loud failure.
+        runner = ViewsRunner()  # realistic fixture: Sprint's live group is empty
+        res = self._verify(runner)
+        sprint = res["views"]["Sprint"]
+        self.assertEqual(sprint["live_groups"], [], "board default group is unreported")
+        self.assertTrue(sprint["group_ok"], "a board default group must not fail")
+        self.assertTrue(any("Sprint" in m and "Status" in m for m in sprint["manual"]))
+        self.assertTrue(any("Sprint" in m for m in res["manual"]))
+        self.assertTrue(res["ok"], f"must still pass; errors={res['errors']}")
+        scaffold.raise_for_views(res)  # must NOT raise
+
+    def test_issue_type_slice_is_manual_not_a_failure(self):
+        # Grooming slices by Type (an issue_type field) — the API omits issue_type
+        # fields from verticalGroupByFields, so an empty live slice is a
+        # manual-confirm item, NEVER a loud failure.
+        runner = ViewsRunner()  # realistic fixture: Grooming's live slice is empty
+        res = self._verify(runner)
+        grooming = res["views"]["Grooming"]
+        self.assertEqual(grooming["live_slices"], [], "issue_type slice is unreported")
+        self.assertTrue(grooming["slice_ok"], "an issue_type slice must not fail")
+        self.assertTrue(any("Grooming" in m and "Type" in m for m in grooming["manual"]))
+        self.assertTrue(res["ok"], f"must still pass; errors={res['errors']}")
+        scaffold.raise_for_views(res)  # must NOT raise
 
     def test_unresolved_slice_fails_when_live_view_slices_by_nothing(self):
         nodes = _views_detail_nodes(scaffold.load_views_schema())

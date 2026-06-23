@@ -38,7 +38,7 @@
       "name": "gh-projects",
       "source": "./claude-code/plugins/gh-projects",
       "description": "Run a small team's entire software lifecycle on GitHub Projects v2 — deterministic, free, GitHub-native, and with no metered AI. It provisions a golden-template board and repo automation across an org, then drives work from issue intake through sprint planning and the full branch → PR → merge flow with check-gated, never-squashed merges, kept safe by GitHub App-token writes and skill-scoped guards.",
-      "version": "0.3.4"
+      "version": "0.3.6"
     }
   ]
 }

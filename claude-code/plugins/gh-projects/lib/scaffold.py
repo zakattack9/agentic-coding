@@ -232,6 +232,33 @@ def resolve_owner_and_template(org: str, template_title: str) -> tuple[str, str,
     )
 
 
+_ORG_PROJECTS_BY_TITLE = """
+query($owner:String!){
+  organization(login:$owner){
+    projectsV2(first:100){
+      nodes { id number title }
+    }
+  }
+}
+"""
+
+
+def find_projects_by_title(org: str, title: str) -> list[dict]:
+    """Every org Project whose EXACT title matches `title` (read-only).
+
+    Makes the copy step IDEMPOTENT: a re-run reuses an existing same-titled board
+    instead of spawning another (copyProjectV2 has no built-in idempotency, and it
+    runs before everything else, so any apply failure would otherwise orphan a
+    fresh copy). Returns [{id, number, title}] — empty (copy), one (reuse), or
+    >1 (ambiguous; the caller refuses to guess).
+    """
+    data = gh.graphql(_ORG_PROJECTS_BY_TITLE, {"owner": org})
+    nodes = (((data or {}).get("organization") or {}).get("projectsV2") or {}).get("nodes") or []
+    want = title.strip()
+    return [{"id": n.get("id"), "number": n.get("number"), "title": n.get("title")}
+            for n in nodes if str(n.get("title", "")).strip() == want]
+
+
 # --------------------------------------------------------------------------- #
 # Iteration plan — DIFF the COPY's iterations against the desired set; SKIP when
 # unchanged (no iterationConfiguration re-PUT). NEVER blind re-PUT.
@@ -705,6 +732,31 @@ def _field_resolves(name: str, fields_schema: dict, copy_proj: "gh.Project") -> 
     return name in _NATIVE_FIELDS
 
 
+# GitHub API blind spots verify_views can't observe — NOT template defects:
+#   * a BOARD_LAYOUT view grouped by the default board column field (Status)
+#     reports an EMPTY groupByFields — the default grouping is implicit and never
+#     echoed back. A board grouped by a NON-default field (e.g. Triage's Schedule
+#     health) IS reported, so that case stays strictly checked.
+#   * an issue_type field (Type) is omitted from groupByFields /
+#     verticalGroupByFields entirely (same drop as visible_fields).
+# In both cases the field still must RESOLVE on the copy; we just can't confirm
+# the live view honors it via the API, so it becomes a manual-confirm checklist
+# item instead of a loud failure.
+_BOARD_DEFAULT_GROUP_FIELD = "Status"  # the built-in board column field
+
+
+def _is_issue_type_field(name: str, fields_schema: dict) -> bool:
+    """True if NAME is a declared issue_type field (e.g. Type).
+
+    The API omits issue_type fields from group/slice readback, so an empty live
+    group/slice for one is unobservable, not a defect.
+    """
+    return any(
+        f.get("name") == name and f.get("home") == "issue_type"
+        for f in fields_schema.get("fields", [])
+    )
+
+
 def read_copy_views_detail(org: str, copy_number: int) -> dict:
     """Read each saved view's filter/group/slice read-only, keyed by view title.
 
@@ -753,12 +805,13 @@ def verify_views(org: str, copy_number: int, *, views_schema: dict,
     """
     detail = read_copy_views_detail(org, int(copy_number))
     specs = view_specs(views_schema)
-    result: dict = {"ok": True, "checked": len(specs), "missing": [], "views": {}, "errors": []}
+    result: dict = {"ok": True, "checked": len(specs), "missing": [], "views": {},
+                    "errors": [], "manual": []}
 
     for spec in specs:
         name = spec["name"]
         live = detail.get(name)
-        vr: dict = {"present": live is not None, "errors": [],
+        vr: dict = {"present": live is not None, "errors": [], "manual": [],
                     "filter_ok": True, "filter": "", "unresolved_qualifiers": [],
                     "group_ok": True, "group": spec.get("group", ""), "live_groups": [],
                     "slice_ok": True, "slice": spec.get("slice", ""), "live_slices": []}
@@ -809,8 +862,9 @@ def verify_views(org: str, copy_number: int, *, views_schema: dict,
                 vr["errors"].append(msg)
                 result["errors"].append(msg)
 
-        # --- Group: documented group field must resolve AND the live view --- #
-        #     must actually group by a (non-empty) field.
+        # --- Group: documented group field must resolve AND (where the API can
+        #     report it) the live view must actually group by it. Two API blind
+        #     spots are unverifiable -> manual-confirm, not a failure.
         group = spec.get("group", "")
         if group:
             if not _field_resolves(group, fields_schema, copy_proj):
@@ -819,14 +873,24 @@ def verify_views(org: str, copy_number: int, *, views_schema: dict,
                 vr["errors"].append(msg)
                 result["errors"].append(msg)
             elif not vr["live_groups"]:
-                vr["group_ok"] = False
-                msg = (f"view '{name}': documented group '{group}' but the live view "
-                       f"groups by nothing (unresolved group)")
-                vr["errors"].append(msg)
-                result["errors"].append(msg)
+                if spec.get("layout") == "BOARD_LAYOUT" and group == _BOARD_DEFAULT_GROUP_FIELD:
+                    vr["manual"].append(
+                        f"view '{name}': confirm by eye it groups by '{group}' — a board's "
+                        f"default column grouping is not reported by the API")
+                elif _is_issue_type_field(group, fields_schema):
+                    vr["manual"].append(
+                        f"view '{name}': confirm by eye it groups by '{group}' — issue-type "
+                        f"fields are not reported by the group/slice API")
+                else:
+                    vr["group_ok"] = False
+                    msg = (f"view '{name}': documented group '{group}' but the live view "
+                           f"groups by nothing (unresolved group)")
+                    vr["errors"].append(msg)
+                    result["errors"].append(msg)
 
-        # --- Slice: documented slice field must resolve AND the live view --- #
-        #     must actually slice by a (non-empty) field.
+        # --- Slice: documented slice field must resolve AND (where the API can
+        #     report it) the live view must actually slice by it. An issue_type
+        #     slice (e.g. Grooming's Type) is unobservable -> manual-confirm.
         slc = spec.get("slice", "")
         if slc:
             if not _field_resolves(slc, fields_schema, copy_proj):
@@ -835,14 +899,20 @@ def verify_views(org: str, copy_number: int, *, views_schema: dict,
                 vr["errors"].append(msg)
                 result["errors"].append(msg)
             elif not vr["live_slices"]:
-                vr["slice_ok"] = False
-                msg = (f"view '{name}': documented slice '{slc}' but the live view "
-                       f"slices by nothing (unresolved slice)")
-                vr["errors"].append(msg)
-                result["errors"].append(msg)
+                if _is_issue_type_field(slc, fields_schema):
+                    vr["manual"].append(
+                        f"view '{name}': confirm by eye it slices by '{slc}' — issue-type "
+                        f"fields are not reported by the group/slice API")
+                else:
+                    vr["slice_ok"] = False
+                    msg = (f"view '{name}': documented slice '{slc}' but the live view "
+                           f"slices by nothing (unresolved slice)")
+                    vr["errors"].append(msg)
+                    result["errors"].append(msg)
 
         if vr["errors"]:
             result["ok"] = False
+        result["manual"].extend(vr["manual"])
         result["views"][name] = vr
 
     return result
@@ -912,8 +982,25 @@ def build_plan(*, org: str, template_title: str, repo: str | None,
     owner_id, template_id, template_number = resolve_owner_and_template(org, template_title)
 
     if do_copy:
-        # Stand the project up via copyProjectV2 from the NAMED template.
-        copied = gh.copy_project(owner_id, template_id, new_title, include_draft=True)
+        # IDEMPOTENT copy: reuse an existing same-titled board instead of spawning
+        # another. copyProjectV2 has no idempotency and runs FIRST, so a failed
+        # earlier --force (or any apply error after the copy) leaves an orphan; a
+        # re-run then reuses it rather than piling up duplicates.
+        existing = find_projects_by_title(org, new_title)
+        if len(existing) > 1:
+            raise ScaffoldError(
+                f"{len(existing)} projects in org '{org}' are already titled "
+                f"{new_title!r} (numbers {sorted(e['number'] for e in existing)}) — "
+                f"delete the duplicates (or pick a unique --title), then re-run; "
+                f"refusing to guess which to reuse",
+                code=2,
+            )
+        if existing:
+            copied = existing[0]          # reuse — copyProjectV2 SKIPPED
+            reused = True
+        else:
+            copied = gh.copy_project(owner_id, template_id, new_title, include_draft=True)
+            reused = False
         copy_id = copied.get("id")
         copy_number = copied.get("number")
         if not copy_id or copy_number is None:
@@ -923,7 +1010,8 @@ def build_plan(*, org: str, template_title: str, repo: str | None,
         resolved.id = copy_id  # the copy's node id is authoritative from the mutation
         resolved.resolve()
         copy_info = {"id": copy_id, "number": copy_number,
-                     "title": copied.get("title", new_title), "from_copy": True}
+                     "title": copied.get("title", new_title), "from_copy": True,
+                     "reused": reused}
     else:
         # Dry preview only — resolve the TEMPLATE read-only; create NOTHING
         # (copyProjectV2 is a real mutation; a dry-run keeps the project unchanged).
@@ -987,6 +1075,7 @@ def build_plan(*, org: str, template_title: str, repo: str | None,
         "team_link": team_link,           # Project→team link + base-role manual step
         "base_role_manual": (team_link or {}).get("base_role_manual") if team_link else None,
         "human_checklist": ["confirm the 3 Insights charts are present (Insights has no API)"]
+        + (view_verify.get("manual") or [])
         + ([(team_link or {}).get("base_role_manual")] if team_link else []),
     }
 
@@ -1077,7 +1166,10 @@ def render_manifest(plan: dict) -> str:
     lines = []
     c = plan["copy"]
     lines.append(f"== scaffold change manifest (org={plan['org']}) ==")
-    if c.get("from_copy"):
+    if c.get("from_copy") and c.get("reused"):
+        lines.append(f"Project: REUSE existing '{c['title']}' (#{c['number']}) — "
+                     f"copyProjectV2 SKIPPED (idempotent re-run)")
+    elif c.get("from_copy"):
         lines.append(f"Project: copyProjectV2 '{plan['template_title']}' -> "
                      f"'{c['title']}' (#{c['number']})")
     else:
@@ -1142,6 +1234,16 @@ def _print_json(obj) -> None:
 
 
 def cmd_scaffold(args) -> int:
+    # Validate --repo BEFORE anything mutates. Under --force, build_plan() calls
+    # copy_project() FIRST, so a malformed repo caught later (the no-squash PATCH
+    # builds /repos/<repo> and 404s on a missing owner) would already have
+    # orphaned a freshly-created board copy. Fail fast here in both dry + force.
+    if args.repo and "/" not in str(args.repo):
+        raise ScaffoldError(
+            f"--repo must be 'owner/name' (got {args.repo!r}); "
+            f"did you mean --repo {args.org}/{args.repo}?",
+            code=2,
+        )
     repo_dir = args.repo_dir or (os.getcwd() if args.repo else None)
     plan = build_plan(
         org=args.org,
