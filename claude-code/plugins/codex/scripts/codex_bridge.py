@@ -50,6 +50,10 @@ Usage:
     codex_bridge.py --write --prompt-file <f> [--cd <repo>] [--model …] [--effort …]
         `workspace-write` `codex exec` (used by delegate-codex; Codex may edit the tree).
 
+    `--prompt-file -` reads the prompt from THIS bridge's stdin (so a caller with no
+    file-write tool can pipe a composed prompt via a heredoc). `--cd` defaults to the
+    current directory, so `-C` is always emitted to Codex.
+
 Exit codes (the caller branches on the code alone; every non-zero is fail-open):
     0   valid, non-empty raw output on stdout — surface it verbatim
     10  skipped — Codex absent / unauthenticated / non-OpenAI provider / disabled by env
@@ -655,11 +659,14 @@ def main(argv):
         return 3
     if not (isinstance(effort, str) and effort.strip()):
         effort = DEFAULT_EFFORT
-    try:
-        prompt = open(prompt_file, "r", encoding="utf-8").read()
-    except OSError as e:
-        sys.stderr.write(f"codex_bridge: cannot read --prompt-file: {e}\n")
-        return 3
+    if prompt_file == "-":
+        prompt = sys.stdin.read()  # caller piped the composed prompt on the bridge's stdin
+    else:
+        try:
+            prompt = open(prompt_file, "r", encoding="utf-8").read()
+        except OSError as e:
+            sys.stderr.write(f"codex_bridge: cannot read --prompt-file: {e}\n")
+            return 3
 
     cd = cd or os.getcwd()  # -C is always emitted; codex resets cwd mid-run, so never rely on it
     timeout = resolve_timeout(os.environ, timeout_override)
