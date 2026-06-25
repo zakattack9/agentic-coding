@@ -3,6 +3,8 @@ name: delegate-codex
 description: Hand a write task to OpenAI Codex and let it edit the working tree — a cross-model "go implement this" to a different provider's model. User-invoked only. Use when you want Codex (not Claude) to make the change — "delegate this to Codex", "have Codex implement X", "let Codex fix this in the repo". With a task it runs immediately in a workspace-write sandbox; with no task it suggests 2–4 context-derived tasks to choose from. One foreground run — it surfaces Codex's output and the resulting git diff (attributing Codex's edits vs any pre-existing changes) and leaves the edits uncommitted and unstaged. It does NOT commit, stage, branch, retry, or auto-fix; it does NOT apply edits as Claude when Codex is unavailable (it reports and stops, fail-open); and it is NOT for read-only review/Q&A (use review-codex / ask-codex). Needs an OpenAI-authenticated Codex CLI.
 argument-hint: "[task] [--model <m>] [--effort <e>]"
 allowed-tools: Bash(python3 *), Bash(git diff*), Bash(git status*), Bash(git log*), Read, AskUserQuestion
+model: opus
+effort: medium
 disable-model-invocation: true
 ---
 

@@ -78,12 +78,12 @@ CODEX_PROMPT
 
 Then **branch on the bridge's exit code** (the Bash tool reports it):
 
-| Exit | What it means | What you do |
-| ---- | ------------- | ----------- |
-| `0`  | Codex answered — payload is on **stdout** | `Read` the meta file for `SESSION_ID`; surface the payload **verbatim and in full**, then the session id; stop |
-| `10` | skipped — Codex absent / unauthenticated / non-OpenAI provider / disabled | `Read` the meta file; report that single `codex_bridge:` line; **stop** — do not answer as Claude |
-| `11` | error / timeout / turn failed | same: report the one diagnostic line and stop (`delegate-codex` also shows the diff) |
-| `12` | reply unrecoverable | same: report the one diagnostic line and stop |
+| Exit | What it means                                                             | What you do                                                                                                    |
+| ---- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `0`  | Codex answered — payload is on **stdout**                                 | `Read` the meta file for `SESSION_ID`; surface the payload **verbatim and in full**, then the session id; stop |
+| `10` | skipped — Codex absent / unauthenticated / non-OpenAI provider / disabled | `Read` the meta file; report that single `codex_bridge:` line; **stop** — do not answer as Claude              |
+| `11` | error / timeout / turn failed                                             | same: report the one diagnostic line and stop (`delegate-codex` also shows the diff)                           |
+| `12` | reply unrecoverable                                                       | same: report the one diagnostic line and stop                                                                  |
 
 **Every non-zero exit is fail-open: you report the one diagnostic and stop. You never
 produce a Claude-authored answer/review/edit in Codex's place.** If the load-time probe line
@@ -99,7 +99,7 @@ already said `CODEX: NO …`, say so and stop without composing a prompt or call
 - **Print the session id** so the user can continue the thread:
 
   ```
-  Continue this Codex session: codex exec resume <thread_id>
+  Continue this Codex session: codex resume <thread_id>
   ```
 
   If the meta file shows `SESSION_ID: unavailable`, say the session id could not be

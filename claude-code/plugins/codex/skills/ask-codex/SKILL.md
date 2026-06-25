@@ -3,6 +3,8 @@ name: ask-codex
 description: Ask OpenAI Codex a free-form question for a cross-model second opinion — an explanation, a plan/approach review, a repo question, or a take on a diff, answered by a different provider's model. Use when the user wants Codex's view — "ask Codex how X works", "what would Codex do here", "get Codex's opinion on this approach", "ask Codex about this repo". With a question it runs immediately; with no question it suggests 2–4 context-derived questions to choose from. Read-only — Codex inspects the repo but changes nothing. Surfaces Codex's answer verbatim, then stops. It does NOT edit files or run a write task (that is delegate-codex), and it does NOT answer as Claude when Codex is unavailable (it reports and stops, fail-open). Needs an OpenAI-authenticated Codex CLI.
 argument-hint: "[question] [--model <m>] [--effort <e>]"
 allowed-tools: Bash(python3 *), Read, AskUserQuestion
+model: opus
+effort: medium
 ---
 
 # ask-codex

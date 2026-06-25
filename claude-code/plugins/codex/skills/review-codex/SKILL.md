@@ -3,6 +3,8 @@ name: review-codex
 description: Hand the current diff or a named target to OpenAI Codex for a read-only, cross-model code review — a second opinion from a different provider's model. Use when the user wants Codex to review their work — "have Codex review this", "get Codex's take on the diff", "cross-model review of my changes", "what does Codex think of this code". With no argument it reviews the uncommitted working tree; with a target it reviews that file/range/intent. Surfaces Codex's review verbatim in Codex's own severity order, then stops. It does NOT modify, fix, or format anything (read-only — it may offer a fix as a follow-up); it does NOT review as Claude when Codex is unavailable (it reports and stops, fail-open); and it is NOT a replacement for Claude's own review. Needs an OpenAI-authenticated Codex CLI.
 argument-hint: "[review target | branch/commit] [--model <m>] [--effort <e>]"
 allowed-tools: Bash(python3 *), Bash(git diff*), Bash(git status*), Bash(git log*), Read, Grep, Glob, AskUserQuestion
+model: opus
+effort: medium
 ---
 
 # review-codex
