@@ -47,6 +47,31 @@ def test_not_an_object_fails():
     assert vr.validate("write-requirements", ["a", "b"]) != []
 
 
+# ---- judge-refine severity (optional field, enum-checked when present) --------------
+
+def _refine_verdict(findings):
+    return {
+        "perCriterion": [
+            {"criterion": c, "verdict": "PASS", "reason": "ok"} for c in vr.REFINE_CRITERIA
+        ],
+        "findings": findings,
+        "overall": "PASS",
+    }
+
+def test_judge_refine_accepts_valid_severity():
+    data = _refine_verdict([{"type": "Gap", "severity": "CRITICAL", "acId": "AC-1", "detail": "x"}])
+    assert vr.validate("judge-refine", data) == []
+
+def test_judge_refine_accepts_missing_severity():
+    # severity is optional — a degraded reply that omits it still validates (treated as CRITICAL)
+    data = _refine_verdict([{"type": "Gap", "acId": "AC-1", "detail": "x"}])
+    assert vr.validate("judge-refine", data) == []
+
+def test_judge_refine_rejects_bad_severity():
+    data = _refine_verdict([{"type": "Gap", "severity": "BLOCKER", "acId": "AC-1", "detail": "x"}])
+    assert any("severity" in p for p in vr.validate("judge-refine", data))
+
+
 def _main():
     funcs = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failures = 0

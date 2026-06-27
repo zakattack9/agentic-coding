@@ -31,7 +31,7 @@ exactly as it would with no second model. The bridge guarantees that — it can 
 ```
 codex_bridge.py --kind <judge-verify|judge-refine|write-requirements> \
                 --prompt-file <f> [--schema-file <f>] [--cd <repo>] \
-                [--model <m>] [--effort xhigh|medium] [--timeout 1170]
+                [--model <m>] [--effort xhigh|high|medium|low] [--timeout 1170]
 ```
 
 - `--kind` selects the return contract the reply is validated against (via
@@ -43,9 +43,15 @@ codex_bridge.py --kind <judge-verify|judge-refine|write-requirements> \
 - `--schema-file` (optional) is the matching `schemas/*.schema.json`, supplied to Codex as
   `--output-schema` to *shape* the reply. It is best-effort, not the gate (see below).
 - `--cd` is the repo root Codex reads under (read-only).
-- `--model` / `--effort` / `--timeout` override the resolved model, the reasoning effort
-  (`xhigh` for a judge/review; `medium` reserved for any future grounding lane), and the
-  per-call timeout.
+- `--model` / `--effort` / `--timeout` override the resolved model, the reasoning effort, and
+  the per-call timeout. `--effort` defaults to `SPEC_OPS_CODEX_EFFORT` (else `xhigh`); the
+  `refine-spec` / `verify-spec` skills surface it as a `--codex-effort` arg they pass straight
+  through. `xhigh` is the deliberate judge default — the real runs earned their load-bearing
+  landmine catches at it — and a small spec can downgrade to `high` / `medium`.
+
+On every outcome the bridge prints its real wall-clock to **stderr** (`codex_bridge: completed in
+Ns`, or the elapsed folded into the one fail-open diagnostic), so a slow judge is visible and a
+caller never times the call itself — and never needs a background-and-poll wrapper to do so.
 
 **Availability probe (`--probe`).** `codex_bridge.py --probe --kind <kind>` prints one deterministic line — `CODEX: YES …` or `CODEX: NO — <reason>` — and exits `0` **without invoking Codex**. It mirrors the same availability / auth / env-switch guards `run()` applies. A skill injects it at load with `` !`…codex_bridge.py --probe --kind <kind>` `` (Claude Code dynamic-context injection) so it can **skip its cross-model section on `NO`** — building no prompt and making no bridge call on the common no-Codex path — and run the judge only on `YES`. The `YES` path still calls the bridge and branches on the real exit code below (a `YES` probe doesn't guarantee the judge call itself returns `0`).
 
@@ -62,6 +68,15 @@ codex exec -  --sandbox read-only --skip-git-repo-check -C <repo> \
 **never** builds `--dangerously-bypass-approvals-and-sandbox`,
 `--dangerously-bypass-hook-trust`, a writable `--add-dir`, or a non-`read-only` sandbox;
 their absence is structural, not prompt-enforced.
+
+**Web search is left to the user's config — ambient, neither forced on nor off.** The judge
+bridge sets **no** `tools.web_search` key, so Codex runs at whatever `~/.codex/config.toml`
+defaults to. A readiness / completeness judge grounds against the repo, git history, and
+read-only CLI — the web is not its ground truth — so the bridge deliberately leaves the choice to
+the operator (set `tools.web_search = true` in `config.toml` to enable it for a run). This is a
+**deliberate divergence** from the **codex** plugin's bridge, which forces `-c tools.web_search=true`
+because its ask/review/delegate answers do want the web; a mirror-anchor comment in each
+`build_argv` keeps the difference from being mistaken for drift.
 
 ## Exit taxonomy — the caller branches on the code alone
 
@@ -90,6 +105,7 @@ Before invoking, the bridge checks, with **no network call and no browser**:
 | `SPEC_OPS_CODEX=0` | disable **all** Codex cross-model checks (any kind ⇒ `10`); behavior byte-identical to no Codex |
 | `SPEC_OPS_CODEX_WRITE=0` | disable **only** the `write-requirements` discovery reviewer, independently of the verify/refine judges |
 | `SPEC_OPS_CODEX_TIMEOUT` | per-call Codex timeout in **seconds** (default `1170` / 19.5min, set 30s under a 20min cap). An explicit `--timeout` arg still wins; invalid / non-positive ⇒ default. **Effective ceiling = `BASH_MAX_TIMEOUT_MS`** — the skill dispatches the bridge as a foreground Bash call the harness caps at that env var (default 600000ms). For the full 1170s default to apply, raise `BASH_MAX_TIMEOUT_MS` to `>=1200000` (≥20min); under a lower Bash cap the dispatch is killed first. |
+| `SPEC_OPS_CODEX_EFFORT` | default reasoning effort (`xhigh` \| `high` \| `medium` \| `low` \| `minimal`) when no `--effort` / `--codex-effort` arg is given. An explicit arg still wins; an invalid value ⇒ `xhigh`. |
 | `CODEX_HOME` | respected when locating the user's `config.toml` |
 
 (Off is recognized for `0` / `false` / `no` / `off`.)

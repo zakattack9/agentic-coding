@@ -59,6 +59,10 @@ GROUNDER_VERIFY_VERDICTS = ("confirmed", "contradicted", "unverifiable")
 GROUNDER_REFINE_VERDICTS = ("confirmed", "wrong", "not-found")
 JUDGE_VERIFY_VERDICTS = ("complete", "gaps")
 PASS_FAIL = ("PASS", "FAIL")
+# Severity tiers a refine finding by how blocking it is — only CRITICAL FAILs a criterion.
+# Optional here (a degraded reply that omits it still validates and is treated as blocking by
+# the skill); the bundled --output-schema lists it required so Codex is shaped to emit it.
+SEVERITY = ("CRITICAL", "WARNING", "SUGGESTION")
 REFINE_CRITERIA = (
     "claims_verified", "no_open_questions", "no_overengineering",
     "no_bloat", "implementable_cold", "ac_complete",
@@ -97,7 +101,8 @@ SCHEMAS = {
         '    { "criterion": "' + " | ".join(REFINE_CRITERIA) + '",\n'
         '      "verdict": "PASS | FAIL", "reason": "specific reason" }\n'
         '  ],\n'
-        '  "findings": [{ "type": "Gap | Ambiguity | Conflict", "acId": "AC-7 or empty", "detail": "..." }],\n'
+        '  "findings": [{ "type": "Gap | Ambiguity | Conflict", '
+        '"severity": "CRITICAL | WARNING | SUGGESTION", "acId": "AC-7 or empty", "detail": "..." }],\n'
         '  "overall": "PASS | FAIL"\n'
         '}'
     ),
@@ -211,8 +216,18 @@ def validate_judge_refine(data):
         missing = [c for c in REFINE_CRITERIA if c not in seen]
         if missing:
             problems.append("perCriterion is missing a verdict for: " + ", ".join(missing))
-    if "findings" in data and not isinstance(data.get("findings"), list):
+    findings = data.get("findings")
+    if "findings" in data and not isinstance(findings, list):
         problems.append("'findings' must be a JSON array when present")
+    elif isinstance(findings, list):
+        # severity is optional (a degraded reply may drop it → the skill treats absence as
+        # CRITICAL), but when present it must be one of the three tiers.
+        for i, f in enumerate(findings):
+            if isinstance(f, dict) and "severity" in f and f.get("severity") not in SEVERITY:
+                problems.append(
+                    f"findings[{i}].severity must be one of {'/'.join(SEVERITY)} when present "
+                    f"(got {f.get('severity')!r})"
+                )
     return problems
 
 

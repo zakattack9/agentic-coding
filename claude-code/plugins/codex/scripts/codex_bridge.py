@@ -74,6 +74,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 try:
@@ -565,29 +566,35 @@ def run(mode, prompt, cd, model, effort, timeout, environ, invoke=invoke_codex):
         return SKIP
 
     resolved_model = resolve_model(model, environ)
+    # Wall-clock across the Codex turn, surfaced for tracking. Folded into the existing single
+    # diagnostic on a non-zero exit (preserves the one-line fail-open invariant the tests pin)
+    # and emitted as its own line on success (where the session id already makes stderr multi-line).
+    started = time.perf_counter()
     result = invoke(mode, prompt, resolved_model, effort, cd, timeout)
+    elapsed = f"{time.perf_counter() - started:.1f}s"
 
     if result.timed_out:
-        _log(f"timed out after {timeout}s (process group killed) — proceeding without Codex")
+        _log(f"timed out after {timeout}s ({elapsed} elapsed, process group killed) — proceeding without Codex")
         return ERROR
     _stream_msg, thread_id, failed = parse_stream(result.stdout)
     if failed:
-        _log("codex reported turn.failed/error — proceeding without Codex"
+        _log(f"codex reported turn.failed/error after {elapsed} — proceeding without Codex"
              + (f": {_excerpt(result.stderr)}" if result.stderr.strip() else ""))
         return ERROR
     if result.returncode != 0:
-        _log(f"codex exited {result.returncode} — proceeding without Codex"
+        _log(f"codex exited {result.returncode} after {elapsed} — proceeding without Codex"
              + (f": {_excerpt(result.stderr)}" if result.stderr.strip() else ""))
         return ERROR
 
     text = recover_text(result.last_message, result.stdout)
     if text is None:
-        _log("reply unrecoverable through all channels — proceeding without Codex")
+        _log(f"reply unrecoverable through all channels ({elapsed}) — proceeding without Codex")
         return UNRECOVERABLE
 
-    # Success: raw payload to stdout ONLY; session id to stderr.
+    # Success: raw payload to stdout ONLY; session id + timing to stderr.
     sys.stdout.write(text if text.endswith("\n") else text + "\n")
     _emit_session_id(thread_id)
+    _log(f"completed in {elapsed}")
     return OK
 
 

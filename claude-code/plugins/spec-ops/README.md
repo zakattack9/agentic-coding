@@ -53,7 +53,7 @@ The cross-provider judge activates automatically once the OpenAI Codex CLI is in
 }
 ```
 
-`BASH_MAX_TIMEOUT_MS` (`1200000` ms = 20 min) is the hard ceiling the bridge call needs; `BASH_DEFAULT_TIMEOUT_MS` raises the default so a call that sets no explicit timeout also gets the full window. Without it the second judge still **fails open** — a killed call is a no-op and the Claude verdict stands — you just never get the cross-model check. You can disable Codex entirely with `SPEC_OPS_CODEX=0`. Full bridge contract and env switches: `references/codex-bridge.md`.
+`BASH_MAX_TIMEOUT_MS` (`1200000` ms = 20 min) is the hard ceiling the bridge call needs; `BASH_DEFAULT_TIMEOUT_MS` raises the default so a call that sets no explicit timeout also gets the full window. Without it the second judge still **fails open** — a killed call is a no-op and the Claude verdict stands — you just never get the cross-model check. You can disable Codex entirely with `SPEC_OPS_CODEX=0`. Tune the judge's reasoning effort per run with `--codex-effort xhigh|high|medium` (or set `SPEC_OPS_CODEX_EFFORT`); web search for the judge is left to your `~/.codex/config.toml` (ambient — the judge grounds against the repo, not the web). Each call also prints its real elapsed time to stderr (`codex_bridge: completed in Ns`). Full bridge contract and env switches: `references/codex-bridge.md`.
 
 ## Choosing the implementation driver (`launch-spec`)
 

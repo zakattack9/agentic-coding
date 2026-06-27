@@ -23,6 +23,14 @@ subagent **and** the Codex judge as a `codex_bridge.py` subprocess (a `Bash` cal
 run **concurrently**. Issue both tool calls together; do not wait for one before starting
 the other. The added wall-clock is at most the slower of the two.
 
+**Run the bridge as a single foreground (synchronous) `Bash` call — never background-and-poll.**
+The bridge blocks until Codex returns; issuing it in the same turn as the Claude `Task` is what
+makes the two concurrent. Do **not** set `run_in_background` on the bridge call, and do **not**
+write a polling / `sleep` loop to wait for it — the harness already runs the two tool calls
+together, so a poll loop only burns extra turns and prints fake elapsed times. The bridge's own
+timeout (default 1170s, under the Bash cap) bounds it, and it prints its real wall-clock on every
+outcome (`codex_bridge: completed in Ns`), so you never time it yourself.
+
 ## The Codex judge gets the Claude rubric verbatim
 
 Build the Codex prompt file as the **Claude judge's rubric file, verbatim**, followed by
@@ -44,7 +52,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/codex_bridge.py" \
   --kind <judge-verify|judge-refine> \
   --prompt-file <tmp-prompt> \
   --schema-file "${CLAUDE_PLUGIN_ROOT}/schemas/<judge_verify|judge_refine>.schema.json" \
-  --cd <repo-root> --effort xhigh
+  --cd <repo-root> --effort <the run's --codex-effort, else xhigh>
 ```
 
 The Codex judge returns that judge's **exact existing contract**; the bridge has already
@@ -68,6 +76,13 @@ When a Codex verdict came back (exit 0):
   `complete` / a readiness flag is `true` **only when both** the Claude and Codex judges
   pass it. Any FAIL from either model holds the gate closed and becomes work for the next
   pass.
+- **A criterion `FAIL`s only on a *blocking* finding.** The refine judge tiers findings by
+  `severity` and `FAIL`s a criterion **only** for a `CRITICAL` one; `WARNING` / `SUGGESTION`
+  findings are recorded but never hold the gate. (Verify has no severity field: a material
+  `missed` / `weakEvidence` is its blocking finding; sub-blocking observations go in `notes`.)
+  So the AND-merge withholds a gate flag only when **either** judge reports a blocking finding —
+  never for sub-blocking polish. This is what stops the loop grinding on nits while still
+  catching the one real landmine a pass surfaces.
 - **The gap set is the union.** Combine both judges' findings (verify: `missed` +
   `weakEvidence`; refine: the FAILed criteria + `findings`). Fold the **union** into the
   single existing ledger field the Stop hook already reads — you are not adding a field, you
@@ -98,3 +113,42 @@ loop silently or deadlock the gate. Escalate it to the user for disposition:
 The user's disposition **resolves the contested flag**: an accepted gap loops as normal
 work; an override drops that Codex-only finding from the merged set so the existing Stop
 hook can release. A stubborn Codex FAIL can never deadlock the gate.
+
+## Convergence offer — exit decisively once findings drop below blocking
+
+A distinct stop from the stubborn split: the second judge keeps surfacing **real but
+sub-blocking** findings (`WARNING` / `SUGGESTION`, or non-material `weakEvidence`) while the
+Claude judge has already **passed the criterion**. Do not silently loop another pass for those.
+When **(a)** the Claude judge `PASS`es a criterion on **≥2 consecutive passes** and **(b)** the
+only remaining Codex findings on it are non-`CRITICAL`, surface a structured choice instead of
+grinding:
+
+> "Codex's remaining findings on `<criterion>` are all sub-blocking — `<list>`. Ship as-is, fold
+> them in, or keep iterating?"
+
+- **Run interactively:** ask with `AskUserQuestion`.
+- **Delegated under `orchestrate-spec`:** return the normal **blocked / handoff** result.
+
+Their disposition releases or continues the gate. **Never auto-pass** a sub-blocking pile without
+asking — a "narrow but real" finding (the kind a single pass still earns) must not be dropped
+silently; the offer is the decisive exit, not a rubber stamp.
+
+## Where `Task`-spawn is unavailable — run the judge as a workflow stage
+
+The Codex half of this gate is a plain `Bash` subprocess (`codex_bridge.py`); it needs **no**
+`Task`-spawn and runs from any context, including inside a workflow agent. **Only the Claude
+judge is a `Task`** — and a **workflow `agent()` stage cannot spawn a `Task`** (one-level
+nesting). So when a skill runs this gate from *inside a workflow* (e.g. `orchestrate-spec`'s
+build⇄verify loop running `verify-spec` as a workflow stage):
+
+- **Never skip the cross-model check just because the Claude `Task` can't spawn.** Run the Codex
+  bridge `Bash` call standalone — it is the different-provider half and works fine in a workflow
+  agent.
+- **Dispatch the Claude judge as a *sibling workflow stage*, not a nested `Task`:** the workflow
+  script runs `agent(<judge prompt>, { agentType: 'spec-ops:spec-refine-judge' | 'spec-ops:spec-verify-judge',
+  schema: <the kind's schema> })`, then folds that verdict and the Codex verdict into the ledger
+  before the loop reads its gate. The build workflow's JS owns that dispatch (see `launch-spec`
+  and `orchestrate-spec`); the AND-merge is identical to the in-session path.
+- **If neither the judge stage nor the bridge could run, say so loudly** in the handoff — the
+  result is then self-administered (one model auditing itself), not a cross-model-gated pass, and
+  a fresh out-of-workflow run is the honest recommendation.

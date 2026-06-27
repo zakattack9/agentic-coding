@@ -1,7 +1,7 @@
 ---
 name: refine-spec
 description: Review, verify, and tighten an existing feature spec until it is accurate, hallucination-free, not over-engineered, and ready to implement. Use immediately after write-spec, or whenever the user asks to review, fact-check, refine, simplify, de-risk, or finalize a spec / PRD / requirements doc before building. Runs a grounded multi-pass loop that verifies every claim against the codebase, asks the user to resolve open questions, cuts bloat and speculative scope, and stops only when the spec passes an implementation-readiness gate.
-argument-hint: [@path/to/spec.md] [focus areas]
+argument-hint: [@path/to/spec.md] [focus areas] [--codex-effort xhigh|high|medium|low]
 model: opus
 effort: xhigh
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash, Task
@@ -159,7 +159,7 @@ Finish only when **all** of these hold. Report the gate's status at the end of e
 
 Validate the shape (`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/validate_return.py --kind judge-refine`); set each `gate` flag `true` only for the criteria the judge `PASS`es; every `FAIL` becomes findings for another pass.
 
-**Cross-model judge — a second, different-provider judge (when available).** So readiness isn't *Claude auditing Claude*, run a second judge of a **different provider** (OpenAI Codex) **alongside** the Claude `spec-refine-judge` — **optional and fail-open**: when Codex is absent / unauthenticated / off / slow / malformed, this is a no-op and the gate is exactly what the Claude judge produced. **Read `${CLAUDE_PLUGIN_ROOT}/references/cross-model-judge.md`** for the shared policy (final-pass-only, concurrent dispatch, verbatim rubric, AND-merge, fail-open branching, stubborn-split escalation). refine-spec specifics:
+**Cross-model judge — a second, different-provider judge (when available).** So readiness isn't *Claude auditing Claude*, run a second judge of a **different provider** (OpenAI Codex) **alongside** the Claude `spec-refine-judge` — **optional and fail-open**: when Codex is absent / unauthenticated / off / slow / malformed, this is a no-op and the gate is exactly what the Claude judge produced. **Read `${CLAUDE_PLUGIN_ROOT}/references/cross-model-judge.md`** for the shared policy (final-pass-only, **synchronous foreground** concurrent dispatch — never background-and-poll, verbatim rubric, **severity-gated** AND-merge, fail-open branching, the **convergence offer**, stubborn-split escalation). refine-spec specifics:
 
 - **Availability — check this first.** Skill-load probe: !`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/codex_bridge.py" --probe --kind judge-refine` — if it reads `CODEX: NO`, **skip this whole section** (proceed Claude-only exactly as today: build no prompt, make no bridge call); only on `CODEX: YES` do the steps below.
 - **Only on the no-fix readiness pass.** Dispatch the Codex judge on the pass where a full pass produced no fixes and you are evaluating the gate — not on earlier editing passes. ~one Codex call per run.
@@ -169,13 +169,15 @@ Validate the shape (`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/validate_return.py --
   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/codex_bridge.py" --kind judge-refine \
     --prompt-file <tmp-prompt> \
     --schema-file "${CLAUDE_PLUGIN_ROOT}/schemas/judge_refine.schema.json" \
-    --cd <repo-root> --effort xhigh
+    --cd <repo-root> --effort <codex-effort>      # the run's --codex-effort arg, else xhigh
   ```
 
   The Codex judge runs **read-only** and returns the **identical `judge-refine` contract** over the six criteria, already shape-validated by the bridge on exit 0.
 - **Branch on the exit code.** `0` → merge the Codex verdict; `10` / `11` / `12` → proceed Claude-only, surface the one bridge log line, change nothing.
-- **AND-merge the gate flags.** When a Codex verdict came back, set each `gate` flag `true` **only when both** judges `PASS` that criterion; any criterion **either** model `FAIL`s stays `false` and becomes work for the next pass (union the `findings`). You are not changing the ledger shape — you are withholding the existing `gate` flags until both judges agree, so `stop_refine_spec.py` and the refine ledger schema stay unchanged.
-- **Stubborn split → escalate, never deadlock.** If Codex keeps failing a criterion the Claude judge passes and no edit resolves it, escalate per the shared policy (`AskUserQuestion` interactively, or the blocked/handoff return under `orchestrate-spec`); the user's disposition resolves the contested flag so the gate can release.
+- **AND-merge the gate flags.** When a Codex verdict came back, set each `gate` flag `true` **only when both** judges `PASS` that criterion; any criterion **either** model `FAIL`s stays `false` and becomes work for the next pass (union the `findings`). The judge now `FAIL`s a criterion **only on a `CRITICAL` finding** (`WARNING` / `SUGGESTION` are recorded, never gate-holding — see the rubric's severity tiers), so the merge withholds a flag only for a genuinely blocking finding. You are not changing the ledger shape — you are withholding the existing `gate` flags until both judges agree, so `stop_refine_spec.py` and the refine ledger schema stay unchanged.
+- **Reiterate Codex's findings to the user — per criterion, every pass.** Before you fold a Codex verdict into the ledger, restate it plainly: for each criterion Codex `FAIL`ed or finding it raised, say *"Codex flagged X (severity); my own judge said Y; my disposition is Z — fix / dismiss-as-noise / escalate."* A Codex-only `FAIL` must never be invisible: surface the split, don't union it silently. This is what makes the convergence easy for the dev to follow pass over pass.
+- **Effort is overridable.** Thread the run's `--codex-effort` (parsed from `$ARGUMENTS`) into the bridge's `--effort`; default `xhigh`. The bridge also honors `SPEC_OPS_CODEX_EFFORT` as the env-level default, so a project can downgrade small-spec runs without editing the skill.
+- **Stubborn split / convergence → escalate, never deadlock or grind.** If Codex keeps failing a criterion the Claude judge passes and no edit resolves it, escalate per the shared policy (`AskUserQuestion` interactively, or the blocked/handoff return under `orchestrate-spec`). Likewise, once Codex is down to only `WARNING` / `SUGGESTION` findings while the Claude judge passes a criterion across ≥2 passes, take the **convergence offer** (shared policy) — ship / fix / iterate is the user's call, **never** an auto-pass and never another silent loop. The user's disposition resolves the contested flag so the gate can release.
 
 - [ ] Every factual claim is verified against the codebase or confirmed by the user — zero unverified "currently X" statements. (`claims_verified`)
 - [ ] No open questions, TBDs, "decide later", `[NEEDS CLARIFICATION]` markers, or contradictions remain anywhere in the spec. (`no_open_questions`)

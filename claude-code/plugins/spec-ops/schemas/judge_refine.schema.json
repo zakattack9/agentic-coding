@@ -34,10 +34,11 @@
         "additionalProperties": false,
         "properties": {
           "type": { "type": "string", "enum": ["Gap", "Ambiguity", "Conflict"] },
+          "severity": { "type": "string", "enum": ["CRITICAL", "WARNING", "SUGGESTION"] },
           "acId": { "type": "string" },
           "detail": { "type": "string" }
         },
-        "required": ["type", "acId", "detail"]
+        "required": ["type", "severity", "acId", "detail"]
       }
     },
     "overall": { "type": "string", "enum": ["PASS", "FAIL"] }

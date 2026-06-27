@@ -199,7 +199,7 @@ Build a prompt file with the **idea + the drafted AC table + the discovery trans
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/codex_bridge.py" --kind write-requirements \
   --prompt-file <tmp-prompt> \
   --schema-file "${CLAUDE_PLUGIN_ROOT}/schemas/write_requirements.schema.json" \
-  --cd <empty-scratch-dir> --effort xhigh
+  --cd <empty-scratch-dir>      # effort inherits SPEC_OPS_CODEX_EFFORT (default xhigh)
 ```
 
 Branch on the exit code: **`0`** → the reviewer returned the `write-requirements` contract on stdout (`missingACs`, `unaskedQuestions`, `scopeRisks` — three string arrays, already shape-validated by the bridge); **`10` / `11` / `12`** → skipped / errored / unparseable, surface the one bridge log line and proceed straight to the commit.

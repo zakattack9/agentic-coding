@@ -36,8 +36,9 @@ Design contract (why it is shaped this way):
 Usage:
     codex_bridge.py --kind <judge-verify|judge-refine|write-requirements> \
                     --prompt-file <f> [--schema-file <f>] [--cd <repo>] \
-                    [--model <m>] [--effort xhigh|medium] [--timeout 1170]
+                    [--model <m>] [--effort xhigh|high|medium|low|minimal] [--timeout 1170]
                     # default timeout is SPEC_OPS_CODEX_TIMEOUT (seconds) or 1170; --timeout wins
+                    # default effort is SPEC_OPS_CODEX_EFFORT or xhigh; --effort wins
     codex_bridge.py --probe --kind <kind>    # one-line availability verdict, no Codex call
 
 The `--probe` mode prints a single deterministic line — `CODEX: YES …` or
@@ -56,6 +57,8 @@ Env switches:
     SPEC_OPS_CODEX=0        disable ALL Codex cross-model checks (any kind → exit 10)
     SPEC_OPS_CODEX_WRITE=0  disable ONLY the write-requirements reviewer, independently
                             of the verify/refine judges (kind write-requirements → 10)
+    SPEC_OPS_CODEX_EFFORT  default reasoning effort (xhigh|high|medium|low|minimal) when no
+                            --effort/--codex-effort arg is given; invalid value → xhigh
     OPENAI_API_KEY / CODEX_API_KEY   counted as usable auth (in addition to a logged-in CLI)
     CODEX_HOME             respected when locating the user's config.toml
 """
@@ -66,6 +69,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 try:
@@ -101,6 +105,12 @@ DEFAULT_TIMEOUT = 1170
 
 VALID_EFFORTS = ("xhigh", "medium", "high", "low", "minimal")
 
+# Default reasoning effort for a judge/review. Overridable per-environment via
+# SPEC_OPS_CODEX_EFFORT (resolve_effort); an explicit --effort arg — the skills' --codex-effort
+# passthrough — still wins. xhigh is the deliberate default: the real refine/verify runs earned
+# their load-bearing landmine catches at xhigh, and these are async gates where latency is fine.
+DEFAULT_EFFORT = "xhigh"
+
 
 def _is_off(val):
     """An env toggle reads as 'off' for the usual falsey spellings."""
@@ -121,6 +131,19 @@ def resolve_timeout(environ, default=DEFAULT_TIMEOUT):
     except (ValueError, TypeError):
         return default
     return val if val > 0 else default
+
+
+def resolve_effort(environ, default=DEFAULT_EFFORT):
+    """Default reasoning effort, overridable via SPEC_OPS_CODEX_EFFORT.
+
+    An explicit --effort arg (the skills' --codex-effort passthrough) still wins over this.
+    A missing value, or one outside VALID_EFFORTS, falls back to the default — a bad env var
+    never crashes the bridge, exactly as resolve_timeout treats a bad timeout."""
+    raw = environ.get("SPEC_OPS_CODEX_EFFORT")
+    if raw is None:
+        return default
+    val = str(raw).strip().lower()
+    return val if val in VALID_EFFORTS else default
 
 
 def disabled_by_env(kind, environ):
@@ -301,7 +324,14 @@ class Invocation:
 def build_argv(model, effort, cd, schema_file, last_message_file):
     """The fixed, read-only `codex exec` command line. By construction it carries NO
     escalating flag and NO writable scope — `--sandbox read-only` is the only sandbox
-    setting and nothing here ever adds `--dangerously-bypass-*` or `--add-dir`."""
+    setting and nothing here ever adds `--dangerously-bypass-*` or `--add-dir`.
+
+    Web search: this judge bridge sets NO web_search key ON PURPOSE, so the judge runs at the
+    user's ambient ~/.codex/config.toml default (documented in references/codex-bridge.md). A
+    readiness/completeness judge grounds against the repo + git + read-only CLI, not the web.
+    MIRROR-ANCHOR: the codex *plugin* bridge (claude-code/plugins/codex/scripts/codex_bridge.py)
+    deliberately forces `-c tools.web_search=true` — its ask/review/delegate answers want the
+    web; the two bridges are divergent on web search ON PURPOSE, not by drift."""
     argv = [
         "codex", "exec", "-",            # prompt arrives on stdin
         "--sandbox", "read-only",
@@ -390,28 +420,39 @@ def run(kind, prompt, schema_file, cd, model, effort, timeout, environ,
         "\n\nReturn ONLY strict JSON matching this exact shape, with no prose:\n\n"
         + validate_return.SCHEMAS[kind] + "\n"
     )
+    # Wall-clock across the actual Codex turn(s) (both attempts of the re-dispatch), so a slow
+    # judge is visible instead of invisible-until-timeout. Surfaced on EVERY post-invoke outcome
+    # — folded into the existing single diagnostic on a non-zero exit (keeps that one-line
+    # invariant), and as its own line on success (the OK path is otherwise silent). The skip
+    # guards above return before this, so a skipped call stays exactly one log line.
+    started = time.perf_counter()
+
+    def _elapsed():
+        return f"{time.perf_counter() - started:.1f}s"
+
     for attempt in (1, 2):
         attempt_prompt = prompt if attempt == 1 else prompt + schema_appendix
         result = invoke(attempt_prompt, resolved_model, effort, cd, schema_file, timeout)
         if result.timed_out:
-            _log(f"timed out after {timeout}s — proceeding without Codex")
+            _log(f"timed out after {timeout}s ({_elapsed()} elapsed) — proceeding without Codex")
             return ERROR
         if result.failed:
-            _log("codex reported an error/turn-failure — proceeding without Codex")
+            _log(f"codex reported an error/turn-failure after {_elapsed()} — proceeding without Codex")
             return ERROR
         data = extract_verdict(result.stdout, result.last_message)
         if data is not None and not validate_return.validate(kind, data):
+            _log(f"completed in {_elapsed()}")
             sys.stdout.write(json.dumps(data) + "\n")
             return OK
         # else: fall through to one re-dispatch, then give up
 
-    _log("reply unparseable / wrong-shape after one re-dispatch — proceeding without Codex")
+    _log(f"reply unparseable / wrong-shape after one re-dispatch ({_elapsed()}) — proceeding without Codex")
     return UNPARSEABLE
 
 
 def main(argv):
     kind = prompt_file = schema_file = cd = model = None
-    effort = "xhigh"
+    effort = resolve_effort(os.environ)
     timeout = resolve_timeout(os.environ)
     do_probe = False
     i = 0

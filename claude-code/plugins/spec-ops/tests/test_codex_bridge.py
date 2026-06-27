@@ -238,6 +238,38 @@ def test_model_resolution_prefers_explicit_then_default(tmp_path=None):
     assert cb.resolve_model(None, {"CODEX_HOME": "/nonexistent-dir-xyz"}) == cb.DEFAULT_MODEL
 
 
+# ---- effort resolution (SPEC_OPS_CODEX_EFFORT) + timing visibility ------------------
+
+def test_resolve_effort_env_override_and_fallback():
+    assert cb.resolve_effort({}) == cb.DEFAULT_EFFORT                              # no env → default
+    assert cb.resolve_effort({"SPEC_OPS_CODEX_EFFORT": "high"}) == "high"          # valid override
+    assert cb.resolve_effort({"SPEC_OPS_CODEX_EFFORT": " MEDIUM "}) == "medium"    # trimmed + lowered
+    assert cb.resolve_effort({"SPEC_OPS_CODEX_EFFORT": "bogus"}) == cb.DEFAULT_EFFORT  # invalid → default
+    assert cb.DEFAULT_EFFORT == "xhigh"
+
+def test_timing_line_on_success_to_stderr_only():
+    stream = _jsonl(_agent_msg(json.dumps(VALID_JUDGE_VERIFY)))
+    code, out, err = _run("judge-verify", _fake_invoke(stdout=stream))
+    assert code == cb.OK
+    assert "completed in" in err            # one real elapsed line, on stderr
+    assert "completed in" not in out        # never pollutes the JSON stdout the skill parses
+
+def test_skip_path_emits_no_timing_line():
+    # a skipped call never invoked Codex, so it must stay a single diagnostic with no timing
+    orig = cb.codex_available
+    cb.codex_available = lambda: False
+    try:
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = cb.run("judge-verify", "P", None, None, "m", "xhigh", 180, {},
+                          invoke=_fake_invoke(stdout="x"))
+    finally:
+        cb.codex_available = orig
+    log = err.getvalue()
+    assert code == cb.SKIP
+    assert "completed in" not in log and log.strip().count("\n") == 0
+
+
 # ---- runner ------------------------------------------------------------------------
 
 def _main():
