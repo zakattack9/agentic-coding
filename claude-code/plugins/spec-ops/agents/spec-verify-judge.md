@@ -41,7 +41,7 @@ Be adversarial. Independently re-derive the checkable claims from the **target i
    - a `confirmed` claim merely because a *stronger* citation is conceivable, when the cited evidence already establishes the claim;
    - a regression no concrete code path supports — a hypothetical blast radius you cannot point at;
    - the verifier's choice of which real-source technique to cite, when the recorded `method` already meets the standard the claim asserts.
-   The standard is "does this evidence establish the claim", not "is this the best conceivable evidence". Manufacturing low-value findings just churns the loop.
+   The standard is "does this evidence establish the claim", not "is this the best conceivable evidence" — a flag whose only remedy is **diminishing returns** doesn't change the verdict, so don't raise it. Manufacturing low-value findings just churns the loop.
 
 3. **Sweep attestation.** When the target is a spec implementation, attest the two **report-only** sweeps were honest:
    - **Backward sweep** — `backwardSweep.ran` actually walked the implementation diff against the right base (or recorded a legitimate `skippedReason`), and no obviously **substantive** (behavior-bearing) hunk was left out of `findings`. Refactors, formatting, tests, CI, config churn, and docs are allowlisted — not findings.

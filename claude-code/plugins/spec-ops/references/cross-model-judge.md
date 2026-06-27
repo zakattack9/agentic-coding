@@ -78,8 +78,9 @@ When a Codex verdict came back (exit 0):
   pass.
 - **A criterion `FAIL`s only on a *blocking* finding.** The refine judge tiers findings by
   `severity` and `FAIL`s a criterion **only** for a `CRITICAL` one; `WARNING` / `SUGGESTION`
-  findings are recorded but never hold the gate. (Verify has no severity field: a material
-  `missed` / `weakEvidence` is its blocking finding; sub-blocking observations go in `notes`.)
+  findings are recorded but never hold the gate. (Verify has no severity tier: its materiality
+  bar simply keeps non-material `missed` / `weakEvidence` out, so a material one is its only
+  finding type.)
   So the AND-merge withholds a gate flag only when **either** judge reports a blocking finding —
   never for sub-blocking polish. This is what stops the loop grinding on nits while still
   catching the one real landmine a pass surfaces.

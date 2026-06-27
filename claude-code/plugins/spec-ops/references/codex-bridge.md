@@ -31,7 +31,7 @@ exactly as it would with no second model. The bridge guarantees that — it can 
 ```
 codex_bridge.py --kind <judge-verify|judge-refine|write-requirements> \
                 --prompt-file <f> [--schema-file <f>] [--cd <repo>] \
-                [--model <m>] [--effort xhigh|high|medium|low] [--timeout 1170]
+                [--model <m>] [--effort xhigh|high|medium|low|minimal] [--timeout 1170]
 ```
 
 - `--kind` selects the return contract the reply is validated against (via

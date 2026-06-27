@@ -36,11 +36,12 @@ Run two **symmetric implementation checks**:
 - **`CRITICAL`** — blocks or misleads an implementer: a real `Gap` / `Ambiguity` / `Conflict`, a load-bearing uncaptured gotcha, or a **blocking ambiguity** (two reasonable readings produce incompatible architectures, APIs, or acceptance tests). **Only `CRITICAL` findings `FAIL` a criterion.**
 - **`WARNING`** — a real defect that degrades but does not block. Record it; it never `FAIL`s a criterion on its own.
 - **`SUGGESTION`** — optional polish. Never blocking.
+
 A criterion is `FAIL` **iff** it carries at least one `CRITICAL` finding; a criterion with only `WARNING` / `SUGGESTION` findings is `PASS`.
 
 **Enumerate exhaustively in this single pass.** Surface *every* material finding you can substantiate now — do not stop at the first blocking issue. A second reviewer should find nothing you could have found here; partial enumeration that forces another round is itself a failure. This is the whole point of the cross-model pass — front-load the criticals, don't drip them across reruns.
 
-**Materiality bar — flag what blocks, not what could be nicer.** A finding is `CRITICAL` only if a competent implementer **cannot resolve it without returning to the spec author**; if they can settle it themselves it is at most a `SUGGESTION`. Distinguish a **blocking** ambiguity (the two readings ship *different things*) from an **inferable** detail (any competent dev resolves it the same way), and flag only the blocking one:
+**Materiality bar — flag what blocks, not what could be nicer.** A finding is `CRITICAL` only if a competent implementer **cannot resolve it without returning to the spec author**; if they can settle it themselves it is at most a `SUGGESTION`. **A diminishing-returns nit, or a detail any competent dev can infer or debug at build/run time, is never a `FAIL`** while the AC's observable end-state is well defined — an AC's contract is that end state, not every code path to it. Distinguish a **blocking** ambiguity (the two readings ship *different things*) from an **inferable** detail (any competent dev resolves it the same way), and flag only the blocking one:
 - *Blocking (`CRITICAL`):* "AC-24 says 'highest-priority model' but never states whether a lower number is more preferred — the two readings select **different models**." → ships the wrong thing.
 - *Inferable (do not flag):* "The spec doesn't name the retry-counter variable." → any implementer picks a sane name.
 
