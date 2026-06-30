@@ -13,7 +13,7 @@
 
 **Why.** Today's specs are written for AI agents. They are correct, but long and technical. A developer finds them hard to read, and an offshore developer who reads English as a second language finds it harder still. After the code is built, someone must verify the feature by hand. That hand-check is the slowest step, and a person can only verify what they understand.
 
-**What a developer gets.** Every standard and full spec gains two plain-language parts. A short summary at the top explains what the feature does, why it exists, and how it behaves. A checklist at the end is split in two: one list of automated checks that an AI agent or CI runs, and one list of manual steps a person follows to check the feature by hand. Separately, an optional language mode lets the assistant talk to the developer in Vietnamese while it still writes every file in English.
+**Expected Result.** Every standard and full spec gains two plain-language parts. A short summary at the top explains what the feature does, why it exists, and how it behaves. A checklist at the end is split in two: one list of automated checks that an AI agent or CI runs, and one list of manual steps a person follows to check the feature by hand. Separately, an optional language mode lets the assistant talk to the developer in Vietnamese while it still writes every file in English.
 
 **What is out of scope.** Existing specs are left as they are. Spec files are never translated. The output style is opt-in and is not bundled into the plugin.
 
@@ -139,7 +139,16 @@ One `## Checklist` section, final in the spec, with two subsections distinguishe
 - **Scenarios to try:**
   - {an open scenario tailored to this feature's risk areas}
   - {another}
-- **Test ideas** (apply to any field or action): empty · very long · 0 / huge / negative · emoji & accents · just over a limit · create / read / update / delete · refresh / Back / double-click / lose network / timeout · a different role · small screen
+- **Test ideas** (apply to any field or action):
+  - empty
+  - very long
+  - 0 / huge / negative
+  - emoji & accents
+  - just over a limit
+  - create / read / update / delete
+  - refresh / Back / double-click / lose network / timeout
+  - a different role
+  - small screen
 
 **Sign-off**
 - [ ] All `### For agents` checks pass
@@ -227,7 +236,11 @@ A single standalone style file at `.claude/output-styles/` (repo-tracked), opt-i
 - **Scenarios to try:**
   - Spec two very different features (a one-AC tweak and a multi-capability feature) and judge whether the Summary and `### For humans` checklist stay clear and useful at both sizes.
   - In a Vietnamese session, mix requests fast — write code, then a doc, then ask a question, then switch styles without `/clear` — and watch for any place a language goes the wrong way.
-- **Test ideas:** a feature with no edge cases vs. many · an AC that is only human-verifiable vs. only machine-verifiable · grouped vs. flat ACs · a spec at each rigor.
+- **Test ideas:**
+  - a feature with no edge cases vs. many
+  - an AC that is only human-verifiable vs. only machine-verifiable
+  - grouped vs. flat ACs
+  - a spec at each rigor
 
 **Sign-off**
 - [ ] All `### For agents` checks pass
