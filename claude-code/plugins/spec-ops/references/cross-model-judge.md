@@ -65,7 +65,7 @@ trust stdout as a contract-valid verdict.
 |------|---------|---------------------|
 | `0`  | contract-valid Codex verdict on stdout | merge it with the Claude verdict (below) |
 | `10` / `11` / `12` | skipped / errored / unparseable | **proceed Claude-only**; surface the bridge's single log line; the verdict is exactly what Claude produced |
-| anything else | any other non-zero exit, **or the call could not run at all** (denied / blocked — e.g. this freshly-installed plugin's script refused in auto mode) | treat exactly like `10`: **proceed Claude-only**, surface a log line if there is one, change nothing |
+| anything else | any other non-zero exit, **or the call could not run at all** (denied / blocked) | treat exactly like `10`: **proceed Claude-only**, surface a log line if there is one, change nothing |
 
 A non-zero — or un-runnable — call never changes the outcome beyond what Claude alone produced. The Codex half is **best-effort**: a denied, failed, missing, or unparseable result is never an error and never holds the gate.
 
