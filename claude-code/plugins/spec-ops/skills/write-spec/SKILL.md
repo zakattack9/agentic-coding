@@ -191,7 +191,7 @@ It has its **own independent off-switch**, `SPEC_OPS_CODEX_WRITE=0` (separate fr
 
 **Preserve the write firewall.** This is still a *requirements* review sourced from the **idea**, not a grounding review sourced from the **codebase** (that is `refine-spec`'s job). The reviewer reasons only about requirements the feature *implies* — it must **not** inspect the code. Enforce that structurally: point `--cd` at a **fresh empty scratch directory** (e.g. `mktemp -d`), so even under the read-only sandbox there is nothing to ground against.
 
-**Availability — check this first.** Skill-load probe: !`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/codex_bridge.py" --probe --kind write-requirements` — if it reads `CODEX: NO`, **skip this reviewer entirely** and proceed straight to committing the draft (build no prompt, make no bridge call); only on `CODEX: YES` do the dispatch below.
+**Availability — check this first.** Skill-load probe: !`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/codex_bridge.py" --probe --kind write-requirements` — run the reviewer **only if** the line is an explicit `CODEX: YES …`. **Every other result** — `CODEX: NO …`, an empty line, or an error / permission-denied message (e.g. this freshly-installed plugin's script blocked in auto mode) — means Codex is unavailable: **skip this reviewer entirely** and proceed straight to committing the draft (build no prompt, make no bridge call). The probe is best-effort; a denied, failed, or unrecognized probe is never an error and never blocks the draft.
 
 Build a prompt file with the **idea + the drafted AC table + the discovery transcript** and an instruction to return only requirements implied by the feature (no codebase grounding), then dispatch:
 
@@ -202,7 +202,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/codex_bridge.py" --kind write-requirement
   --cd <empty-scratch-dir>      # effort inherits SPEC_OPS_CODEX_EFFORT (default xhigh)
 ```
 
-Branch on the exit code: **`0`** → the reviewer returned the `write-requirements` contract on stdout (`missingACs`, `unaskedQuestions`, `scopeRisks` — three string arrays, already shape-validated by the bridge); **`10` / `11` / `12`** → skipped / errored / unparseable, surface the one bridge log line and proceed straight to the commit.
+Branch on the exit code: **`0`** → the reviewer returned the `write-requirements` contract on stdout (`missingACs`, `unaskedQuestions`, `scopeRisks` — three string arrays, already shape-validated by the bridge); **anything else** — `10` / `11` / `12`, any other non-zero exit, or the call not running at all (e.g. denied / blocked) → skipped / errored / unparseable / unavailable: surface the one bridge log line if there is one and proceed straight to the commit. The reviewer can never block the draft.
 
 **Disposition in ONE consolidated `AskUserQuestion`** (never a per-item loop): present every `missingACs` / `unaskedQuestions` / `scopeRisks` item together and let the user accept or reject each — an accepted `missingAC` becomes a new criterion in the AC table, an accepted `unaskedQuestion` becomes a discovery question to resolve, an accepted `scopeRisk` a trim; rejected items are dropped with a one-line reason. The findings are **advisory** — the user's dispositions shape the draft, but nothing here can block the draft from being written or committed.
 

@@ -37,6 +37,29 @@ Optional per-call overrides: `--model <slug>` and `--effort <low|medium|high|xhi
 an override the latest model at `xhigh` is used. Each run prints the Codex **session id** so
 you can continue the thread with `codex exec resume <id>`.
 
+### Auto mode: trusting the bridge
+
+Each skill checks availability with a one-line probe that runs the bundled
+`scripts/codex_bridge.py` at skill load. In **auto permission mode**, Claude Code's classifier
+blocks a freshly-installed plugin's scripts until you trust them — so on a brand-new install
+that probe is **denied**, and the skill reads the denial as "Codex unavailable," reports it, and
+stops cleanly (fail-open — it never crashes and never answers as Claude in Codex's place). Since
+these skills exist to call Codex, you'll want to grant the bridge trust before using them. Add a
+rule to your `~/.claude/settings.json`:
+
+```json
+{
+  "permissions": {
+    "allow": ["Bash(python3 *codex_bridge.py*)"]
+  }
+}
+```
+
+The `*codex_bridge.py*` wildcard matches the script across version bumps (the plugin cache path
+embeds the version). Alternatively, add the plugin's source to `autoMode.environment` to trust
+this marketplace's code wholesale. Outside auto mode (the default interactive prompts), just
+approve the bridge when first asked.
+
 ## Data sent to OpenAI and the web
 
 **Web search is always on, with no opt-out.** That means your composed prompt and the

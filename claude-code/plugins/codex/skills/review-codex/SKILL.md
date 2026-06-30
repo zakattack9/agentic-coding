@@ -26,8 +26,11 @@ are review-specific.
 
 ## If Codex is unavailable
 
-If the probe line above reads `CODEX: NO …`, tell the user Codex is unavailable (quote that
-line) and **stop** — do not compose a prompt, do not call the bridge, do not review as Claude.
+If the probe line above is anything other than an explicit `CODEX: YES …` — a `CODEX: NO …`
+line, an empty line, or an error / permission-denied message (e.g. this freshly-installed
+plugin's script blocked in auto mode) — Codex is unavailable: tell the user (quote the line) and
+**stop** — do not compose a prompt, do not call the bridge, do not review as Claude. A denied or
+failed probe is never a crash; it just means Codex couldn't be reached.
 
 ## Flow
 

@@ -55,6 +55,22 @@ The cross-provider judge activates automatically once the OpenAI Codex CLI is in
 
 `BASH_MAX_TIMEOUT_MS` (`1200000` ms = 20 min) is the hard ceiling the bridge call needs; `BASH_DEFAULT_TIMEOUT_MS` raises the default so a call that sets no explicit timeout also gets the full window. Without it the second judge still **fails open** — a killed call is a no-op and the Claude verdict stands — you just never get the cross-model check. You can disable Codex entirely with `SPEC_OPS_CODEX=0`. Tune the judge's reasoning effort per run with `--codex-effort xhigh|high|medium` (or set `SPEC_OPS_CODEX_EFFORT`); web search for the judge is left to your `~/.codex/config.toml` (ambient — the judge grounds against the repo, not the web). Each call also prints its real elapsed time to stderr (`codex_bridge: completed in Ns`). Full bridge contract and env switches: `references/codex-bridge.md`.
 
+### Auto mode: the Codex layer is opt-in, and never blocks
+
+Every Codex touchpoint in spec-ops is **fully fail-open**: if Codex is not installed, not authenticated, switched off, or its bridge call can't run for any reason, the skill silently proceeds **Claude-only** — nothing fails. Each skill checks availability with a one-line probe that runs the bundled `scripts/codex_bridge.py` at skill load.
+
+In **auto permission mode**, Claude Code's classifier blocks a freshly-installed plugin's scripts until you trust them — so on a brand-new install that load-time probe is **denied**, and the skill correctly reads the denial as "Codex unavailable" and runs Claude-only. **This is expected and harmless** — you simply don't get the cross-model judge until you opt in. To enable it, grant the bridge trust one of two ways in your `~/.claude/settings.json`:
+
+```json
+{
+  "permissions": {
+    "allow": ["Bash(python3 *codex_bridge.py*)"]
+  }
+}
+```
+
+The `*codex_bridge.py*` wildcard matches the script across version bumps (the plugin cache path embeds the version). Alternatively, add the plugin's source to `autoMode.environment` to trust this marketplace's code wholesale. Outside auto mode (the default interactive prompts), you can just approve the bridge when first asked. Either way, **no opt-in is required for the skills to work** — it's only required for the optional Codex judge to participate.
+
 ## Choosing the implementation driver (`launch-spec`)
 
 `launch-spec` defaults to **`/goal`** and steps up only on **structural** signals — *how the work is shaped, never how big it is*. A broad-but-shallow change (one mechanical edit across many files) stays in `/goal` regardless of file count.

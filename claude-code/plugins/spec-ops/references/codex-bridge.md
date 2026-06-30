@@ -53,7 +53,7 @@ On every outcome the bridge prints its real wall-clock to **stderr** (`codex_bri
 Ns`, or the elapsed folded into the one fail-open diagnostic), so a slow judge is visible and a
 caller never times the call itself — and never needs a background-and-poll wrapper to do so.
 
-**Availability probe (`--probe`).** `codex_bridge.py --probe --kind <kind>` prints one deterministic line — `CODEX: YES …` or `CODEX: NO — <reason>` — and exits `0` **without invoking Codex**. It mirrors the same availability / auth / env-switch guards `run()` applies. A skill injects it at load with `` !`…codex_bridge.py --probe --kind <kind>` `` (Claude Code dynamic-context injection) so it can **skip its cross-model section on `NO`** — building no prompt and making no bridge call on the common no-Codex path — and run the judge only on `YES`. The `YES` path still calls the bridge and branches on the real exit code below (a `YES` probe doesn't guarantee the judge call itself returns `0`).
+**Availability probe (`--probe`).** `codex_bridge.py --probe --kind <kind>` prints one deterministic line — `CODEX: YES …` or `CODEX: NO — <reason>` — and exits `0` **without invoking Codex**. It mirrors the same availability / auth / env-switch guards `run()` applies. A skill injects it at load with `` !`…codex_bridge.py --probe --kind <kind>` `` (Claude Code dynamic-context injection) so it can **skip its cross-model section on `NO`** — building no prompt and making no bridge call on the common no-Codex path — and run the judge only on `YES`. The `YES` path still calls the bridge and branches on the real exit code below (a `YES` probe doesn't guarantee the judge call itself returns `0`). Treat **only** an explicit `CODEX: YES …` as available — a `CODEX: NO …` line, an empty line, or a denied / errored / unrecognized injection result (e.g. the script blocked in auto mode on a fresh install) all mean unavailable, so the skill skips its cross-model section and runs Claude-only. The probe is best-effort and never blocks the skill.
 
 Under the hood it runs, with **no escalating flag, ever**:
 
@@ -87,8 +87,11 @@ because its ask/review/delegate answers do want the web; a mirror-anchor comment
 | `11` | Codex error / timeout / `turn.failed` | proceed Claude-only; one log line |
 | `12` | reply unparseable after one re-dispatch | proceed Claude-only; one log line |
 
-**Every non-zero code is fail-open.** A skipped / errored / timed-out call emits exactly
-one stderr line and changes nothing about the caller's own verdict.
+**Every non-zero code is fail-open — and so is a call that never runs.** A skipped / errored /
+timed-out call emits exactly one stderr line and changes nothing about the caller's own verdict;
+a call (or `--probe`) that is **denied / blocked before it runs** — e.g. this freshly-installed
+plugin's script refused in auto mode — is treated identically: the caller proceeds Claude-only.
+The bridge can never make a skill fail.
 
 ### Availability & auth — probed non-interactively
 

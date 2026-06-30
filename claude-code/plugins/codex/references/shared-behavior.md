@@ -39,8 +39,9 @@ those defaults. The bridge translates the skill-facing names to Codex's real fla
 - **Invalid or ambiguous override** → open an `AskUserQuestion` offering up to 4 of the
   available models / supported efforts from the catalog as suggestions (the built-in "Other"
   covers a freeform value). **Never** call the bridge with a value you know is unknown.
-- **Catalog unavailable** (the `--resolve-defaults` line printed `CODEX_DEFAULTS: unavailable`
-  at load) → skip the picker: forward the user's override and let the bridge fail open on a
+- **Catalog unavailable** (the `--resolve-defaults` line printed `CODEX_DEFAULTS: unavailable`,
+  was empty, or was denied / blocked at load — e.g. the script refused in auto mode on a fresh
+  install) → skip the picker: forward the user's override and let the bridge fail open on a
   bad value (exit `11`, reported and stopped). Never silently drop the override, never
   substitute your own answer.
 
@@ -86,8 +87,13 @@ Then **branch on the bridge's exit code** (the Bash tool reports it):
 | `12` | reply unrecoverable                                                       | same: report the one diagnostic line and stop                                                                  |
 
 **Every non-zero exit is fail-open: you report the one diagnostic and stop. You never
-produce a Claude-authored answer/review/edit in Codex's place.** If the load-time probe line
-already said `CODEX: NO …`, say so and stop without composing a prompt or calling the bridge.
+produce a Claude-authored answer/review/edit in Codex's place.** The same holds when a call
+**never runs** — denied / blocked before execution (e.g. this freshly-installed plugin's script
+refused in auto mode): treat it exactly like a non-zero exit, report what you can, and stop. If
+the load-time probe line is anything other than an explicit `CODEX: YES …` — a `CODEX: NO …`
+line, an empty line, or a denied / errored injection result — Codex is unavailable: say so and
+stop without composing a prompt or calling the bridge. A denied or failed bridge call is never a
+crash.
 
 ## Surfacing the result (exit 0)
 
