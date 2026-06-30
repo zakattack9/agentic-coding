@@ -8,42 +8,42 @@
       "name": "zaksak",
       "source": "./claude-code/plugins/zaksak",
       "description": "A collection of Claude Code utilities by Zak Sakata.",
-      "version": "0.2.0"
+      "version": "0.2.1"
     },
     {
       "name": "spec-ops",
       "source": "./claude-code/plugins/spec-ops",
-      "description": "A spec-driven development workflow that turns a rough idea into a verified implementation. It elicits and hardens an acceptance-criteria-first spec against your codebase, compiles it into an execution driver, then checks the built code against every criterion — with read-only adversarial judges gating quality at each stage and every spec change committed automatically. When OpenAI Codex CLI is available it adds an optional, fail-open second judge of a different provider, so every quality gate is cross-checked rather than one model auditing itself.",
+      "description": "A spec-driven development workflow that turns a rough idea into a verified implementation. It elicits and hardens an acceptance-criteria-first spec against your codebase, compiles it into an execution driver, then checks the built code against every criterion \u2014 with read-only adversarial judges gating quality at each stage and every spec change committed automatically. When OpenAI Codex CLI is available it adds an optional, fail-open second judge of a different provider, so every quality gate is cross-checked rather than one model auditing itself.",
       "version": "0.29.5"
     },
     {
       "name": "ralph",
       "source": "./claude-code/plugins/ralph",
-      "description": "Ralph Loop — an autonomous agentic coding workflow with sandbox isolation, scoped memory, and self-managing task iteration.",
+      "description": "Ralph Loop \u2014 an autonomous agentic coding workflow with sandbox isolation, scoped memory, and self-managing task iteration.",
       "version": "0.1.8"
     },
     {
       "name": "skill-manager",
       "source": "./claude-code/plugins/skill-manager",
-      "description": "Manage your Claude Code skills and plugins from inside any project — switch which plugins are active, publish and sync local skills to a central marketplace, and diagnose and auto-repair a broken setup. Adapts to any repo layout and delegates skill authoring to the native skill-creator.",
+      "description": "Manage your Claude Code skills and plugins from inside any project \u2014 switch which plugins are active, publish and sync local skills to a central marketplace, and diagnose and auto-repair a broken setup. Adapts to any repo layout and delegates skill authoring to the native skill-creator.",
       "version": "0.2.26"
     },
     {
       "name": "worktree-ops",
       "source": "./claude-code/plugins/worktree-ops",
-      "description": "A git worktree workflow for running multiple Claude Code sessions in parallel — no restarts, no manual checkouts. Built on native worktrees, it covers the full lifecycle from spinning up an isolated worktree to finishing it through a guarded, never-squashed PR merge, with a live dashboard of in-flight work and deterministic guards against squash merges and committing unresolved conflicts.",
+      "description": "A git worktree workflow for running multiple Claude Code sessions in parallel \u2014 no restarts, no manual checkouts. Built on native worktrees, it covers the full lifecycle from spinning up an isolated worktree to finishing it through a guarded, never-squashed PR merge, with a live dashboard of in-flight work and deterministic guards against squash merges and committing unresolved conflicts.",
       "version": "0.3.6"
     },
     {
       "name": "gh-projects",
       "source": "./claude-code/plugins/gh-projects",
-      "description": "Run a small team's entire software lifecycle on GitHub Projects v2 — deterministic, free, GitHub-native, and with no metered AI. It provisions a golden-template board and repo automation across an org, then drives work from issue intake through sprint planning and the full branch → PR → merge flow with check-gated, never-squashed merges, kept safe by GitHub App-token writes and skill-scoped guards.",
+      "description": "Run a small team's entire software lifecycle on GitHub Projects v2 \u2014 deterministic, free, GitHub-native, and with no metered AI. It provisions a golden-template board and repo automation across an org, then drives work from issue intake through sprint planning and the full branch \u2192 PR \u2192 merge flow with check-gated, never-squashed merges, kept safe by GitHub App-token writes and skill-scoped guards.",
       "version": "0.3.8"
     },
     {
       "name": "codex",
       "source": "./claude-code/plugins/codex",
-      "description": "Run the OpenAI Codex CLI from inside Claude Code as a cross-model escape hatch: hand a one-off review, question, or write task to a different provider's model for a second opinion, grounded in your repo with web search always on. Every call routes through one fail-open bridge — if Codex is absent, unauthenticated, or broken the skill reports and stops rather than answering as Claude, and Codex's output is surfaced verbatim as untrusted external text. Assumes an OpenAI-authenticated Codex setup.",
+      "description": "Run the OpenAI Codex CLI from inside Claude Code as a cross-model escape hatch: hand a one-off review, question, or write task to a different provider's model for a second opinion, grounded in your repo with web search always on. Every call routes through one fail-open bridge \u2014 if Codex is absent, unauthenticated, or broken the skill reports and stops rather than answering as Claude, and Codex's output is surfaced verbatim as untrusted external text. Assumes an OpenAI-authenticated Codex setup.",
       "version": "0.1.6"
     }
   ]
