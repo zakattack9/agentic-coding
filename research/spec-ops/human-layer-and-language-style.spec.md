@@ -140,15 +140,15 @@ One `## Checklist` section, final in the spec, with two subsections distinguishe
   - {an open scenario tailored to this feature's risk areas}
   - {another}
 - **Test ideas** (apply to any field or action):
-  - empty
-  - very long
+  - Empty
+  - Very long
   - 0 / huge / negative
-  - emoji & accents
-  - just over a limit
-  - create / read / update / delete
-  - refresh / Back / double-click / lose network / timeout
-  - a different role
-  - small screen
+  - Emoji & accents
+  - Just over a limit
+  - Create / read / update / delete
+  - Refresh / Back / double-click / lose network / timeout
+  - A different role
+  - Small screen
 
 **Sign-off**
 - [ ] All `### For agents` checks pass
@@ -237,10 +237,10 @@ A single standalone style file at `.claude/output-styles/` (repo-tracked), opt-i
   - Spec two very different features (a one-AC tweak and a multi-capability feature) and judge whether the Summary and `### For humans` checklist stay clear and useful at both sizes.
   - In a Vietnamese session, mix requests fast — write code, then a doc, then ask a question, then switch styles without `/clear` — and watch for any place a language goes the wrong way.
 - **Test ideas:**
-  - a feature with no edge cases vs. many
-  - an AC that is only human-verifiable vs. only machine-verifiable
-  - grouped vs. flat ACs
-  - a spec at each rigor
+  - A feature with no edge cases vs. many
+  - An AC that is only human-verifiable vs. only machine-verifiable
+  - Grouped vs. flat ACs
+  - A spec at each rigor
 
 **Sign-off**
 - [ ] All `### For agents` checks pass
