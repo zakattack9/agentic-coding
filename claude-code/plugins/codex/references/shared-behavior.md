@@ -89,10 +89,11 @@ Then **branch on the bridge's exit code** (the Bash tool reports it):
 **Every non-zero exit is fail-open: you report the one diagnostic and stop. You never
 produce a Claude-authored answer/review/edit in Codex's place.** A call that **never runs** —
 denied or blocked before execution — is treated the same: report what you can and stop. Proceed
-with the bridge only when the load-time probe line **shows `CODEX: YES`**; any other line — a
-`CODEX: NO …` line, a blank line, or a denied / errored result — means Codex is unavailable, so
-say so and stop without composing a prompt or calling the bridge. A denied or failed bridge call
-is never a crash.
+with the bridge only when the load-time probe printed a line that **begins `CODEX: YES`** (in
+full, `CODEX: YES — available and authenticated`; the trailing reason is expected and does
+**not** disqualify it); any other line — a `CODEX: NO — …` line, a blank line, or a denied /
+errored result — means Codex is unavailable, so say so and stop without composing a prompt or
+calling the bridge. A denied or failed bridge call is never a crash.
 
 ## Surfacing the result (exit 0)
 

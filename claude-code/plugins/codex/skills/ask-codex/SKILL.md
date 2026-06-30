@@ -27,11 +27,12 @@ are ask-specific.
 
 ## If Codex is unavailable
 
-Proceed only when the probe line **shows `CODEX: YES`**. If it shows anything else — a
-`CODEX: NO …` line, a blank line, or an error / denied result — Codex is unavailable: tell the
-user (quote the line) and **stop** — do not compose a prompt, do not call the bridge, do not
-answer as Claude. A denied or failed probe is never a crash; it just means Codex couldn't be
-reached.
+Proceed only when the probe printed a line that **begins `CODEX: YES`** (in full,
+`CODEX: YES — available and authenticated`; the trailing reason is expected and does **not**
+disqualify it). Any other line — a `CODEX: NO — …` line, a blank line, or an error / denied
+result — means Codex is unavailable: tell the user (quote the line) and **stop** — do not
+compose a prompt, do not call the bridge, do not answer as Claude. A denied or failed probe is
+never a crash; it just means Codex couldn't be reached.
 
 ## Flow
 
