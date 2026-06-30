@@ -1,7 +1,5 @@
 # Human-Readable Spec Layer & Vietnamese Output Style Spec
 
-> This spec **dogfoods the format it defines** — it carries the proposed `## Summary` and the new two-subsection `## Checklist` (`### For agents` / `### For humans`), so it doubles as a worked example of what the feature produces.
-
 ## TL;DR
 - Add a human-reading layer to standard/full specs — a plain-language summary plus a checklist split into an agent list and a human list — and an opt-in Vietnamese chat mode that keeps every artifact in English.
 - Breaks if missed: the new `## Checklist` **replaces** the old code-area index — keep every item traced to an `AC-id` and keep the agent items runnable, or verify-spec's coverage mapping and the AI implementer lose traceability (AC-8..AC-14).
@@ -28,12 +26,12 @@
 | AC  | Criterion                                                                                                                                                                                                |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 1   | The spec skeleton keeps `## TL;DR` and adds `## Summary` immediately after it; both are present at standard / full and absent at `light`.                                                                |
-| 2   | `## TL;DR` is the terse top layer: a one-line identifier of the change plus the single most important "breaks if missed" constraint or failure mode (pointing at the relevant `AC-id`s) — not a mini-summary. |
-| 3   | `## Summary` is zero-context onboarding for a human (dev / QA), in this order: a one-sentence definition of what it is → the problem / why → the key behaviors a user or admin can do → what is explicitly out of scope. |
+| 2   | `## TL;DR` is the terse top layer (2–3 bullets, per write-spec): a one-line identifier of the change plus the key "breaks if missed" risk(s) pointing at the relevant `AC-id`s — not a mini-summary. |
+| 3   | `## Summary` is zero-context onboarding for a human (dev / QA), in this order: a one-sentence definition of what it is → the problem / why → the key behaviors a user or admin can do → what is explicitly out of scope; it stays short (a few small paragraphs). |
 | 4   | `## TL;DR` and `## Summary` sit at different altitudes and do not copy-paste each other; each reads correctly on its own.                                                                                |
 | 5   | `## Summary` prose is code-free — no file paths, function / class, table / column, or config-key names — even at full rigor; technical detail stays in the body and AC table.                            |
 | 6   | `## Summary` is a derived human view, not a source of truth: the `## Acceptance Criteria` table stays canonical, and refine-spec / verify-spec do not treat Summary prose as an independent groundable claim. |
-| 7   | The human layer (`## Summary` and `### For humans`) follows plain-language rules for a non-native English reader: short single-idea sentences, active voice, present tense, one term per concept, no idioms or phrasal verbs, and UI labels quoted verbatim. |
+| 7   | The human layer (`## Summary` and `### For humans`) follows plain-language rules for a non-native English reader: short single-idea sentences (≈20 words max), active voice, present tense, one term per concept, acronyms spelled out once, no idioms / phrasal verbs / contractions, "where before what" in each step, and UI labels quoted verbatim. |
 
 ### 2. `## Checklist` — split into `### For agents` and `### For humans`
 
@@ -43,7 +41,7 @@
 | 9   | The split is by kind of check: `### For agents` holds checks whose observation and pass / fail rule are both runnable by an agent / CI (a command, a test, a static read); `### For humans` holds checks needing human judgment (UI clickthrough, visual, UX, logic review). |
 | 10  | `### For agents` items are terse and runnable: each names the exact command or test and its expected result.                                                                                          |
 | 11  | `### For humans` items are scenario walkthroughs in read-then-do form — a setup / precondition where needed, one observable action, and the expected observable result — phrased so a zero-context, non-native-English reader can perform them without reading code. |
-| 12  | Each checklist item ends with a parenthetical `AC-id` trace; a criterion that is part agent-checkable and part human-judgment appears in both subsections, with the human one marked `(partial)`.      |
+| 12  | Each *verification* checklist item (every `### For agents` item and every capability-group `### For humans` item) ends with a parenthetical `AC-id` trace; the Setup, "Explore on your own", and Sign-off lines are structural and carry no trace. A criterion that is part agent-checkable and part human-judgment appears in both subsections, the human one marked `(partial)`. |
 | 13  | Every `AC-id` cited in a trace references an existing criterion (no orphan / unknown ids); every AC (at standard / full) is traced by at least one checklist item — coverage is exhaustive across the two subsections. |
 | 14  | A checklist item verifies an existing AC and never introduces a requirement, value, or success criterion absent from the AC table — it is not the sole home of any fact.                              |
 
@@ -52,9 +50,9 @@
 | AC  | Criterion                                                                                                                                                                                              |
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 15  | `### For humans` groups its checks under user-facing capabilities / flows (about 5–9 checks per group), not as one flat list.                                                                         |
-| 16  | `### For humans` opens with the critical happy-path ("smoke") checks — the "does it even work" path — and includes the required empty / edge / error cases the spec calls for, not happy-path only.    |
+| 16  | At full rigor, `### For humans` opens with the critical happy-path ("smoke") checks — the "does it even work" path — and includes the required empty / edge / error cases the spec calls for, not happy-path only. |
 | 17  | `### For humans` ends with an "Explore on your own" block that sends the verifier *past* the scripted checks — a short list of open scenarios to try plus a short list of test ideas to vary (e.g. data values, boundaries, create / read / update / delete, interruptions, roles / devices) — and it restates no scripted check. |
-| 18  | `### For humans` closes with a sign-off checklist of exit conditions (for example: all checks pass, exploration done, no open critical defects).                                                       |
+| 18  | At full rigor, `### For humans` closes with a sign-off checklist of exit conditions (for example: all checks pass, exploration done, no open critical defects). |
 | 19  | Any setup the human checks need (role, state, test data, where to look) is stated in plain placeholders; performing the section never requires reading the codebase.                                   |
 | 20  | Rigor scaling for `## Checklist`: absent at `light`; at `standard` a lean form (`### For agents` + a lean `### For humans` of capability checks and a short explore prompt); at `full` the complete structure (smoke + grouped capability checks + full explore block + sign-off). |
 
@@ -64,20 +62,23 @@
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 21  | write-spec drafts the `## Summary` and the two-subsection `## Checklist` for standard / full specs.                                                                                                     |
 | 22  | refine-spec finalizes the `## Summary` and `## Checklist` after the ACs stabilize and reconciles them on any AC added, removed, renamed, merged, or split — every AC traced; no stale or orphan items or traces. |
-| 23  | refine-spec's readiness gate blocks Stop when, at standard / full, the `## Summary` or `## Checklist` is missing or checklist coverage is non-exhaustive.                                                |
-| 24  | The refine readiness judge (`spec-refine-judge`) verdict includes a flag asserting the human layer (Summary + both checklist subsections, exhaustive coverage) is present and consistent at standard / full. |
-| 25  | verify-spec's coverage-matrix `checklist-item` column maps each `AC-id` to its `## Checklist` item(s) across both subsections, and no longer references a code-area index.                               |
-| 26  | verify-spec's drift re-check flags (report-only) a stale `## Summary` / `## Checklist`, invalid or orphan AC traces, duplicate or conflicting coverage, and any checklist item matching no AC; verify-spec stays read-only and edits nothing. |
-| 27  | `references/ac-contract.md` documents the new `## Checklist` (two subsections, scenario vs runnable phrasing, AC-id trace, exhaustive coverage, and the `### For humans` structure) and no longer describes a code-area → AC-id index. |
+| 23  | refine-spec's readiness gate blocks Stop when, at standard / full, the `## Summary` or `## Checklist` is missing or checklist coverage is non-exhaustive — except a spec in the legacy `## Checklist` shape (AC-39), which is exempt. |
+| 24  | The refine readiness judge (`spec-refine-judge`) FAILs the spec when, at standard / full, the human layer (Summary + both checklist subsections, exhaustive coverage) is missing or inconsistent — folded into its existing criteria, no new standalone gate flag. |
+| 25  | verify-spec's coverage-matrix `checklist-item` column maps each `AC-id` to its `## Checklist` item(s) across both the `### For agents` and `### For humans` subsections. |
+| 26  | verify-spec reports (read-only, never editing) checklist problems — invalid or orphan AC traces, duplicate or conflicting coverage, and any checklist item matching no AC — and its drift re-check additionally flags a `## Summary` / `## Checklist` stale relative to the current ACs; these extend verify-spec's existing coverage matrix and drift baseline (verify reports, refine fixes). |
+| 27  | `references/ac-contract.md` documents the new `## Checklist` (two subsections, scenario vs runnable phrasing, AC-id trace, exhaustive coverage, and the `### For humans` structure); its "The Checklist is an index, not a copy" section is rewritten away from the code-area index model. |
 | 28  | write-spec's Writing Philosophy / "say things once" guidance is updated to match the new `## Checklist`; the human layer is an intentional comprehension restatement, exempt from "say things once" as long as it adds no new fact. |
-| 29  | The spec-ops README documents `## TL;DR` + `## Summary` and the two-subsection `## Checklist`.                                                                                                          |
+| 29  | The spec-ops README documents `## TL;DR` + `## Summary` and the two-subsection `## Checklist`, and no longer describes the Checklist as a code-area → `AC-id` index (the stale description currently lives in the README and in write-spec's "say things once" rule). |
+| 41  | refine-spec's own Checklist guidance — its **Bloat** row, the "collapse a Checklist to a code-area → `AC-id` pointer" instruction, and its `no_bloat` readiness-gate item — is rewritten to the new model, so refine-spec does not collapse or flag the `### For humans` walkthroughs (an intentional plain-language restatement) as bloat or duplication. |
+| 42  | the `spec-refine-judge` `no_bloat` **and** `no_overengineering` criteria are rewritten away from "a Checklist indexes the ACs by code area rather than restating them" / "a Checklist that restates it", so a spec carrying the new two-subsection `## Checklist` passes the judge. |
+| 43  | launch-spec no longer treats `## Checklist` as the implementation work-breakdown (it does not derive `tasks.md`, parallel workstreams, or commit cadence from Checklist "work items"); it keys phasing / parallelism off the **AC groups**, and treats the new `## Checklist` as verification — `### For agents` feeding the done-gate, `### For humans` as the human sign-off handoff. |
 
 ### 5. Vietnamese output style
 
 | AC  | Criterion                                                                                                                                                                                                                  |
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 30  | A Vietnamese output style file exists at this repo's `.claude/output-styles/` directory, is tracked in git, and is valid, loadable Claude Code output-style syntax.                                                       |
-| 31  | The style's frontmatter sets a descriptive `name`, a `description`, and `keep-coding-instructions: true`, and omits `force-for-plugin` (and any auto-apply) so it is opt-in via `/output-style`.                          |
+| 30  | A Vietnamese output style file exists at this repo's `.claude/output-styles/` directory, is tracked in git, and is valid, loadable Claude Code output-style syntax; it is NOT bundled into the spec-ops plugin (not in the plugin's `output-styles/`, not declared in `plugin.json`). |
+| 31  | The style's frontmatter sets a descriptive `name`, a `description`, and `keep-coding-instructions: true`, and omits `force-for-plugin` (and any auto-apply) so it is opt-in — selected via `/config` ("Output style") or the `outputStyle` setting, never auto-applied. |
 | 32  | The style instructs Claude to respond to the user in Vietnamese (all conversational prose, explanations, questions) while writing ALL artifacts in English — code, comments, identifiers, file / branch names, commit messages, documentation, config, and every spec section including `## Summary` and `## Checklist`. |
 | 33  | The style instructs that when explaining an English spec / checklist, Claude explains in Vietnamese but quotes the English text verbatim — it does not translate the artifact in place.                                   |
 | 34  | The style instructs that AskUserQuestion prompts and options render in Vietnamese, while any text written into files stays English.                                                                                       |
@@ -87,11 +88,11 @@
 
 | AC  | Criterion                                                                                                                                                                                          |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 36  | The repo README (and / or a dedicated docs note) documents installing the style: copy the file to `~/.claude/output-styles/`, activate it via `/output-style`, note it is optional and changes no persisted artifact's language, and state that an output style loads at session start so switching it needs `/clear` or a restart. |
-| 37  | The spec-ops plugin version in `.claude-plugin/marketplace.json` is bumped (minor).                                                                                                              |
+| 36  | The repo README (and / or a dedicated docs note) documents installing the style: copy the file to `~/.claude/output-styles/`, activate it via `/config` ("Output style") or the `outputStyle` setting, note it is optional and changes no persisted artifact's language, and state that an output style loads at session start so switching it needs `/clear` or a restart. |
+| 37  | The spec-ops plugin version in `.claude-plugin/marketplace.json` is bumped (minor), and no `version` field is added to `plugin.json`. |
 | 38  | All spec files and the human layer remain entirely in English — no spec content is translated into Vietnamese.                                                                                    |
-| 39  | The new format applies only to specs authored under the updated write-spec; refine-spec does not rewrite a pre-existing legacy code-area `## Checklist`, and verify-spec does not flag legacy specs as non-compliant. |
-| 40  | The spec-ops test suite is updated so no test asserts the old code-area-index or inline-tag `## Checklist` semantics, and the new format / wiring is covered — including light / standard / full rigor behavior; the suite passes. |
+| 39  | Legacy detection is by shape: a `## Checklist` that is a flat `code-area → AC-id` list (no `### For agents` / `### For humans` subsections) marks a pre-format spec — refine-spec leaves it alone, the gate does not fire on it, and verify-spec does not flag it. A standard/full spec with neither that legacy shape nor the new human layer is treated as new (gate fires); a hand-authored spec given the legacy shape is treated as legacy. write-spec always emits the new shape, so the residual only arises from manual authoring. |
+| 40  | The existing pytest suite (`tests/`) stays green; if this change adds or alters a deterministic script or contract (e.g. a new validator), it ships with matching tests. The skill-markdown format itself is prose, not unit-tested. |
 
 ---
 
@@ -108,7 +109,7 @@
 
 ## The reading layer — content rules
 
-**`## TL;DR`** stays 2–3 short lines: the one-line "what is this change," then the single "breaks if missed" risk pointing at its `AC-id`s. It is the fast re-orientation for a reader (or agent) that needs the hardest constraint immediately — never a condensed Summary.
+**`## TL;DR`** stays 2–3 short lines: the one-line "what is this change," then the key "breaks if missed" risk(s) pointing at their `AC-id`s. It is the fast re-orientation for a reader (or agent) that needs the hardest constraint immediately — never a condensed Summary.
 
 **`## Summary`** is for a person with zero prior context. Keep it short (3 small paragraphs / 4–8 sentences), code-free, and in order: **what it is → why → key behaviors → out of scope**. It restates for comprehension; it adds no requirement that isn't in the AC table and is never the sole home of a fact.
 
@@ -175,11 +176,15 @@ A single standalone style file at `.claude/output-styles/` (repo-tracked), opt-i
 
 ## Watch out for
 
-- **Output styles load at session start.** Selecting a different style mid-session via `/config` does not take effect until `/clear` or restart — the install doc must say so (AC-36).
+- **Output styles load at session start.** Selecting a different style mid-session (via `/config` or the `outputStyle` setting) does not take effect until `/clear` or restart — the install doc must say so (AC-36). (Activate through `/config` / the `outputStyle` setting; don't assume a standalone `/output-style` command — it is not the documented path.)
+- **Rigor is shape-detected, not stored.** A spec carries no explicit rigor marker; the gate treats a spec with `## TL;DR` + `## Summary` as standard/full and an AC-table-only spec as `light` (exempt) — consistent with AC-39's shape-based legacy detection.
 - **Subagents are unaffected by output styles.** The spec-ops judges run with their own system prompts, so their JSON return contracts stay English regardless of the active style — no special handling needed, but don't rely on the style to localize subagent output.
-- **AC-id traces belong in the spec, not in shipped code.** The existing artifact-hygiene sweep strips AC-id citations from *built* artifacts; the `## Checklist`'s traces live in the spec, which is allowed to carry them — keep the two scopes distinct.
+- **AC-id traces belong in the spec, not in shipped code.** The existing artifact-hygiene sweep is **report-only** — it *flags* AC-id citations in *built* artifacts, it does not strip them. The `## Checklist`'s traces live in the spec, which is allowed to carry them — keep the two scopes distinct.
 - **The `## Checklist` heading is reused with a new meaning.** Pre-change specs keep the old code-area index under the same heading (left alone, per Boundaries). Tell the difference by shape: new checklists have `### For agents` / `### For humans` subsections; legacy ones are a flat "code area → AC-id" list. `ac-contract.md` / README must make the new meaning unambiguous so the reuse doesn't confuse readers of mixed-age specs.
 - **Label by the check, not perfectly by the person.** The subsections are named `### For agents` / `### For humans`, but a part-automatable criterion legitimately appears in both — don't force every AC into exactly one subsection.
+- **The refine gate is a fixed 6-flag contract.** Its flags (`claims_verified` … `ac_complete`) are validated in lockstep by `stop_refine_spec.py`, `schemas/judge_refine.schema.json`, `scripts/validate_return.py`, and the cross-model judge. Enforce the human layer by **folding it into the existing `ac_complete` criterion plus the Refine step's structural-conformance check** (where the TL;DR-presence check already lives) — adding a 7th flag is the obvious path but forces changing all four of those at once.
+- **The `checklist-item` coverage matrix lives in `verify-spec/SKILL.md`, not `verify-internals.md`.** `references/verify-internals.md` has no coverage matrix — only the evidence standard and the backward / spec-linkage sweeps. Edit the matrix where it is actually defined.
+- **Format templates contain example `AC-id` tokens.** The new templates show traces like `(AC-3)`. `spec_linkage_scan.py` suppresses its `ac-id` rule only for files on its `CONSUMER_AC_FILES` allowlist (`*-template.*`, `*.tmpl`, rubric / issue-body files) — which does **not** include `ac-contract.md` or the skill `SKILL.md`s — so its report-only sweep may flag those example traces. That is a documentation false-positive (the sweep is report-only, not a gate); if it is noisy, extend the allowlist — it is not a format change.
 
 ## Boundaries
 
@@ -195,9 +200,9 @@ A single standalone style file at `.claude/output-styles/` (repo-tracked), opt-i
 
 ### For agents
 - [ ] `grep` the write-spec skeleton + rigor table → `## Summary` appears immediately after `## TL;DR`; `light` omits both Summary and Checklist, `standard` is lean, `full` is complete → (AC-1, AC-20)
-- [ ] `grep` a generated `## TL;DR` → ≤3 short bullets; it leads with the change plus a "breaks if missed" `AC-id` pointer and is not a copy of the Summary → (AC-2, AC-4)
+- [ ] `grep` a generated `## TL;DR` → 2–3 short bullets; it leads with the change plus a "breaks if missed" `AC-id` pointer and is not a copy of the Summary → (AC-2, AC-4)
 - [ ] `grep` the write-spec skeleton + ac-contract → `## Checklist` is the final section with `### For agents` and `### For humans` subsections and no inline human/auto tags → (AC-8, AC-27)
-- [ ] Read ac-contract.md, write-spec philosophy, and README → no code-area-index description remains; the two-subsection semantics + the `### For humans` structure are documented → (AC-27, AC-28, AC-29)
+- [ ] Read ac-contract.md, write-spec philosophy + skeleton, README, refine-spec/SKILL.md, spec-refine-judge.md, and launch-spec/SKILL.md → no Checklist-as-code-area-index or Checklist-as-build-tasks guidance remains; the two-subsection semantics + the `### For humans` structure are documented → (AC-27, AC-28, AC-29, AC-41, AC-42, AC-43)
 - [ ] Inspect refine/verify logic → the `## Summary` is treated as a derived view: its prose is not enumerated as a groundable claim, and the AC table stays canonical → (AC-6)
 - [ ] Inspect a generated standard/full spec → every AC is traced by ≥1 checklist item, every cited AC-id exists, no item introduces a fact absent from the AC table, partial checks appear in both subsections → (AC-12, AC-13, AC-14)
 - [ ] Inspect a generated `## Checklist` → `### For agents` items each name a runnable command or test + expected result; `### For humans` items need human judgment (no runnable command) → (AC-9, AC-10)
@@ -207,7 +212,7 @@ A single standalone style file at `.claude/output-styles/` (repo-tracked), opt-i
 - [ ] Introduce a stale/orphan checklist trace, run verify-spec → it flags the stale Summary/Checklist, the invalid trace, and any unmatched item, and edits nothing → (AC-26)
 - [ ] Run refine-spec on a legacy spec whose `## Checklist` is a flat code-area→AC-id list → the legacy checklist is left unchanged and verify-spec does not mark it non-compliant → (AC-39)
 - [ ] Inspect `.claude/output-styles/<style>.md` → tracked; valid loadable syntax; frontmatter has name + description + `keep-coding-instructions: true`; no force/auto-apply → (AC-30, AC-31)
-- [ ] Read README/docs → install steps (copy to `~/.claude/output-styles/`, `/output-style`), the "optional, changes no artifact's language" note, and the session-start/`/clear` caveat are present → (AC-36)
+- [ ] Read README/docs → install steps (copy to `~/.claude/output-styles/`, then `/config` / `outputStyle` setting), the "optional, changes no artifact's language" note, and the session-start/`/clear` caveat are present → (AC-36)
 - [ ] `python3 -m json.tool .claude-plugin/marketplace.json` and read the spec-ops version → valid JSON; version bumped (minor) → (AC-37)
 - [ ] Run the spec-ops test suite → green; no test asserts old code-area-index or inline-tag semantics; light/standard/full behavior covered → (AC-40)
 
@@ -220,11 +225,12 @@ A single standalone style file at `.claude/output-styles/` (repo-tracked), opt-i
 - [ ] Read the `## Summary` and `### For humans` checklist as an English-as-second-language reader → sentences are short and active, one term is used per concept, UI labels are quoted exactly, and there are no idioms → (AC-7)
 
 **Verify a feature by hand**
-- [ ] On a `full` spec for a real feature, follow two or three `### For humans` checks against the running feature → you can complete each step without opening the code, and what you see matches the stated result → (AC-11, AC-16, AC-19)
+- [ ] On a `full` spec for a real feature, follow two or three `### For humans` checks against the running feature → you can complete each step without opening the code, and what you see matches the stated result → (AC-11, AC-19)
 
 **Run the gate**
 - [ ] Add, rename, then remove an AC and run refine-spec → the `## Summary` and `## Checklist` update to match, with no leftover traces → (AC-22)
 - [ ] At `standard`/`full`, delete a `### For humans` group or the `## Summary`, then run refine-spec → it does not finish; it reports the missing human layer → (AC-23, AC-24)
+- [ ] Run refine-spec on a standard/full spec that already carries the new two-subsection `## Checklist` → it leaves the `### For humans` walkthroughs intact (does not collapse them to a code-area index) and neither the refine gate nor the judge flags them as bloat → (AC-41, AC-42)
 
 **Vietnamese session**
 - [ ] Select the Vietnamese style, run `/clear`, then ask a question → the reply is Northern-register Vietnamese → (AC-32, AC-35)
