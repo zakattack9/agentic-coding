@@ -26,12 +26,12 @@ are review-specific.
 
 ## Codex availability
 
-Proceed only when the probe above printed a line that **begins `CODEX: YES`** (in full,
-`CODEX: YES — available and authenticated`; the trailing reason is expected and does **not**
-disqualify it). Any other line — a `CODEX: NO — …` line, a blank line, or an error / denied
-result — means Codex is unavailable: tell the user (quote the line) and **stop** — do not
-compose a prompt, do not call the bridge, do not review as Claude. A denied or failed probe is
-never a crash; it just means Codex couldn't be reached.
+Proceed only when the probe above **shows `CODEX: YES`** (only the `CODEX: YES` verdict matters;
+whatever text follows it is an informational reason that may change — ignore it). Any other line
+— a `CODEX: NO …` line, a blank line, or an error / denied result — means Codex is unavailable:
+tell the user (quote the line) and **stop** — do not compose a prompt, do not call the bridge,
+do not review as Claude. A denied or failed probe is never a crash; it just means Codex couldn't
+be reached.
 
 ## Flow
 
