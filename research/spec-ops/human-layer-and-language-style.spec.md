@@ -3,17 +3,17 @@
 > This spec **dogfoods the format it defines** — it carries the proposed `## Summary` and the new two-subsection `## Checklist` (`### For agents` / `### For humans`), so it doubles as a worked example of what the feature produces.
 
 ## TL;DR
-- Add a human-reading layer to standard/full specs — a plain-language `## Summary` and a `## Checklist` split into `### For agents` (runnable) and `### For humans` (manual) — plus a standalone, opt-in Vietnamese output style, so an offshore dev/QA can understand a task and verify it while every artifact stays English.
-- Breaks if missed: the `## Checklist` **replaces** the old code-area index with two audience subsections — keep every item traced to an `AC-id` and keep `### For agents` items runnable, or verify-spec's coverage mapping and the AI implementer lose traceability (AC-8..AC-14).
-- Breaks if missed: the output style must separate **conversational language (Vietnamese)** from **persisted-artifact language (English)** airtight, or Vietnamese leaks into specs/code (AC-32..AC-35).
+- Add a human-reading layer to standard/full specs — a plain-language summary plus a checklist split into an agent list and a human list — and an opt-in Vietnamese chat mode that keeps every artifact in English.
+- Breaks if missed: the new `## Checklist` **replaces** the old code-area index — keep every item traced to an `AC-id` and keep the agent items runnable, or verify-spec's coverage mapping and the AI implementer lose traceability (AC-8..AC-14).
+- Breaks if missed: the Vietnamese style must separate **conversational language** from **persisted-artifact language**, or Vietnamese leaks into specs and code (AC-32..AC-35).
 
 ## Summary
 
 **What this is.** This change adds a human-reading layer to the specs the spec-ops skills produce, and a Vietnamese language mode for the assistant. The specs themselves stay in English.
 
-**Why.** Today's specs are written for AI agents. They are correct but long and technical, so a developer — especially an offshore developer who reads English as a second language — finds them hard to read and hard to verify after the code is built. Verifying a feature by hand is the slowest step, and a person can only verify what they understand.
+**Why.** Today's specs are written for AI agents. They are correct, but long and technical. A developer finds them hard to read, and an offshore developer who reads English as a second language finds it harder still. After the code is built, someone must verify the feature by hand. That hand-check is the slowest step, and a person can only verify what they understand.
 
-**What a developer gets.** Every standard and full spec gains two plain-language parts. A `## Summary` at the top explains what the feature does, why it exists, and how it behaves. A `## Checklist` at the end is split into a `### For agents` list (commands and tests an agent or CI runs) and a `### For humans` list (steps a person follows to check the feature by hand, plus prompts to explore on their own). Separately, an optional output style lets the assistant talk to the developer in Vietnamese while it still writes every file in English.
+**What a developer gets.** Every standard and full spec gains two plain-language parts. A short summary at the top explains what the feature does, why it exists, and how it behaves. A checklist at the end is split in two: one list of automated checks that an AI agent or CI runs, and one list of manual steps a person follows to check the feature by hand. Separately, an optional language mode lets the assistant talk to the developer in Vietnamese while it still writes every file in English.
 
 **What is out of scope.** Existing specs are left as they are. Spec files are never translated. The output style is opt-in and is not bundled into the plugin.
 
@@ -53,8 +53,8 @@
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 15  | `### For humans` groups its checks under user-facing capabilities / flows (about 5–9 checks per group), not as one flat list.                                                                         |
 | 16  | `### For humans` opens with the critical happy-path ("smoke") checks — the "does it even work" path — and includes the required empty / edge / error cases the spec calls for, not happy-path only.    |
-| 17  | `### For humans` ends with an "Explore on your own" block: 1–2 feature-specific exploration charters (open prompts, not scripted steps) plus a standard heuristic menu (e.g. data values, boundaries, CRUD, interruptions, roles / devices) so the verifier can generate their own test cases. |
-| 18  | `### For humans` closes with a sign-off / exit line (for example: all checks pass, charters run, no open critical defects).                                                                            |
+| 17  | `### For humans` ends with an "Explore on your own" block that sends the verifier *past* the scripted checks — a short list of open scenarios to try plus a short list of test ideas to vary (e.g. data values, boundaries, create / read / update / delete, interruptions, roles / devices) — and it restates no scripted check. |
+| 18  | `### For humans` closes with a sign-off checklist of exit conditions (for example: all checks pass, exploration done, no open critical defects).                                                       |
 | 19  | Any setup the human checks need (role, state, test data, where to look) is stated in plain placeholders; performing the section never requires reading the codebase.                                   |
 | 20  | Rigor scaling for `## Checklist`: absent at `light`; at `standard` a lean form (`### For agents` + a lean `### For humans` of capability checks and a short explore prompt); at `full` the complete structure (smoke + grouped capability checks + full explore block + sign-off). |
 
@@ -135,17 +135,23 @@ One `## Checklist` section, final in the spec, with two subsections distinguishe
 - [ ] (empty case) {action} → {expected result} (AC-6)
 - [ ] (error case) {action} → {expected result} (AC-6)
 
-**Explore on your own**
-- Charter: Explore {target} using {data / heuristics} to discover {problems}.
-- Idea menu — try against each field / action: empty · very long · 0 / huge / negative numbers · emoji & accents · just under / over a limit · create-read-update-delete · refresh / Back / double-click / lose network / timeout · a different role · small screen.
-- Log each finding as: what you did → what you expected → what happened.
+**Explore on your own** — go past the checks above and report anything that looks wrong; the goal is to find what they did not. (Never restate a scripted check here.)
+- **Scenarios to try:**
+  - {an open scenario tailored to this feature's risk areas}
+  - {another}
+- **Test ideas** (apply to any field or action): empty · very long · 0 / huge / negative · emoji & accents · just over a limit · create / read / update / delete · refresh / Back / double-click / lose network / timeout · a different role · small screen
 
-**Sign-off:** all checks pass · charter(s) run, findings logged · no open critical defects.
+**Sign-off**
+- [ ] All `### For agents` checks pass
+- [ ] All `### For humans` checks pass
+- [ ] Explored past the checklist; anything wrong is reported
+- [ ] No open critical problems
 ```
 
 - **Trace, don't re-describe.** Each item ends with `(AC-…)` citing only existing ids; the criterion text already lives in the AC table.
 - **Partial checks live in both.** A criterion that is part machine-checkable, part human-judgment gets a `### For agents` line for the machine part and a `### For humans` line marked `(partial)` for the judgment part.
 - **Coverage is exhaustive** across the two subsections: every AC is traced by ≥1 item. One item may cover several closely-related ACs; one AC may need several items.
+- **Explore complements, never repeats.** The "Explore on your own" block lists only what the scripted checks deliberately leave open — if an item would restate a scripted check, drop it. Push genuinely open-ended or subjective checks *into* Explore rather than bloating the scripted list.
 
 ## Vietnamese output style — behavior contract
 
@@ -179,15 +185,20 @@ A single standalone style file at `.claude/output-styles/` (repo-tracked), opt-i
 ## Checklist
 
 ### For agents
-- [ ] `grep` the write-spec skeleton → `## Summary` appears immediately after `## TL;DR`; both gated to standard/full → (AC-1)
+- [ ] `grep` the write-spec skeleton + rigor table → `## Summary` appears immediately after `## TL;DR`; `light` omits both Summary and Checklist, `standard` is lean, `full` is complete → (AC-1, AC-20)
+- [ ] `grep` a generated `## TL;DR` → ≤3 short bullets; it leads with the change plus a "breaks if missed" `AC-id` pointer and is not a copy of the Summary → (AC-2, AC-4)
 - [ ] `grep` the write-spec skeleton + ac-contract → `## Checklist` is the final section with `### For agents` and `### For humans` subsections and no inline human/auto tags → (AC-8, AC-27)
-- [ ] Read ac-contract.md, write-spec philosophy, and README → no code-area-index description remains; new two-subsection semantics + the `### For humans` structure are documented → (AC-27, AC-28, AC-29)
+- [ ] Read ac-contract.md, write-spec philosophy, and README → no code-area-index description remains; the two-subsection semantics + the `### For humans` structure are documented → (AC-27, AC-28, AC-29)
+- [ ] Inspect refine/verify logic → the `## Summary` is treated as a derived view: its prose is not enumerated as a groundable claim, and the AC table stays canonical → (AC-6)
 - [ ] Inspect a generated standard/full spec → every AC is traced by ≥1 checklist item, every cited AC-id exists, no item introduces a fact absent from the AC table, partial checks appear in both subsections → (AC-12, AC-13, AC-14)
 - [ ] Inspect a generated `## Checklist` → `### For agents` items each name a runnable command or test + expected result; `### For humans` items need human judgment (no runnable command) → (AC-9, AC-10)
+- [ ] Inspect a full `### For humans` section → checks are grouped by capability and smoke-first, the required empty/edge/error cases are present, and it ends with an "Explore on your own" block (scenarios + test ideas, no restated checks) and a sign-off list → (AC-15, AC-16, AC-17, AC-18)
+- [ ] Run write-spec on a feature → the draft already carries the `## Summary` and the two-subsection `## Checklist` → (AC-21)
 - [ ] Run verify-spec on a finished spec → its coverage matrix `checklist-item` column maps each AC to the new checklist items across both subsections → (AC-25)
 - [ ] Introduce a stale/orphan checklist trace, run verify-spec → it flags the stale Summary/Checklist, the invalid trace, and any unmatched item, and edits nothing → (AC-26)
 - [ ] Run refine-spec on a legacy spec whose `## Checklist` is a flat code-area→AC-id list → the legacy checklist is left unchanged and verify-spec does not mark it non-compliant → (AC-39)
 - [ ] Inspect `.claude/output-styles/<style>.md` → tracked; valid loadable syntax; frontmatter has name + description + `keep-coding-instructions: true`; no force/auto-apply → (AC-30, AC-31)
+- [ ] Read README/docs → install steps (copy to `~/.claude/output-styles/`, `/output-style`), the "optional, changes no artifact's language" note, and the session-start/`/clear` caveat are present → (AC-36)
 - [ ] `python3 -m json.tool .claude-plugin/marketplace.json` and read the spec-ops version → valid JSON; version bumped (minor) → (AC-37)
 - [ ] Run the spec-ops test suite → green; no test asserts old code-area-index or inline-tag semantics; light/standard/full behavior covered → (AC-40)
 
@@ -195,28 +206,31 @@ A single standalone style file at `.claude/output-styles/` (repo-tracked), opt-i
 
 **Setup:** Install the updated spec-ops plugin locally. Have a small real feature idea ready to spec, and a scratch git repo to write into.
 
-**Reading a generated spec (comprehension)**
-- [ ] Generate a `standard` spec, read only its `## Summary` → you can say what the feature does, why, and what is out of scope, without reading the AC table → (AC-3, AC-5)
-- [ ] Read its `## TL;DR` → it is 2–3 lines and tells you the one change + the main "breaks if missed" risk, and does not repeat the Summary → (AC-2, AC-4)
-- [ ] Generate a `light` spec → it has no `## Summary` and no `## Checklist` → (AC-1, AC-20)
-- [ ] Read the `## Summary` and `### For humans` checklist as an English-as-second-language reader → sentences are short and active, one term is used per concept, UI labels are quoted verbatim, and there are no idioms → (AC-7)
+**Understand a generated spec**
+- [ ] Generate a `standard` spec for your idea, then read only its `## Summary` → you can say what the feature does, why, and what is out of scope, without reading the rest → (AC-3, AC-5)
+- [ ] Read the `## Summary` and `### For humans` checklist as an English-as-second-language reader → sentences are short and active, one term is used per concept, UI labels are quoted exactly, and there are no idioms → (AC-7)
 
-**Verifying from the For-humans checklist**
-- [ ] Read the `### For humans` checklist of a `full` spec → checks are grouped by capability, start with a smoke/happy-path check, include empty/edge/error cases, and you can perform each step without opening the code → (AC-11, AC-15, AC-16, AC-19)
-- [ ] Read the "Explore on your own" block → the charter and idea menu give you enough to invent your own test cases beyond the listed checks → (AC-17)
-- [ ] Read the end of the `### For humans` checklist → it ends with a sign-off / exit line (all checks pass, charters run, no open critical defects) → (AC-18)
-- [ ] Run write-spec then refine-spec on a feature → write-spec's draft already has the `## Summary` + two-subsection `## Checklist`, and after refine they reconcile to the final AC set with no stale traces → (AC-21, AC-22)
-- [ ] At `standard`/`full`, delete a `### For humans` capability or the `## Summary`, run refine-spec → it does not complete; it reports the missing/incomplete human layer → (AC-23, AC-24)
+**Verify a feature by hand**
+- [ ] On a `full` spec for a real feature, follow two or three `### For humans` checks against the running feature → you can complete each step without opening the code, and what you see matches the stated result → (AC-11, AC-16, AC-19)
+
+**Run the gate**
+- [ ] Add, rename, then remove an AC and run refine-spec → the `## Summary` and `## Checklist` update to match, with no leftover traces → (AC-22)
+- [ ] At `standard`/`full`, delete a `### For humans` group or the `## Summary`, then run refine-spec → it does not finish; it reports the missing human layer → (AC-23, AC-24)
 
 **Vietnamese session**
-- [ ] Select the Vietnamese style, `/clear`, ask a question → the reply is Northern-register Vietnamese → (AC-32, AC-35)
-- [ ] In that session, ask Claude to write or update a spec → the file is English, including `## Summary` and `## Checklist` → (AC-32, AC-38)
-- [ ] Ask Claude to explain the spec → it explains in Vietnamese and quotes the English text verbatim, with code tokens left in English → (AC-33, AC-35)
-- [ ] Trigger an AskUserQuestion → its prompt and options are in Vietnamese → (AC-34)
+- [ ] Select the Vietnamese style, run `/clear`, then ask a question → the reply is Northern-register Vietnamese → (AC-32, AC-35)
+- [ ] Ask Claude to write or update a spec → the saved file is English, including the `## Summary` and `## Checklist` → (AC-32, AC-38)
+- [ ] Ask Claude to explain the spec → it explains in Vietnamese and quotes the English text exactly; code tokens stay English → (AC-33, AC-35)
+- [ ] Answer an `AskUserQuestion` it raises → the prompt and options are in Vietnamese → (AC-34)
 
-**Explore on your own**
-- Charter: Explore specs generated at `standard` and `full` for a couple of very different feature ideas (a tiny UI tweak vs. a multi-capability feature) to discover where the `## Summary` is unclear, or where an AC has no matching checklist item.
-- Charter: Explore the Vietnamese session with mixed requests (write code, then a doc, then ask a question) to discover any place English leaks into a reply or Vietnamese leaks into a file.
-- Idea menu: a feature with zero edge cases vs. many · an AC that is only human-verifiable vs. only machine-verifiable · switching styles mid-session without `/clear` · a spec with grouped vs. flat ACs.
+**Explore on your own** — go past the checks above and report anything that looks wrong; the goal is to find what these checks did not.
+- **Scenarios to try:**
+  - Spec two very different features (a one-AC tweak and a multi-capability feature) and judge whether the Summary and `### For humans` checklist stay clear and useful at both sizes.
+  - In a Vietnamese session, mix requests fast — write code, then a doc, then ask a question, then switch styles without `/clear` — and watch for any place a language goes the wrong way.
+- **Test ideas:** a feature with no edge cases vs. many · an AC that is only human-verifiable vs. only machine-verifiable · grouped vs. flat ACs · a spec at each rigor.
 
-**Sign-off:** all For-agents checks pass · all For-humans capability checks pass · charters run and findings logged · no open critical defects.
+**Sign-off**
+- [ ] All `### For agents` checks pass
+- [ ] All `### For humans` checks pass
+- [ ] Explored past the checklist; anything wrong is reported
+- [ ] No open critical problems
