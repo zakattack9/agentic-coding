@@ -44,7 +44,7 @@
       "name": "codex",
       "source": "./claude-code/plugins/codex",
       "description": "Run the OpenAI Codex CLI from inside Claude Code as a cross-model escape hatch: hand a one-off review, question, or write task to a different provider's model for a second opinion, grounded in your repo with web search always on. Every call routes through one fail-open bridge — if Codex is absent, unauthenticated, or broken the skill reports and stops rather than answering as Claude, and Codex's output is surfaced verbatim as untrusted external text. Assumes an OpenAI-authenticated Codex setup.",
-      "version": "0.1.4"
+      "version": "0.1.5"
     }
   ]
 }

@@ -40,8 +40,7 @@ those defaults. The bridge translates the skill-facing names to Codex's real fla
   available models / supported efforts from the catalog as suggestions (the built-in "Other"
   covers a freeform value). **Never** call the bridge with a value you know is unknown.
 - **Catalog unavailable** (the `--resolve-defaults` line printed `CODEX_DEFAULTS: unavailable`,
-  was empty, or was denied / blocked at load — e.g. the script refused in auto mode on a fresh
-  install) → skip the picker: forward the user's override and let the bridge fail open on a
+  was empty, or was denied / blocked at load) → skip the picker: forward the user's override and let the bridge fail open on a
   bad value (exit `11`, reported and stopped). Never silently drop the override, never
   substitute your own answer.
 

@@ -24,7 +24,7 @@ handling, prompt composition, the `--model`/`--effort` override picker, the exac
 exit-code branching, fail-open, verbatim+delimited output, and the session id. The rules below
 are review-specific.
 
-## If Codex is unavailable
+## Codex availability
 
 Proceed only when the probe above printed a line that **begins `CODEX: YES`** (in full,
 `CODEX: YES — available and authenticated`; the trailing reason is expected and does **not**
