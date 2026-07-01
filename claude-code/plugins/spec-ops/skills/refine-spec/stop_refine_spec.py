@@ -63,8 +63,8 @@ except Exception:  # noqa: BLE001 — a missing helper must never disable the ga
 STALE_SECONDS = 45 * 60
 
 # Heuristic "this spec is not finalized" markers. Case-insensitive.
-# Deliberately excludes "- [ ]" — finalized specs legitimately end with an
-# implementation Checklist of unchecked boxes (see the write-spec format).
+# Deliberately excludes "- [ ]" — finalized specs legitimately end with a
+# verification Checklist of unchecked boxes (see the write-spec format).
 NOT_DONE_PATTERNS = [
     r"\bTODO\b",
     r"\bTBD\b",
