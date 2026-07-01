@@ -9,7 +9,7 @@ The conventions every spec-ops spec's **Acceptance Criteria** follow. `write-spe
 - [Each criterion is one atomic, observable end-state](#each-criterion-is-one-atomic-observable-end-state)
 - [Non-functional constraints](#non-functional-constraints)
 - [Grouping & ordering](#grouping--ordering)
-- [The Checklist is an index, not a copy](#the-checklist-is-an-index-not-a-copy)
+- [The Checklist — verification in two subsections](#the-checklist--verification-in-two-subsections)
 
 ## What the table is
 
@@ -50,6 +50,32 @@ Ordering is **dependency-derived only** — never a guessed or scheduling order,
 
 > Which stage commits what: **`write-spec`** may *loosely* group an obvious ≥2-cluster table as a reader's map, but does **not** assert a build order or any `needs §X` edge — that is a grounded fact. **`refine-spec`** commits the grounded group order and adds `needs §X` edges after checking them against the code. If grouping would exceed ~5–6 groups, distinguish the cause: a spec **bundling independent changes** → recommend splitting the spec; **one coherent change with real cross-group dependencies** → keep it whole and let `launch-spec` phase the build by group. The trigger to split is *independence*, not the count.
 
-## The Checklist is an index, not a copy
+## The Checklist — verification in two subsections
 
-The AC table is the *assertion* view (what must be TRUE); the body is the *detail* view (how/where + the load-bearing why); the **Checklist** is the *task* view, organized by the one axis neither gives — **code area**. Include it only when the work spans several code areas and a "by where in the code" map helps. Each item is **one line**: name the area's work in a few words and cite the `AC-id`(s) it lands — **never** re-describe what the criteria assert. A Checklist item must never be the sole home of a fact (exact config values, paths, resource names belong in the body or an AC; the item points at them). If a Checklist currently paraphrases the ACs, collapse each item to a one-line code-area pointer after moving any Checklist-only fact into the body.
+The AC table is the *assertion* view (what must be TRUE); the body is the *detail* view (how/where + the load-bearing why). The **`## Checklist`** is the *verification* view — how a reader confirms each criterion actually holds once the change is built. It is the **final section** of the spec and splits into exactly two subsections **by the kind of check**. There are no inline per-item `human` / `auto` tags and no second checklist section anywhere.
+
+- **`### For agents`** — checks whose observation *and* pass / fail rule an agent or CI can both run: a command, a test, a static read. Each item is terse and runnable — name the exact command or test and its expected result.
+- **`### For humans`** — checks that need human judgment: a UI clickthrough, a visual or UX read, a logic review. Each item is a scenario walkthrough in read-then-do form — a setup / precondition where needed, one observable action, and the expected observable result — phrased so a zero-context, non-native-English reader can perform it without reading code.
+
+**Trace, don't re-describe.** Each *verification* item ends with a parenthetical `(AC-…)` citing only existing ids; the criterion text already lives in the AC table. The `**Setup:**`, "Explore on your own", and Sign-off lines are structural and carry no trace. A checklist item verifies an existing criterion — it never introduces a requirement, value, or success criterion absent from the table, and is never the sole home of a fact.
+
+**Coverage is exhaustive** across the two subsections: every AC (at standard / full) is traced by ≥1 item, and every cited id references a real criterion (no orphans). One item may cover several closely-related ACs; one AC may need several items. A criterion that is part agent-checkable and part human-judgment appears in **both** subsections — the `### For humans` line marked `(partial)`. Label by the *kind of check*, not perfectly by the person; don't force a part-automatable criterion into exactly one subsection.
+
+### The `### For humans` structure
+
+`### For humans` groups its checks under user-facing capabilities or flows (about 5–9 checks per group), not one flat list. At **full** rigor it:
+
+- **opens with the critical happy-path ("smoke") checks** — the "does it even work" path — and includes the empty / edge / error cases the spec calls for, not happy-path only;
+- states any **setup** the checks need (role, state, test data, where to look) in plain placeholders, so performing the section never requires reading the codebase;
+- **ends with an "Explore on your own" block** that sends the verifier *past* the scripted checks — a short list of open scenarios plus a short list of test ideas to vary (data values, boundaries, create / read / update / delete, interruptions, roles / devices) — and restates no scripted check;
+- **closes with a sign-off checklist** of exit conditions (all checks pass, exploration done, no open critical defects).
+
+The "Explore on your own" block **complements, never repeats**: it lists only what the scripted checks deliberately leave open — if an item would restate a scripted check, drop it. Push genuinely open-ended or subjective checks *into* Explore rather than bloating the scripted list.
+
+### Rigor scaling
+
+- **`light`** — no Checklist (the AC table alone).
+- **`standard`** — a lean form: `### For agents` plus a lean `### For humans` of capability checks and a short explore prompt.
+- **`full`** — the complete structure: smoke checks first, grouped capability checks with the required edge / error cases, the full explore block, and the sign-off.
+
+The write-spec skeleton carries the fill-in template. This checklist is the single verification section — it replaces any older "code area → `AC-id`" index; a spec still carrying that flat legacy shape (no `### For agents` / `### For humans`) is a pre-format spec and is left as-is.

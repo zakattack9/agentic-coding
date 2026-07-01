@@ -15,9 +15,9 @@ allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 
 | Rigor          | Use for                                                  | Emit                                                                                                                                                                                            | Clarifying questions                                                                                                                                                                                                                                                        |
 | -------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`light`**    | a trivial, self-contained task                           | The `## Acceptance Criteria` table **only** (plus a one-line goal if it isn't obvious from the title). No TL;DR, Boundaries, body sections, or Checklist. A few lines total.                    | **Interactive, scaled to the task.** Run a brief [Discovery](#discovery--turn-a-bare-idea-into-requirements) pass — ask via `AskUserQuestion` about any genuine unknown, edge case, or scenario the one-liner hides; a truly trivial task may surface none, so stop fast. **With `--disable-questions`:** no loop — flag each unknown with one `[NEEDS CLARIFICATION: …]`.                                                                                                               |
-| **`standard`** | a routine, bounded feature                               | TL;DR (lead with any "breaks if missed") + the AC table (grouped only if ≥2 obvious clusters) + **Boundaries** + a *lean* body **only** for behavioral rules the AC don't already make obvious. | **Interactive.** [Discovery](#discovery--turn-a-bare-idea-into-requirements) on the genuine forks, unknowns, and edge cases. **With `--disable-questions`:** markers only, as above.                                                                                                                                                                                                                                                 |
-| **`full`**     | a complex change, or any infra / config-as-contract spec | **A `## TL;DR` section** (lead with any "breaks if missed") + the complete structure below — exhaustive AC, self-contained body, every relevant section.                                                                                                      | **Interactive — fullest.** Run the complete **[Discovery](#discovery--turn-a-bare-idea-into-requirements)** design-tree walk, using `AskUserQuestion` before guessing — better to ask one too many. Then draft, and hand the result to **`refine-spec`** to ground and harden. **With `--disable-questions`:** markers only. |
+| **`light`**    | a trivial, self-contained task                           | The `## Acceptance Criteria` table **only** (plus a one-line goal if it isn't obvious from the title). No TL;DR, Summary, Boundaries, body sections, or Checklist. A few lines total.                    | **Interactive, scaled to the task.** Run a brief [Discovery](#discovery--turn-a-bare-idea-into-requirements) pass — ask via `AskUserQuestion` about any genuine unknown, edge case, or scenario the one-liner hides; a truly trivial task may surface none, so stop fast. **With `--disable-questions`:** no loop — flag each unknown with one `[NEEDS CLARIFICATION: …]`.                                                                                                               |
+| **`standard`** | a routine, bounded feature                               | TL;DR (lead with any "breaks if missed") + a **`## Summary`** (zero-context onboarding) + the AC table (grouped only if ≥2 obvious clusters) + **Boundaries** + a *lean* body **only** for behavioral rules the AC don't already make obvious + a lean **`## Checklist`** (`### For agents` + a lean `### For humans` of capability checks and a short explore prompt). | **Interactive.** [Discovery](#discovery--turn-a-bare-idea-into-requirements) on the genuine forks, unknowns, and edge cases. **With `--disable-questions`:** markers only, as above.                                                                                                                                                                                                                                                 |
+| **`full`**     | a complex change, or any infra / config-as-contract spec | **A `## TL;DR` + `## Summary` section** (lead with any "breaks if missed") + the complete structure below — exhaustive AC, self-contained body, the full two-subsection **`## Checklist`** (smoke + grouped capability checks + explore block + sign-off), every relevant section.                                                                                                      | **Interactive — fullest.** Run the complete **[Discovery](#discovery--turn-a-bare-idea-into-requirements)** design-tree walk, using `AskUserQuestion` before guessing — better to ask one too many. Then draft, and hand the result to **`refine-spec`** to ground and harden. **With `--disable-questions`:** markers only. |
 
 **Constant across all three rigors** — these hold whatever the depth:
 
@@ -60,7 +60,9 @@ The goal is a spec that a human can scan in under 2 minutes and know exactly wha
 
 ### Say things once, in the right place
 
-Repeating information across sections creates maintenance burden and contradictions. If a field has a constraint, put it in the field's definition table — not in a separate "Validation" section. If a checklist covers which systems are affected, don't also include an "Affected Systems" table. Once a spec has an **Acceptance Criteria** table, the most common offender is a **Checklist that re-describes those criteria** — keep the Checklist a thin *code-area → `AC-id`* index that points at the criteria, never a second statement of them.
+Repeating information across sections creates maintenance burden and contradictions. If a field has a constraint, put it in the field's definition table — not in a separate "Validation" section. The **`## Checklist`** is not a second statement of the criteria: each verification item **traces** the `AC-id`(s) it checks with a parenthetical `(AC-…)` and never re-describes what the criterion asserts — that text already lives in the AC table.
+
+**The human layer is a deliberate exception.** The **`## Summary`** and the **`### For humans`** checklist restate the contract in plain language for a person who must understand the feature and verify it by hand — that comprehension restatement is intentional and does **not** violate "say things once", *as long as it adds no new fact*: no requirement, value, or success criterion absent from the AC table. Keep it a derived view — never the sole home of a fact.
 
 Consolidate related concepts into one section. Validation rules, edge cases, and selection logic about a feature belong inline with the feature's definition — not split into separate "Validation," "Edge Cases," or "Rules" sections.
 
@@ -74,7 +76,7 @@ Write from the end-user or admin perspective. Describe what should happen, not h
 
 ### Enumerate the acceptance criteria
 
-Lead with a **markdown table** of **acceptance criteria** — every behavior and constraint that must hold once the change is done, each row a single testable assertion. The `AC` column holds the **bare stable number** (`1`, `2`, …; cited as `AC-1`, `AC-2` everywhere else). This table is the spec's contract: the reader's two-minute scan of *what must be true*, and what the implementation is later gated against criterion-by-criterion. **Read `${CLAUDE_PLUGIN_ROOT}/references/ac-contract.md`** for the full conventions (id format, grouping, the Checklist-as-index rule) — it's the canonical AC contract that write-spec and refine-spec share. The rules that shape a **first draft**:
+Lead with a **markdown table** of **acceptance criteria** — every behavior and constraint that must hold once the change is done, each row a single testable assertion. The `AC` column holds the **bare stable number** (`1`, `2`, …; cited as `AC-1`, `AC-2` everywhere else). This table is the spec's contract: the reader's two-minute scan of *what must be true*, and what the implementation is later gated against criterion-by-criterion. **Read `${CLAUDE_PLUGIN_ROOT}/references/ac-contract.md`** for the full conventions (id format, grouping, the two-subsection `## Checklist`) — it's the canonical AC contract that write-spec and refine-spec share. The rules that shape a **first draft**:
 
 - **Enumerate exhaustively — never condense.** The criteria are the one place you list *everything* — a requirement that lives only in a paragraph below gets missed at completion. Brevity is for wording, not coverage. A separate **Validation** / "how we'll test it" list is acceptance criteria wearing another hat — put those assertions here.
 - **Each criterion is one atomic, observable end-state** — "Unrouted mail is quarantined, never dropped", not "build the quarantine system". Phrase what is *true* when done; the detailed rule that implements it lives in the body under its `AC-id`. Encode a **walking skeleton** as a behavioral AC (*an end-to-end path from {X} to an observable {Y} runs*), not a build step.
@@ -107,18 +109,46 @@ A spec is often read in isolation by someone with no prior context — a teammat
 
 ### Keep the TL;DR tight
 
-Every standard/full spec **opens with a literal `## TL;DR` section** — not an unlabeled intro blurb, and not a `### Breaks if missed` subsection standing in for it. 2-3 bullets max, **each one short line — not a paragraph**. If the spec body is already concise, a long TL;DR just repeats it. The TL;DR should answer: what is the change in one sentence, and what's the one behavioral detail someone might get wrong without a heads-up. If the change has a **"breaks if missed"** risk, lead with it as a terse list that **points at the relevant `AC-id`s** rather than re-explaining them — the detail lives in the AC table and the body.
+Every standard/full spec **opens with a literal `## TL;DR` section** — not an unlabeled intro blurb, and not a `### Breaks if missed` subsection standing in for it. 2-3 bullets max, **each one short line — not a paragraph**. It is the terse top layer: what is the change in one sentence, and the key **"breaks if missed"** risk. Lead with that risk as a terse list that **points at the relevant `AC-id`s** rather than re-explaining them — the detail lives in the AC table and the body. It is a fast re-orientation for a reader (or agent) that needs the hardest constraint immediately — **never a condensed Summary.** The TL;DR and the Summary sit at **different altitudes** and must not copy-paste each other; each reads correctly on its own.
+
+### Write the Summary for a newcomer
+
+Standard/full specs carry a **`## Summary`** immediately after the TL;DR — zero-context onboarding for a person (a developer or QA) who has never seen the work. Keep it short (about 3 small paragraphs / 4–8 sentences), and in this order: **what it is** (one sentence defining the feature) → **why** (the problem it solves) → **key behaviors** (what a user or admin can do) → **out of scope** (what it explicitly does not do).
+
+- **Code-free, even at full.** Name no file paths, functions / classes, tables / columns, or config keys — the technical detail stays in the body and the AC table. The Summary describes behavior a non-technical reader can follow.
+- **A derived human view, not a source of truth.** The Acceptance Criteria table stays canonical. The Summary restates the contract for comprehension and adds **no** requirement absent from the table — it is never the sole home of a fact, so `refine-spec` / `verify-spec` do not treat its prose as an independent groundable claim.
+- **A different altitude from the TL;DR.** The TL;DR is the terse re-orientation; the Summary is the full plain-language onboarding. Neither copy-pastes the other.
+
+Write it — and the `### For humans` checklist — to the plain-language rules below.
+
+### Plain language for the offshore reader
+
+The **`## Summary`** and the **`### For humans`** checklist are read by a person who may read English as a second language and must verify the feature by hand. Write both parts to these rules:
+
+- One idea per sentence (about **20 words maximum**); **active voice**; **present tense**.
+- Use the **same term every time** for one concept; spell out each acronym once.
+- No idioms, no phrasal verbs, no contractions.
+- Quote UI labels — screen, button, and field names — **verbatim**.
+- In a step, say **where before what** ("On the Settings page, select Save"), so the reader orients before acting.
 
 ## Spec Structure
 
-The skeleton below is the **`full`**-rigor shape; `light` is the Acceptance Criteria table alone and `standard` is TL;DR + AC + Boundaries (see [Rigor](#rigor--how-deep-to-go)). The **`## TL;DR` and `## Acceptance Criteria` sections are mandatory at standard/full** (plus **Boundaries** where the change has out-of-bounds areas) — never drop them, and never replace `## TL;DR` with an unlabeled intro paragraph. "Use only sections that are relevant" governs the **optional** ones (UI Changes, Data Migration, Current state → Target, Architecture, Checklist); not every spec needs those. The full skeleton is shaped for a typical feature change: **infra / platform / migration specs** usually drop **UI Changes** and **Data Migration** and add two — a **Current state → Target** view (what exists today vs. the end state, load-bearing when you're changing a running system) and a short **Architecture** diagram (mermaid). Add them only when they earn their place.
+The skeleton below is the **`full`**-rigor shape; `light` is the Acceptance Criteria table alone and `standard` is TL;DR + Summary + AC + Boundaries + a lean Checklist (see [Rigor](#rigor--how-deep-to-go)). The **`## TL;DR`, `## Summary`, `## Acceptance Criteria`, and `## Checklist` sections are mandatory at standard/full** (plus **Boundaries** where the change has out-of-bounds areas) — never drop them, and never replace `## TL;DR` with an unlabeled intro paragraph. "Use only sections that are relevant" governs the **optional** ones (UI Changes, Data Migration, Current state → Target, Architecture); not every spec needs those. The full skeleton is shaped for a typical feature change: **infra / platform / migration specs** usually drop **UI Changes** and **Data Migration** and add two — a **Current state → Target** view (what exists today vs. the end state, load-bearing when you're changing a running system) and a short **Architecture** diagram (mermaid). Add them only when they earn their place.
 
 ```markdown
 # {Feature Name} Spec
 
 ## TL;DR
 - {What the change is in one line}
-- {The most important behavioral detail someone might get wrong}
+- {The most important behavioral detail someone might get wrong — point at its AC-id}
+
+## Summary
+<!-- Zero-context onboarding for a human (dev / QA). Short: ~3 small paragraphs / 4–8 sentences. CODE-FREE even at full — no file paths, functions/classes, tables/columns, or config keys. Order: what it is → why → key behaviors → out of scope. A DERIVED view: restates the contract in plain language, adds NO fact absent from the AC table, never the sole home of a fact. Follows the plain-language rules (short active-voice sentences, one term per concept, UI labels quoted verbatim). -->
+
+**What this is:** {one sentence — what the feature is}
+**Why:** {the problem it solves / who is slowed down today}
+**Expected result:** {the key behaviors a user or admin can perform once it is built}
+**Out of scope:** {what it explicitly does not do}
 
 ---
 
@@ -173,14 +203,42 @@ The skeleton below is the **`full`**-rigor shape; `light` is the Acceptance Crit
 ---
 
 ## Checklist
-<!-- OPTIONAL, and a thin TRACEABILITY INDEX — never a third copy of the spec. The AC table is the *assertion* view (what must be TRUE); the body is the *detail* view (how/where + the load-bearing why); the Checklist is the *task* view, organized by the one axis neither of those gives: CODE AREA. -->
-<!-- Include it only when the work spans several code areas/systems and a "by where in the code" map helps the implementer. If every item would just restate one AC, the Checklist adds nothing over the AC table — omit it. -->
-<!-- Each item is ONE line: name the area's work in a few words and cite the AC-id(s) that land there. Cite the ids; do NOT re-describe what the criteria assert — that text already lives in the AC table and the body. -->
-<!-- Never let a checklist item be the SOLE home of a fact. Exact config values, file paths, and policy/resource names are part of the contract and belong in the body (or an AC); a checklist item points at them, it never introduces them. -->
+<!-- The FINAL section. MANDATORY at standard/full (omit only at light). ONE checklist, split by the KIND of check into two subsections — no inline human/auto tags, no second checklist section anywhere. It is the VERIFICATION view: how a reader confirms each criterion holds once the change is built. Every verification item ends with a parenthetical (AC-…) tracing an EXISTING id; it never re-describes the criterion and never introduces a fact absent from the AC table. Coverage is exhaustive: every AC is traced by ≥1 item across the two subsections; one item may cover several ACs, one AC may need several items. A part-automatable criterion appears in BOTH subsections (the For humans line marked (partial)). Rigor: `standard` = For agents + a lean For humans (capability checks + a short explore prompt); `full` = the complete structure below. -->
 
-**{Code area — e.g. Terraform · modules/cdn}**
-- [ ] {the area's work in a few words} — AC-1, AC-3, AC-8
-- [ ] {…} — AC-5
+### For agents
+<!-- Runnable by an agent or CI: a command, a test, a static read. Terse + the expected result. -->
+- [ ] {exact command or test} → {expected result} (AC-3)
+
+### For humans
+<!-- A person must look and judge (UI clickthrough, visual, UX, logic review — no runnable command). Read the line, do it, confirm what you see. Plain language, code-free — a zero-context non-native-English reader can perform it without opening the code. Group by user-facing capability/flow (~5–9 checks per group), smoke / happy-path first, then the required empty / edge / error cases the spec calls for. -->
+
+**Setup:** {role / state / test data / where to look — plain placeholders}
+
+**{Capability or flow — ~5–9 checks, smoke/happy-path first}**
+- [ ] {observable action} → {expected observable result} (AC-2, AC-5)
+- [ ] (empty case) {action} → {expected result} (AC-6)
+- [ ] (error case) {action} → {expected result} (AC-6)
+
+**Explore on your own** — go past the checks above and report anything that looks wrong; the goal is to find what they did not. (Never restate a scripted check here.)
+- **Scenarios to try:**
+  - {an open scenario tailored to this feature's risk areas}
+  - {another}
+- **Test ideas** (apply to any field or action):
+  - Empty
+  - Very long
+  - 0 / huge / negative
+  - Emoji & accents
+  - Just over a limit
+  - Create / read / update / delete
+  - Refresh / Back / double-click / lose network / timeout
+  - A different role
+  - Small screen
+
+**Sign-off**
+- [ ] All `### For agents` checks pass
+- [ ] All `### For humans` checks pass
+- [ ] Explored past the checklist; anything wrong is reported
+- [ ] No open critical problems
 ```
 
 ## Requirements reviewer — full rigor only, advisory
