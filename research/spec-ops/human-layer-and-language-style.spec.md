@@ -7,13 +7,13 @@
 
 ## Summary
 
-**What this is.** This change adds a human-reading layer to the specs the spec-ops skills produce, and a Vietnamese language mode for the assistant. The specs themselves stay in English.
+**What this is:** This change adds a human-reading layer to the specs the spec-ops skills produce, and a Vietnamese language mode for the assistant. The specs themselves stay in English.
 
-**Why.** Today's specs are written for AI agents. They are correct, but long and technical. A developer finds them hard to read, and an offshore developer who reads English as a second language finds it harder still. After the code is built, someone must verify the feature by hand. That hand-check is the slowest step, and a person can only verify what they understand.
+**Why:** Today's specs are written for AI agents. They are correct, but long and technical. A developer finds them hard to read, and an offshore developer who reads English as a second language finds it harder still. After the code is built, someone must verify the feature by hand. That hand-check is the slowest step, and a person can only verify what they understand.
 
-**Expected Result.** Every standard and full spec gains two plain-language parts. A short summary at the top explains what the feature does, why it exists, and how it behaves. A checklist at the end is split in two: one list of automated checks that an AI agent or CI runs, and one list of manual steps a person follows to check the feature by hand. Separately, an optional language mode lets the assistant talk to the developer in Vietnamese while it still writes every file in English.
+**Expected Result:** Every standard and full spec gains two plain-language parts. A short summary at the top explains what the feature does, why it exists, and how it behaves. A checklist at the end is split in two: one list of automated checks that an AI agent or CI runs, and one list of manual steps a person follows to check the feature by hand. Separately, an optional language mode lets the assistant talk to the developer in Vietnamese while it still writes every file in English.
 
-**What is out of scope.** Existing specs are left as they are. Spec files are never translated. The output style is opt-in and is not bundled into the plugin.
+**What is out of scope:** Existing specs are left as they are. Spec files are never translated. The output style is opt-in and is not bundled into the plugin.
 
 ---
 
