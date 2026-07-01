@@ -32,7 +32,7 @@
       "name": "worktree-ops",
       "source": "./claude-code/plugins/worktree-ops",
       "description": "A git worktree workflow for running multiple Claude Code sessions in parallel \u2014 no restarts, no manual checkouts. Built on native worktrees, it covers the full lifecycle from spinning up an isolated worktree to finishing it through a guarded, never-squashed PR merge, with a live dashboard of in-flight work and deterministic guards against squash merges and committing unresolved conflicts.",
-      "version": "0.3.6"
+      "version": "0.3.7"
     },
     {
       "name": "gh-projects",

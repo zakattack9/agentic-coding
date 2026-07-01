@@ -1,10 +1,8 @@
 ---
 name: create-worktree
 description: Create an isolated git worktree for a new task and switch this session straight into it — no restart, no manual cd. Branches fresh from the latest origin base, copies gitignored env files (.worktreeinclude), runs an optional per-project setup script, and can seed from a GitHub issue or PR. Use when the user wants to "create/start/spin up a worktree", "work on this in a separate branch/checkout", kick off isolated/parallel work for a feature or bugfix, or start a task from an issue or PR without disturbing the current checkout.
-model: opus
-effort: low
-# model: claude-sonnet-4-6
-# effort: medium
+model: sonnet
+effort: high
 argument-hint: [task description | #issue | #PR | branch-name] [--base <ref>]
 allowed-tools: Bash(git *), Bash(gh *), Bash(bash *), Read, AskUserQuestion, EnterWorktree
 ---
