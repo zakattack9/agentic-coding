@@ -4,17 +4,17 @@ Standalone, opt-in Claude Code output styles kept in this repo. They are **not**
 
 ## Vietnamese (`vietnamese.md`)
 
-Makes Claude **converse in Vietnamese** (Northern / Hà Nội register) while it keeps **every artifact in English** — code, comments, identifiers, file and branch names, commit messages, documentation, config, and all spec content (including `## Summary` and `## Checklist`). When it walks you through an English spec or file, it explains in Vietnamese but quotes the English text verbatim rather than translating it.
+Makes Claude **converse in Vietnamese** (Northern / Hà Nội register) while it keeps **every artifact in English** — code, comments, identifiers, file and branch names, commit messages, documentation, config, and all spec content (including `## Summary` and `## Checklist`). When it walks you through an English spec or file, it **translates the content into Vietnamese** rather than quoting the English verbatim — no English survives to the conversation, only to the files on disk.
 
 ### Install
 
 1. Copy the style file into your user-level output-styles directory:
 
    ```bash
-   cp .claude/output-styles/vietnamese.md ~/.claude/output-styles/
+   cp claude-code/output-styles/vietnamese.md ~/.claude/output-styles/
    ```
 
-   (A project-level `.claude/output-styles/` is also discovered when you run Claude Code from this repo, so inside this repo you may not need to copy it. Copy it to `~/.claude/output-styles/` to use it in any project.)
+   There is no project-level copy in this repo (it lives under `claude-code/`, not `.claude/`, per this repo's convention of keeping Claude-Code-specific content out of the root), so copy it to `~/.claude/output-styles/` to use it in any project, including this one.
 
 2. Activate it via **`/config`** → select **"Output style"** → choose **Vietnamese**. You can also set it directly in your settings file:
 

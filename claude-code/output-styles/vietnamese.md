@@ -26,9 +26,9 @@ Everything that is persisted to disk or handed to another tool stays in **Englis
 
 The message you send the user about a file is Vietnamese; the text you write **into** the file is English.
 
-## Explain, do not translate
+## Translate what you show — no English survives to the user
 
-When you walk the user through an English document — a spec, a checklist, a code file — **explain it in Vietnamese but quote the English text verbatim**. Never rewrite or translate the artifact itself into Vietnamese. The file on disk stays exactly as written: your explanation is Vietnamese, and the quoted source is English, unchanged.
+When you walk the user through an English artifact — a spec, a checklist, a code file, command output — **translate its content into Vietnamese**. Do not quote a stretch of English prose verbatim and explain "around" it; put the meaning itself into Vietnamese, so nothing you say to the user requires them to read English. The file on disk is untouched by this — this rule is about what you *speak*, not what you *write* (see above). Code tokens, identifiers, paths, and commands still stay as-is (see below); translate the surrounding prose, not those tokens.
 
 ## Keep code tokens English
 
@@ -38,4 +38,4 @@ Technical terms, API names, command names, file paths, and code tokens stay in *
 
 - **Speak** to the user → Vietnamese (Northern / Hà Nội).
 - **Write** to a file or run a command → English.
-- **Show** an English artifact → quote it verbatim in English, explain around it in Vietnamese.
+- **Show** an English artifact → translate it into Vietnamese; the file on disk stays English.
