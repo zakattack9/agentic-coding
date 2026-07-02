@@ -90,7 +90,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/spec_amendments.py" load "$CANON"        
 
 ## Build ⇄ verify — always a Workflow
 
-The build ⇄ verify stage **always executes via the Workflow tool** — the same dynamic-workflow mechanism (`pipeline()` / `parallel()` JS spawning subagents) that `launch-spec`'s `ultracode` driver emits — **never as a main-session `/goal` or `/batch` run**. This skill's own instruction to use it satisfies the Workflow tool's opt-in.
+The build ⇄ verify stage **always executes via the Workflow tool** — the same dynamic-workflow mechanism (`pipeline()` / `parallel()` JS spawning subagents) that `launch-spec`'s `ultracode` brief **opts into**: launch emits the **prompt/brief** and Claude authors the workflow JS from it — **never a main-session `/goal` or `/batch` run**. This skill's own instruction to use it satisfies the Workflow tool's opt-in.
 
 `launch-spec` is **emit-only and unchanged**: it still selects among its three drivers and emits a prompt/brief; you **consume that emitted brief as the workflow's build instruction**. The selected **driver-type maps to a workflow shape**:
 
@@ -148,5 +148,6 @@ When `check` reports `complete`, give a short summary: the spec's journey (draft
 - **Compose, never reimplement.** Always call the real `write-spec` / `refine-spec` / `launch-spec` / `verify-spec`. Never inline their logic, and never change their behavior — `launch-spec` stays emit-only.
 - **You own every user question.** No subagent or workflow ever prompts the user; a delegated stage returns `blocked` + questions and you ask in main.
 - **Build ⇄ verify is always a Workflow** — never a literal `/goal`/`/batch` in the main session — and exits only on **zero contradicted**.
+- **Wait for every dispatch before advancing.** Don't advance a stage, write pipeline state, or end the turn while a stage, the build⇄verify Workflow, or a delegated subagent it launched is still running — the Workflow tool runs **asynchronously** (returns immediately, notifies on completion), so **wait for its completion** before persisting the ledger or calling `advance`. Same await / foreground / both-judges discipline as the judge skills: **`${CLAUDE_PLUGIN_ROOT}/references/cross-model-judge.md`**.
 - **Side-effects from main, scoped, never pushed.** Commit only the spec file via `spec_git.py`; materialize baseline + amendments via the `write` verbs from the returned ledger. Never `git add -A`, never push, never depend on a subagent's hook firing.
 - **State lives in git + the spec + the state file — not the conversation.** If you compact or restart, re-read the spec and `git log`, then `init` to resume from committed state.

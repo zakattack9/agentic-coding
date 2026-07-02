@@ -1,10 +1,8 @@
 ---
 name: pull-worktree
 description: Pull the latest changes from a base branch into the current worktree — fetch, then rebase (or merge) this worktree's branch onto the newest origin/main (or any branch you name), guiding conflict resolution. Use when the user says a worktree/branch is "behind", wants to "pull in the latest", "catch up", "update", "sync", or "rebase onto main/develop" a worktree before continuing or opening a PR. The base to pull from is configurable, unlike anything native.
-model: opus
-effort: low
-# model: claude-sonnet-4-6
-# effort: medium
+model: sonnet
+effort: high
 argument-hint: [--from <branch>] [--merge]
 allowed-tools: Bash(git *), Bash(bash *), AskUserQuestion
 hooks:
