@@ -39,7 +39,15 @@ Default to **`/goal`**. Step up only when a **structural** trigger below fires �
 
 ## What it emits
 
-A single **driver prompt** to paste into a fresh `/goal` session. The pasted text **is the `/goal` condition** (≤4,000 chars), checked each turn by a **tool-less evaluator** that only sees the transcript — it can't open files or run commands. Two consequences shape what you emit:
+A single **driver prompt** to paste into a fresh session. It is **command-prefixed so one paste runs it**: the emitted (and copied) text **begins with its command token**, byte-identical in chat and on the clipboard, prefix included:
+
+| Driver | Emitted text begins with | One paste… |
+| --- | --- | --- |
+| **`/goal`** (default) | `/goal ` + the ≤4,000-char condition | invokes `/goal` with the driver as its condition — pair with auto mode |
+| **`/batch`** | `/batch ` + the batch brief | invokes `/batch` |
+| **dynamic workflow** | `ultracode` + the workflow brief (below) | opts into multi-agent orchestration; Claude authors + runs the workflow from the brief |
+
+For **`/goal`**, the pasted text **is the `/goal` condition** — **≤4,000 chars with the `/goal ` prefix counted in** — checked each turn by a **tool-less evaluator** that only sees the transcript (it can't open files or run commands). If the composed `/goal ` driver would exceed that budget, that's the existing signal to **phase / escalate** (see *Context bounding*), **never** to truncate the condition. (The `ultracode` brief is not a `/goal` and is not bound by the 4,000-char cap.) Two consequences shape what you emit:
 
 - **Point the worker at the spec / `tasks.md` with an explicit read directive** (e.g. *"read `@spec.md` and `@tasks.md`, then implement them"*) rather than inlining their bodies — so it works whether or not the mention pre-expands, and the worker (not the evaluator, which can't open files) does the reading. Inline only the **Boundaries** and **done-gate** the evaluator must enforce directly.
 - **Make every end state demonstrable from the worker's own output** — a printed test result, a clean `verify-spec` run — never implicit, because that transcript is all the evaluator sees.
@@ -60,6 +68,19 @@ Write `tasks.md` beside the spec only when it adds decomposition the **AC groups
 
 **The done-gate is the completion contract for *every* driver, not just `/goal`.** `verify-spec` grounds every `AC-id` and returns zero contradicted — wired as the `/goal` condition above, the final (and per-phase) stage of an `ultracode` workflow, or an explicit `verify-spec` run after a `/batch`. The mechanism differs by driver; the contract is identical, so "done" is always grounded against real code, never assumed.
 
+### The `ultracode` brief — a runnable prompt, never a script
+
+When the driver is the dynamic workflow, emit an **`ultracode`-led prompt** (leading token `ultracode`) — **never a literal `pipeline()` / `parallel()` workflow script**. A script would have to be written to a repo file, breaking emit-only; Claude authors the workflow internally from the prompt. The brief carries **every** part a `/goal` driver carries — not just the shape-specific ones:
+
+- **Read directive** — *"read `@spec.md` (and `@tasks.md`) in full first."*
+- **Measurable goal** — the spec implemented so **every acceptance criterion holds**, grounded by `verify-spec` (zero contradicted).
+- **Workflow shape** — phased by **AC group** in `needs §X` order, with `verify-spec` as the **final gate and each phase's exit gate**; where a workflow `agent()` can't spawn a `Task`, the verify stage dispatches its cross-model judge as **sibling stages** (the Codex bridge standalone + `agent({ agentType: 'spec-ops:spec-verify-judge' })`).
+- **Boundaries** — the spec's Boundaries, **inlined**.
+- **Commit cadence** — one scoped commit per phase once its acceptance criteria verify clean (conventional message; don't push).
+- **Artifact hygiene** — deliver code/docs/tests that read standalone: no spec ids, phase/§ numbers, spec-named identifiers, or build-increment framing; keep load-bearing rationale.
+
+A single paste opts into orchestration and Claude **authors + runs** the workflow from the brief — `launch-spec` stays emit-only. When you preview the `ultracode` option with `AskUserQuestion` before compiling, keep that preview **natural-language too — never a script-shaped preview**, which primes the wrong mental model and risks the final compile copying its shape.
+
 ## Context bounding — phase by AC group only when escalated
 
 **Default: one context holds every `AC-1..N` — no phasing.** This is the common case; emit a single driver gated on all acceptance criteria at once.
@@ -74,21 +95,25 @@ Step up to a **phased driver** only when the structural triggers above already e
 
 ## Handoff
 
-Emit the driver, tell the user how to run it (for `/goal`: paste into a fresh `/goal` session — pair with **auto mode** so each goal turn runs unattended), and **stop**. Then the flow continues — the worker implements and **completion is confirmed by `verify-spec` grounding every claim against HEAD (zero contradicted = done)**, whether that's baked into the `/goal` condition, the final stage of the `ultracode` workflow, or an explicit `verify-spec` run after the `/batch`. Never treat the work as done without that grounded check.
+Emit the driver, tell the user how to run it (for `/goal`: paste into a fresh session — the paste is already prefixed with `/goal`; pair with **auto mode** so each goal turn runs unattended), and **stop**. Then the flow continues — the worker implements and **completion is confirmed by `verify-spec` grounding every claim against HEAD (zero contradicted = done)**, whether that's baked into the `/goal` condition, the final stage of the `ultracode` workflow, or an explicit `verify-spec` run after the `/batch`. Never treat the work as done without that grounded check.
 
-**Copy the driver to the clipboard** so the handoff is a single ⌘V. After showing the prompt in chat, pipe the *exact same text* to the system clipboard via a portable wrapper, then confirm. Copying is not running — it stays emit-only. Use a quoted heredoc so the driver is never written to disk and no escaping is needed (`$`, backticks, and quotes pass through literally). Pick the first clipboard tool that exists and fall back to chat-only if none do:
+**Copy the driver to the clipboard** so the handoff is a single ⌘V. After showing the prompt in chat, pipe the *exact same text* (**command prefix included** — the clipboard bytes are byte-identical to the chat bytes) to the system clipboard via a portable wrapper, then confirm. Copying is not running — it stays emit-only. Use a **single quoted heredoc** so the driver is never written to disk and no escaping is needed (`$`, backticks, and quotes pass through literally). Pick the **session-appropriate** tool present — gate the Wayland/X11 branches on the session's display env (`$WAYLAND_DISPLAY` / `$DISPLAY`) so a tool installed but wrong for the session can't win and swallow the copy — and fall back to chat-only if none land:
 
 ```bash
-{ if command -v pbcopy   >/dev/null 2>&1; then pbcopy                       # macOS
-  elif command -v wl-copy >/dev/null 2>&1; then wl-copy                     # Wayland
-  elif command -v xclip   >/dev/null 2>&1; then xclip -selection clipboard  # X11
-  elif command -v clip.exe >/dev/null 2>&1; then clip.exe                   # WSL
+{ if   command -v pbcopy   >/dev/null 2>&1; then pbcopy                                                   # macOS
+  elif [ -n "$WAYLAND_DISPLAY" ] && command -v wl-copy >/dev/null 2>&1; then wl-copy                       # Wayland
+  elif [ -n "$DISPLAY" ]        && command -v xclip   >/dev/null 2>&1; then xclip -selection clipboard     # X11
+  elif [ -n "$DISPLAY" ]        && command -v xsel    >/dev/null 2>&1; then xsel --clipboard --input       # X11 (Mint/XFCE)
+  elif command -v clip.exe >/dev/null 2>&1; then clip.exe                                                  # WSL
   else cat >/dev/null; exit 3; fi; } <<'LAUNCH_SPEC_EOF'
-…the driver prompt, verbatim…
+…the driver prompt, verbatim (already command-prefixed — `/goal …`, `/batch …`, or `ultracode …`)…
 LAUNCH_SPEC_EOF
 ```
 
-If the copy succeeds, print `📋 Copied to clipboard — open a fresh session and ⌘V into /goal`. If it exits non-zero (no clipboard tool, or a headless/remote shell where there's no local pasteboard), say so plainly and fall back to "copy the prompt above manually" — never let a missing clipboard block the handoff.
+A single-feed heredoc pipes to exactly one chosen tool and can't retry a second, so getting the **selection** right up front is the fix — a chosen tool that still exits non-zero just degrades to chat-only.
+
+- **On success**, print the per-driver confirmation reflecting the single-paste UX — e.g. `📋 Copied — ⌘V into a fresh session (it's already prefixed with /goal)`; name the actual prefix per driver.
+- **On `exit 3` (no tool) or any non-zero exit**, fall back to chat-only, never report a false success, never block the handoff (the driver is still shown in chat), **and name the remedy** — e.g. *"No clipboard tool found — copy the prompt above manually, or `sudo apt install xclip` (or `xsel`) to enable one-key copy."*
 
 ## Guardrails
 

@@ -100,8 +100,8 @@ The looping skills carry their gate as a skill-scoped `Stop` hook (active only w
 ```text
 /spec-ops:write-spec  add per-rule long-term discount  @docs/specs/discount.md
 /spec-ops:refine-spec @docs/specs/discount.md
-/spec-ops:launch-spec @docs/specs/discount.md     # → driver copied to clipboard
-#   ⌘V into a fresh /goal session (pair with auto mode) to implement
+/spec-ops:launch-spec @docs/specs/discount.md     # → prefixed driver copied to clipboard
+#   ⌘V into a fresh session (already prefixed with /goal; pair with auto mode) to implement
 /spec-ops:verify-spec @docs/specs/discount.md     # after implementation
 ```
 
