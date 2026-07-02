@@ -43,8 +43,15 @@ Confirm this is the worktree/branch to finish, and whether to **merge now** or o
 
 ## 3. Pull request
 
-- No PR yet → `gh pr create --fill --base <into>` (or draft a title/body from the commits and any seeding issue).
-- PR exists → the push updated it; show URL + status: `gh pr view --json number,url,state,statusCheckRollup`.
+Author the PR from the actual work — don't lean on `--fill`, which copies commit messages verbatim (weak title, often an empty body on multi-commit branches). Ground in the diff first:
+
+```bash
+git log <into>..HEAD --oneline
+git diff --stat <into>...HEAD
+```
+
+- **No PR yet** → write a `--title` indicative of the change and a `--body` summarizing what changed and why, then `gh pr create --title "<title>" --body "<body>" --base <into>`. Fall back to `--fill` only when the diff is too trivial to summarize.
+- **PR exists** → the push already refreshed its commits. Re-read the diff against the current title/body (`gh pr view --json number,url,title,body,state,isDraft,statusCheckRollup`); if new commits changed the scope, update them (`gh pr edit --title/--body`) so the description still matches what's merging, and `gh pr ready` if it's a review-ready draft. Then show URL + status.
 
 ## 4. Merge (unless `--no-merge`)
 
