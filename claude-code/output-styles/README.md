@@ -11,6 +11,7 @@ Makes Claude **converse in Vietnamese** (Northern / Hà Nội register) while it
 1. Copy the style file into your user-level output-styles directory:
 
    ```bash
+   mkdir -p ~/.claude/output-styles
    cp claude-code/output-styles/vietnamese.md ~/.claude/output-styles/
    ```
 
