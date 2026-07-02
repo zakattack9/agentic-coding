@@ -2,7 +2,7 @@
 name: spec-verify-judge
 description: Internal adversarial completeness judge for the spec-ops verify-spec skill — dispatched by verify-spec, not for general use. Independently re-derives a verification target's checkable claims and audits a verification ledger against reality, flagging missed claims, weak / standard-mismatched / existence-only evidence, and side effects that regress another criterion, and attesting the backward + spec-linkage sweeps actually ran. Read-only; returns a strict JSON verdict. Expects to be handed a verification target and a ledger; do not invoke it without them.
 tools: Read, Grep, Glob, Bash
-model: opus
+model: sonnet
 effort: xhigh
 ---
 

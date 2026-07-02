@@ -2,7 +2,7 @@
 name: spec-refine-judge
 description: Internal adversarial readiness judge for the spec-ops refine-spec skill — dispatched by refine-spec, not for general use. Independently reviews a feature spec against the codebase for any remaining inaccuracy, ambiguity, over-engineering, bloat, missing detail, or uncaptured functional / non-functional acceptance criterion, and returns a strict per-criterion PASS/FAIL JSON verdict naming the exact AC-id for every coverage finding. Read-only. Expects to be handed a spec path; do not invoke it without one.
 tools: Read, Grep, Glob, Bash
-model: opus
+model: sonnet
 effort: xhigh
 ---
 
