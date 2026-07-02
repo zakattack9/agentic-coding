@@ -31,6 +31,19 @@ together, so a poll loop only burns extra turns and prints fake elapsed times. T
 timeout (default 1170s, under the Bash cap) bounds it, and it prints its real wall-clock on every
 outcome (`codex_bridge: completed in Ns`), so you never time it yourself.
 
+## Wait for every dispatch before turn-end — write the ledger last
+
+On any pass that dispatches work — grounding `Explore` agents, the Claude judge `Task`, the Codex bridge `Bash` call, or any background `Bash`/Agent/workflow — hold the turn open until it **all returns**, then fold each real result into the ledger's done-signal in **one** final write. Led with the common path:
+
+1. **Dispatch, then let it return — the turn is done only when nothing you launched is still running.** Ending early makes the Stop hook read a ledger that doesn't yet reflect the judges, and it bounces the turn.
+2. **Write the done-signal fields last, as one reconciled write.** Set them only after every dispatched judge/subagent has returned and its actual result is folded in — never a partial done-state while work is in flight, never split so a Stop-hook re-entry sees a half-updated ledger. (Each skill's own done-signal: refine's `gate` flags + `openQuestions[].resolved`; verify's per-claim results + `judge.*`. Shape-only `ran` flags like `backwardSweep`/`specLinkageSweep` don't gate.)
+3. **Both judges before the merge, when Codex is available.** Write the merged verdict only after **both** the Claude judge and the foreground Codex bridge return; a done-signal off one judge while the other is still running is forbidden. (Foreground/concurrent dispatch is the section above.)
+4. **An unavailable or failed Codex resolves immediately — never left pending.** Probe not `CODEX: YES`, or a bridge call that exits non-zero / hangs to its own timeout / returns malformed / can't run → the Codex half is **done now**, recorded as unavailable (fail-open), and the gate equals the Claude-only result. Don't wait on a judge that never launched, and leave no in-flight marker. **State it in the handoff** (surface the one bridge log line) — a fail-open is visible, never silent.
+5. **A failed judge is never a pass.** A judge/subagent that errors or returns malformed output is re-dispatched (the `SubagentStop` / `validate_return` backstop forces a re-emit) or its failure is recorded — a done-signal is written only from a **validated** result. "Returned" = a validated result **or** a definitive failure, never "dispatched".
+6. **Re-establish judge/gate state from this pass's results, every pass.** Rewrite the judge/gate fields from the current pass's actual results; never carry a prior pass's `ran` / `verdict` / gate flags forward unverified, so a stale value left by a bounced Stop can't leak a false "done".
+
+Instructions-only can't make this race-proof — the Stop hooks can't see whether a subprocess is still running, so they stay the backstop (they still bounce an incomplete ledger); this discipline keeps the happy path from reaching them prematurely.
+
 ## The Codex judge gets the Claude rubric verbatim
 
 Build the Codex prompt file as the **Claude judge's rubric file, verbatim**, followed by
