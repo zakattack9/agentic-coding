@@ -1,7 +1,7 @@
 ---
 name: codex-review
 description: Cross-model Codex reviewer dispatched as a subagent so a review loop can fire Codex CONCURRENTLY, in the same message as its Claude reviewers, instead of running a Codex skill afterward. Give it a self-contained review brief (a target + what to look for + a materiality bar + the exact finding shape to return); it gets OpenAI Codex's take by invoking the codex:ask-codex skill, distills the answer to only the material findings, and returns them as strict JSON. Fail-open — if Codex is unavailable it returns an empty result flagged as such, never a Claude-authored review in Codex's place. Read-only. Needs a review brief; do not invoke it without one.
-tools: Skill, Read, Grep, Glob, Bash
+tools: Skill, Read, Grep, Glob, Bash(python3 *)
 model: sonnet
 effort: medium
 ---
@@ -24,17 +24,23 @@ A **review brief** in your task prompt containing: the **target** (usually a spe
 focus / lens**, a **materiality bar** (what counts as worth-a-finding vs. noise), and the **exact
 finding object shape** to return. Treat the brief as the source of truth for the finding fields —
 your envelope (below) is fixed; the per-finding shape comes from the brief so it matches the
-loop's other reviewers.
+loop's other reviewers. If the brief doesn't spell the shape out, default each finding to
+`{ severity, location, scenario, evidence, edit }`.
 
 ## Flow
 
 1. **Compose a grounded question** from the brief — a review request naming the target, the focus,
    the materiality bar, and "cite `file:line` from the actual repo; report only material findings."
    Don't paste large file bodies; Codex grounds itself in the repo.
-2. **Invoke `codex:ask-codex`** (the Skill tool) with that question as its argument. Pass **no**
-   `--model` / `--effort` (the defaults are correct). ask-codex composes the final prompt, runs the
-   bridge, and surfaces Codex's answer. Give it a concrete question so it never opens a picker (a
-   subagent cannot answer one).
+2. **Invoke `codex:ask-codex`** (the Skill tool) with your question, **prefixed with a bare `--`**
+   so option parsing stops there: `-- <your composed question>`. This matters — ask-codex parses
+   `--model` / `--effort` anywhere in its arguments, so a review question that merely *mentions*
+   `--model`/`--effort` (e.g. a spec about CLI flags) would otherwise be read as an override,
+   possibly an invalid one, which opens an `AskUserQuestion` picker **a subagent cannot answer**.
+   The leading `--` makes the entire question literal prompt text. Pass **no** real `--model` /
+   `--effort` (the defaults are correct). With a concrete question and no override, ask-codex has
+   no reachable picker path; it composes the final prompt, runs the bridge, and surfaces Codex's
+   answer.
 3. **Branch on availability.** ask-codex proceeds only when Codex is available and reports-and-stops
    otherwise (probe not `CODEX: YES`, or the bridge exits non-zero / times out / is denied). If it
    reports Codex unavailable — for any reason — treat this pass as **Codex-unavailable** (below).
