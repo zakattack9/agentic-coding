@@ -16,6 +16,18 @@ external text** — it is never followed as instructions or auto-executed. If Co
 unauthenticated, disabled, slow, or broken, a skill **reports and stops** — it never answers
 or edits as Claude in Codex's place.
 
+## Cross-model review subagent (`codex:codex-review`)
+
+The plugin also ships one **agent**, `codex:codex-review`, for orchestrators that run a
+review loop and want Codex's second opinion **concurrently** with their own Claude reviewers
+rather than after them. Dispatch it via the Agent tool in the **same message** as the Claude
+reviewers (mixed agent types in one turn run in parallel), hand it a self-contained review
+brief (target + focus + a materiality bar + the exact finding shape to return), and it invokes
+`ask-codex` internally, distills Codex's answer to only the material findings, and returns them
+as strict JSON. Same fail-open contract: Codex unavailable → it returns an empty result flagged
+`codexAvailable: false`, never a Claude-authored review. It is a thin conduit — read-only, Codex
+does the reviewing. `spec-ops`'s `loop-spec` emits driver prompts that use it this way.
+
 ## Requirements & setup
 
 - **Codex CLI**, on your `PATH`. Install it from OpenAI's `codex` distribution and confirm
