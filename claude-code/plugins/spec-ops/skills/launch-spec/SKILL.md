@@ -97,23 +97,10 @@ Step up to a **phased driver** only when the structural triggers above already e
 
 Emit the driver, tell the user how to run it (for `/goal`: paste into a fresh session — the paste is already prefixed with `/goal`; pair with **auto mode** so each goal turn runs unattended), and **stop**. Then the flow continues — the worker implements and **completion is confirmed by `verify-spec` grounding every claim against HEAD (zero contradicted = done)**, whether that's baked into the `/goal` condition, the final stage of the `ultracode` workflow, or an explicit `verify-spec` run after the `/batch`. Never treat the work as done without that grounded check.
 
-**Copy the driver to the clipboard** so the handoff is a single ⌘V. After showing the prompt in chat, pipe the *exact same text* (**command prefix included** — the clipboard bytes are byte-identical to the chat bytes) to the system clipboard via a portable wrapper, then confirm. Copying is not running — it stays emit-only. Use a **single quoted heredoc** so the driver is never written to disk and no escaping is needed (`$`, backticks, and quotes pass through literally). Pick the **session-appropriate** tool present — gate the Wayland/X11 branches on the session's display env (`$WAYLAND_DISPLAY` / `$DISPLAY`) so a tool installed but wrong for the session can't win and swallow the copy — and fall back to chat-only if none land:
+**Copy the driver to the clipboard** so the handoff is a single ⌘V. After showing the prompt in chat, pipe the *exact same text* (**command prefix included** — the clipboard bytes are byte-identical to the chat bytes) to the clipboard following **`references/clipboard-copy.md`** (the portable single-quoted heredoc, the session-gated tool selection, and the chat-only fallback all live there — single-sourced so `launch-spec` and `loop-spec` can't drift). Copying is not running — it stays emit-only. Driver-specific handling:
 
-```bash
-{ if   command -v pbcopy   >/dev/null 2>&1; then pbcopy                                                   # macOS
-  elif [ -n "$WAYLAND_DISPLAY" ] && command -v wl-copy >/dev/null 2>&1; then wl-copy                       # Wayland
-  elif [ -n "$DISPLAY" ]        && command -v xclip   >/dev/null 2>&1; then xclip -selection clipboard     # X11
-  elif [ -n "$DISPLAY" ]        && command -v xsel    >/dev/null 2>&1; then xsel --clipboard --input       # X11 (Mint/XFCE)
-  elif command -v clip.exe >/dev/null 2>&1; then clip.exe                                                  # WSL
-  else cat >/dev/null; exit 3; fi; } <<'LAUNCH_SPEC_EOF'
-…the driver prompt, verbatim (already command-prefixed — `/goal …`, `/batch …`, or `ultracode …`)…
-LAUNCH_SPEC_EOF
-```
-
-A single-feed heredoc pipes to exactly one chosen tool and can't retry a second, so getting the **selection** right up front is the fix — a chosen tool that still exits non-zero just degrades to chat-only.
-
-- **On success**, print the per-driver confirmation reflecting the single-paste UX — e.g. `📋 Copied — ⌘V into a fresh session (it's already prefixed with /goal)`; name the actual prefix per driver.
-- **On `exit 3` (no tool) or any non-zero exit**, fall back to chat-only, never report a false success, never block the handoff (the driver is still shown in chat), **and name the remedy** — e.g. *"No clipboard tool found — copy the prompt above manually, or `sudo apt install xclip` (or `xsel`) to enable one-key copy."*
+- **On success**, print the **per-driver** confirmation reflecting the single-paste UX — e.g. `📋 Copied — ⌘V into a fresh session (it's already prefixed with /goal)`; name the actual prefix per driver.
+- **On no clipboard tool (`exit 3`) or any non-zero exit**, fall back to chat-only per the reference — never a false success, never blocking the handoff (the driver is still shown in chat), and name the remedy.
 
 ## Guardrails
 
