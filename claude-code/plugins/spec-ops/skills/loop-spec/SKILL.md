@@ -1,6 +1,6 @@
 ---
 name: loop-spec
-description: Compile a spec into a self-contained review→fix CONVERGENCE-LOOP driver prompt that a fresh session runs to harden the spec until an independent sweep finds nothing material — then stop. Use it for a heavy, unbiased, cross-model spec-hardening pass in a dedicated session: "loop on this spec", "converge/harden this spec", "run a review loop until the spec is airtight", "beat on this spec with fresh reviewers" — especially big / high-stakes / infra specs. It reads the spec, derives tailored review lenses + grounding + a consistency check, and emits the loop brief (fresh Claude lens reviewers AND the codex:codex-review agent fire concurrently each round, adjudicate, edit the spec in place, converge on two clean rounds), then copies it to the clipboard and quits. It does NOT run the loop or edit the spec — the emitted driver does. NOT refine-spec (the in-session interactive hardening loop); NOT launch-spec/goal (those implement a finished spec; loop-spec improves the spec doc).
+description: Compile a spec into a self-contained review→fix CONVERGENCE-LOOP driver prompt that a fresh session runs to harden the spec until an independent sweep finds nothing material — then stop. Use it for a heavy, unbiased, cross-model spec-hardening pass in a dedicated session: "loop on this spec", "converge this spec", "run a review loop until the spec is airtight", "beat on this spec with fresh reviewers" — especially big / high-stakes / infra specs. It reads the spec, derives tailored review lenses + grounding + a consistency check, and emits the loop brief (fresh Claude lens reviewers AND the codex:codex-review agent fire concurrently each round, adjudicate, edit the spec in place, converge on two clean rounds), then copies it to the clipboard and quits. It does NOT run the loop or edit the spec — the emitted driver does. NOT refine-spec (the in-session interactive hardening loop); NOT launch-spec/goal (those implement a finished spec; loop-spec improves the spec doc).
 argument-hint: [@path/to/spec.md] [focus areas] [--rounds N]
 model: opus
 effort: high
@@ -43,10 +43,12 @@ This is a heuristic, not a gate — `loop-spec` works on any spec, even one stil
 
 ## What it compiles
 
-The emitted brief is the fill-in skeleton in **`references/loop-brief.md`** — read it; it is the
-verbatim driver with `«…»` placeholders. Your job is to **derive each placeholder from the spec +
-repo**, fill them, and emit the result. Everything outside the placeholders is fixed (the
-materiality bar, the loop, the Codex-concurrency rule, the convergence rule) — never rewrite it.
+The emitted brief is the fill-in skeleton in **`${CLAUDE_PLUGIN_ROOT}/references/loop-brief.md`** —
+read it; the driver is the part **below the `---` rule** (from `# TASK:` down — the file's header is
+guidance for you, not part of the driver), a verbatim template with `«…»` placeholders. Your job is
+to **derive each placeholder from the spec + repo**, fill them, and emit that filled driver.
+Everything outside the placeholders is fixed (the materiality bar, the loop, the Codex-concurrency
+rule, the convergence rule) — never rewrite it.
 
 Derive:
 
@@ -66,18 +68,26 @@ Derive:
   (dangling/duplicate AC refs, contradictions, ambiguity, is each required behavior a concrete
   testable AC). Fold any user **focus areas** in as an extra lens or by weighting an existing one.
   Format each as a `Lens X — <focus>` line.
-- **`«CONSISTENCY_CHECK»`** — a shell one-liner matched to the spec's **actual AC format** so the
+- **`«CONSISTENCY_CHECK»`** — a shell check matched to the spec's **actual AC-table format** so the
   orchestrator can catch conflict markers, duplicate AC numbers, and dangling AC refs after each
-  edit batch. Start from the default below and adjust the AC-id pattern / table shape to the spec
-  (drop the table-row checks if the spec lists ACs as prose or a bulleted list):
+  edit batch. Start from the default below and **adapt it to the spec** — the default assumes the
+  canonical spec-ops format (AC definitions are bare-number table rows `| 1 |`, cited as `AC-1`):
 
   ```bash
-  F=«SPEC_PATH»; grep -cE '^(<{7}|={7}|>{7})' $F;
-  grep -oE '^\| [0-9]+ ' $F | sort | uniq -d;
-  d=$(grep -oE '^\| [0-9]+ ' $F | grep -oE '[0-9]+' | sort -un);
-  for n in $(grep -oE 'AC-[0-9]+' $F | grep -oE '[0-9]+' | sort -un); do echo "$d" | grep -qx "$n" || echo "DANGLING AC-$n"; done
+  F="«SPEC_PATH»"
+  grep -cE '^(<{7}|>{7})' "$F"                                  # leftover git conflict markers (want 0)
+  defs=$(grep -oE '^\| *[0-9]+ ' "$F" | grep -oE '[0-9]+' | sort -n)
+  printf '%s\n' "$defs" | uniq -d                               # duplicate AC numbers (want none)
+  for n in $(grep -oE 'AC-[0-9]+' "$F" | grep -oE '[0-9]+' | sort -un); do
+    printf '%s\n' "$defs" | grep -qx "$n" || echo "DANGLING AC-$n"
+  done
   ```
-  (want: 0 conflict markers, no dup AC numbers, no DANGLING.)
+  Adapt when the spec differs: if the id column is `| AC-1 |`, change the `defs` pattern to
+  `^\| *AC-([0-9]+)`; if ACs are prose / a bulleted list, drop the `defs`/dup/dangling lines and
+  keep only the conflict-marker check; if the spec has **other** numeric tables, scope `defs` to
+  the Acceptance-Criteria section (e.g. `awk '/^## +Acceptance/{f=1;next}/^## /{f=0}f'`) so
+  non-AC `| N |` rows aren't read as duplicate ACs. (The conflict grep matches only `<<<<<<<` /
+  `>>>>>>>`, never a `=======` setext underline.)
 - **`«SPEC_PATH»`, `«BRANCH»`, `«ROUNDS»`** — the spec path, its current branch (`git rev-parse
   --abbrev-ref HEAD`), and the round cap (`--rounds`, else 6).
 
@@ -88,24 +98,35 @@ The brief tells the orchestrator to dispatch the cross-model reviewer as **one `
 with them — not as a separate skill call after they return. That agent (shipped by the `codex`
 plugin) invokes `ask-codex` internally, distills the answer to material findings, and returns
 `{ codexAvailable, findings }` in the loop's finding shape — so the orchestrator adjudicates it
-exactly like a Claude lens and its context stays lean. It is **fail-open**: `codexAvailable: false`
-(Codex absent/unauthenticated/off, or the agent type not installed) → the round proceeds Claude-only
-and the orchestrator notes it. Keep this dispatch rule in the brief verbatim; it is the efficiency
-win over running a Codex skill sequentially.
+exactly like a Claude lens and its context stays lean. It is **fail-open**: a `codexAvailable: false`
+return **or** a dispatch error (an uninstalled `codex:codex-review` raises a tool error, not a JSON
+return — the brief treats both the same) → the round proceeds Claude-only, the same-message Claude
+lenses unaffected, and the orchestrator notes it. Keep this dispatch rule in the brief verbatim; it
+is the efficiency win over running a Codex skill sequentially.
+
+**Prerequisite — state it in the Handoff.** For the Codex reviewer to actually run — especially in
+the *unattended auto-mode* session this skill recommends — the fresh session needs the `codex` plugin
+installed + OpenAI-authenticated **and** `Bash(python3 *codex_bridge.py*)` allowed (in auto mode the
+classifier blocks the bridge otherwise, so Codex reports unavailable every round). Absent that, the
+loop silently degrades to Claude-only — a real loss of the cross-model differentiator over
+`refine-spec`, so surface the prerequisite rather than let Codex vanish quietly.
 
 ## Handoff
 
 Show the filled brief in chat, then **copy it to the clipboard** so the handoff is a single ⌘V —
-follow **`references/clipboard-copy.md`** (portable heredoc, session-gated tool selection,
-chat-only fallback). The clipboard bytes must be byte-identical to what you showed. Copying is not
-running — it stays emit-only.
+follow **`${CLAUDE_PLUGIN_ROOT}/references/clipboard-copy.md`** (portable heredoc, session-gated
+tool selection, chat-only fallback). The clipboard bytes must be byte-identical to what you showed.
+Copying is not running — it stays emit-only.
 
 - **On success**, print e.g. `📋 Copied — ⌘V into a fresh session to run the convergence loop`.
 - **On no clipboard tool / non-zero exit**, fall back to chat-only per the reference and name the remedy.
 
 Tell the user to paste it into a **fresh session** (optionally with auto mode so the loop runs
-unattended), and **stop**. The fresh session then runs the loop and converges the spec; re-run
-`loop-spec` only if you want a new driver.
+unattended), and **stop**. Also tell them the **Codex prerequisite** (above): for the cross-model
+reviewer to run — especially unattended — the fresh session needs the `codex` plugin installed +
+OpenAI-authenticated and `Bash(python3 *codex_bridge.py*)` allowed; otherwise the loop runs
+Claude-only (still valid, just not cross-model). The fresh session then runs the loop and converges
+the spec; re-run `loop-spec` only if you want a new driver.
 
 ## Guardrails
 
@@ -115,7 +136,7 @@ unattended), and **stop**. The fresh session then runs the loop and converges th
 - **`Bash` is for derivation + the clipboard copy only.** Read-only `git`/`grep`/`glob` to derive
   the brief's placeholders, and the one clipboard pipe (see the reference). Never edit the spec,
   run a reviewer, or touch the project otherwise.
-- **Don't rewrite the fixed brief.** Fill the `«…»` placeholders in `references/loop-brief.md`;
+- **Don't rewrite the fixed brief.** Fill the `«…»` placeholders in `${CLAUDE_PLUGIN_ROOT}/references/loop-brief.md`;
   keep the materiality bar, the loop, the concurrent-Codex dispatch rule, and the convergence rule
   verbatim so the emitted loop can't drift into churn or a self-auditing pass.
 - **The cross-model reviewer is best-effort.** The brief already makes Codex fail-open and

@@ -15,8 +15,11 @@ Placeholders you fill (all derived by the skill before emitting — see `SKILL.m
   must check spec claims against.
 - `«LENSES»` — the 3–5 tailored review lenses (one per risk surface of THIS spec), each a
   `Lens X — <focus>` line; always include an implementability / spec-doc-quality lens.
-- `«CONSISTENCY_CHECK»` — the shell one-liner matched to the spec's AC format.
+- `«CONSISTENCY_CHECK»` — the shell check matched to the spec's AC format.
 - `«ROUNDS»` — the hard-cap round count (default 6).
+
+**Emit only the brief below the `---` rule.** This header block is guidance for `loop-spec`; it is
+NOT part of the driver — the pasted/copied prompt starts at `# TASK:`.
 
 ---
 
@@ -67,20 +70,29 @@ Repeat rounds until the convergence rule fires:
      reviewer. Dispatch it IN THE SAME MESSAGE as the Claude lenses so Codex runs concurrently,
      not after them. Hand it a self-contained brief: the target `«SPEC_PATH»`, the Grounding
      block above, "review the whole spec for material issues vs. the repo," the Materiality Bar,
-     and the Finding shape below. It returns `{ codexAvailable, findings }`.
+     and the Finding shape below. It returns `{ codexAvailable, findings }`. (Codex runs only when
+     this session has the `codex` plugin installed + OpenAI-authenticated and
+     `Bash(python3 *codex_bridge.py*)` allowed — in auto mode the bridge is blocked otherwise, so
+     Codex reports unavailable every round and the loop is Claude-only until you grant that.)
 
    Lenses:
    «LENSES»
 
    Each reviewer prompt must demand, for every finding: **severity**, the **exact AC/section**,
    the concrete **"implementer builds the wrong thing" or "risk"** scenario, **file:line
-   evidence** from the repo, and the **precise spec edit** needed. If nothing material: reply
-   exactly `NO MATERIAL FINDINGS`. Finding shape (same for Claude lenses and `codex:codex-review`):
-   `{ severity, location (AC-id/§), scenario, evidence (file:line), edit }`.
+   evidence** from the repo, and the **precise spec edit** needed. Shared finding shape:
+   `{ severity, location (AC-id/§), scenario, evidence (file:line), edit }`. Return channels
+   differ by reviewer: a **Claude lens** replies with its findings, or exactly `NO MATERIAL
+   FINDINGS` if none; the **`codex:codex-review` agent** instead ALWAYS returns its JSON envelope
+   `{ codexAvailable, findings }` (with `findings: []` when nothing material) — never the
+   `NO MATERIAL FINDINGS` sentinel.
 
-   Codex is best-effort — NEVER block the loop on it. If `codex:codex-review` returns
-   `codexAvailable: false` (or the agent type isn't installed), note "Codex unavailable this
-   round" and proceed with the Claude lenses; never fabricate a Codex review.
+   Codex is best-effort — NEVER block the loop on it. Treat **any** of these as "Codex unavailable
+   this round" and proceed on the Claude lens results alone: `codex:codex-review` returns
+   `codexAvailable: false`, **or** the `Agent` call errors / the agent type isn't installed (an
+   unknown agent type raises a tool error, not a JSON envelope — count that error as a *completed*
+   unavailable Codex result, not something to retry or wait on). Never fabricate a Codex review,
+   and never hold the round open for Codex beyond the one concurrent dispatch.
 
 2. ADJUDICATE every returned finding yourself (read the spec + cited code to confirm):
    - FIX: real + material + not already covered → edit the spec now.
@@ -94,11 +106,15 @@ Repeat rounds until the convergence rule fires:
    «CONSISTENCY_CHECK»
 
 4. Record the round: material-fixes count. A round is CLEAN when zero material findings survive
-   adjudication (all reviewers effectively NO-MATERIAL after dedupe/decline).
+   adjudication (all reviewers effectively NO-MATERIAL after dedupe/decline). **A Codex-unavailable
+   round is judged on the Claude lenses alone** — Codex-unavailable is *neutral*: it never fails a
+   round and never resets the streak; note the unavailability for the final report.
 
 ## CONVERGENCE / TERMINATION
-- STOP when TWO CONSECUTIVE rounds are CLEAN (a full fresh sweep — every lens + Codex — produced
-  nothing material two times running). Any material fix resets the streak.
+- STOP when TWO CONSECUTIVE rounds are CLEAN — two full fresh sweeps in a row where every
+  **available** reviewer produced nothing material. Codex participates when available; when it is
+  fail-open unavailable the round is still valid and judged on the Claude lenses, so **Codex never
+  blocks convergence** (the final report notes it didn't run). Any material fix resets the streak.
 - Hard cap: «ROUNDS» rounds. If you hit it without two clean rounds, STOP and report the residual
   open items rather than looping further.
 - The goal is CONVERGENCE to a «CONVERGENCE_GOAL» spec — NOT maximal edits. Bias toward DECLINE
