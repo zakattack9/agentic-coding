@@ -117,7 +117,7 @@ existing gate exactly as before; **no hook or ledger ever requires a Codex flag.
 
 A Claude/Codex split that **doesn't resolve through the normal loop** — Claude passes a
 criterion but Codex keeps failing it with **no further fix available** — must not spin the
-loop silently or deadlock the gate. Escalate it to the user for disposition:
+loop silently or deadlock the gate. (A **warranted-refactor** question that **alternates** — Codex `FAIL`s `no_overengineering` when the refactor is *in* the spec, then Claude `FAIL`s `ac_complete` when it is *removed* — is the same stubborn split across two criteria: escalate rather than ping-ponging add/cut.) Escalate it to the user for disposition:
 
 - **Run interactively:** ask with `AskUserQuestion` — is the Codex finding a genuine gap
   (loop and fix it) or noise to override (drop it and pass)?

@@ -53,11 +53,17 @@ A finding is MATERIAL (worth a spec edit) ONLY if it would plausibly cause one o
 - an outage / unsafe blast radius / irreversibility with no fail-closed path;
 - a genuine AMBIGUITY where two competent engineers would build materially different things;
 - an internal CONTRADICTION, a stale claim the code refutes, or a REQUIRED behavior with no
-  acceptance criterion (so it can't be implemented or verified).
+  acceptance criterion (so it can't be implemented or verified);
+- the change ENTRENCHES an existing poor pattern (builds a new pattern atop a known-bad one) where
+  a BOUNDED, WARRANTED refactor within the spec's objective would leave the codebase better — or a
+  materially-implied quality vertical (security, performance, scalability, maintainability,
+  error-handling) has no acceptance criterion.
 NOT material (DECLINE, log one line, never edit): wording/style, redundant emphasis, "could add
 detail" that doesn't change what gets built, speculative/future scope, defense-in-depth beyond
-the stated threat model, or re-litigating an explicitly-accepted trade-off. When unsure whether
-a finding changes the implementation or adds risk, it is NOT material — DECLINE it.
+the stated threat model, re-litigating an explicitly-accepted trade-off, or an UNWARRANTED refactor
+/ gold-plating / redesign beyond the objective (leave-it-better is bounded — all of within-objective,
+entrenchment-avoiding, and proportionate must hold; unsure ⇒ not warranted, leave it). When unsure
+whether a finding changes the implementation or adds risk, it is NOT material — DECLINE it.
 
 ## THE LOOP
 Repeat rounds until the convergence rule fires:

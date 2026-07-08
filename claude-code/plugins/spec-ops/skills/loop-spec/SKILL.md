@@ -66,8 +66,11 @@ Derive:
   infra/blast-radius, CI/CD orchestration, data/PII correctness, dependency-ordering/bring-up,
   API/contract, concurrency). **Always include one implementability / spec-doc-quality lens**
   (dangling/duplicate AC refs, contradictions, ambiguity, is each required behavior a concrete
-  testable AC). Fold any user **focus areas** in as an extra lens or by weighting an existing one.
-  Format each as a `Lens X — <focus>` line.
+  testable AC). **For a code-touching spec, also include an engineering-quality / leave-it-better
+  lens** — architecture fit, security, performance, maintainability, and whether the change would
+  build atop an existing **poor pattern** where a bounded, warranted refactor is called for
+  (`${CLAUDE_PLUGIN_ROOT}/references/quality-bar.md`). Fold any user **focus areas** in as an extra
+  lens or by weighting an existing one. Format each as a `Lens X — <focus>` line.
 - **`«CONSISTENCY_CHECK»`** — a shell check matched to the spec's **actual AC-table format** so the
   orchestrator can catch conflict markers, duplicate AC numbers, and dangling AC refs after each
   edit batch. Start from the default below and **adapt it to the spec** — the default assumes the
