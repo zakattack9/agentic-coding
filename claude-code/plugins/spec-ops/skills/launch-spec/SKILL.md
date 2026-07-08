@@ -45,7 +45,7 @@ A single **driver prompt** to paste into a fresh session. It is **command-prefix
 | --- | --- | --- |
 | **`/goal`** (default) | `/goal ` + the ≤4,000-char condition | invokes `/goal` with the driver as its condition — pair with auto mode |
 | **`/batch`** | `/batch ` + the batch brief | invokes `/batch` |
-| **dynamic workflow** | `ultracode` + the workflow brief (below) | opts into multi-agent orchestration; Claude authors + runs the workflow from the brief |
+| **dynamic workflow** | `ultracode` + an explicit **"author & run a Workflow"** instruction — or a **copy-pastable `pipeline()`/`parallel()` script** (below) | the keyword opts in; the explicit **Workflow-tool** instruction (or the pasted script) is what makes the fresh session author + run a **real** dynamic Workflow instead of hand-dispatching `Agent`/`Task` subagents |
 
 For **`/goal`**, the pasted text **is the `/goal` condition** — **≤4,000 chars with the `/goal ` prefix counted in** — checked each turn by a **tool-less evaluator** that only sees the transcript (it can't open files or run commands). If the composed `/goal ` driver would exceed that budget, that's the existing signal to **phase / escalate** (see *Context bounding*), **never** to truncate the condition. (The `ultracode` brief is not a `/goal` and is not bound by the 4,000-char cap.) Two consequences shape what you emit:
 
@@ -69,19 +69,25 @@ Write `tasks.md` beside the spec only when it adds decomposition the **AC groups
 
 **The done-gate is the completion contract for *every* driver, not just `/goal`.** `verify-spec` grounds every `AC-id` and returns zero contradicted — wired as the `/goal` condition above, the final (and per-phase) stage of an `ultracode` workflow, or an explicit `verify-spec` run after a `/batch`. The mechanism differs by driver; the contract is identical, so "done" is always grounded against real code, never assumed.
 
-### The `ultracode` brief — a runnable prompt, never a script
+### The `ultracode` workflow driver — make it author a REAL Workflow
 
-When the driver is the dynamic workflow, emit an **`ultracode`-led prompt** (leading token `ultracode`) — **never a literal `pipeline()` / `parallel()` workflow script**. A script would have to be written to a repo file, breaking emit-only; Claude authors the workflow internally from the prompt. The brief carries **every** part a `/goal` driver carries — not just the shape-specific ones:
+When the driver is the dynamic workflow, the emitted prompt must do **two** things: **(1)** lead with the `ultracode` keyword (the opt-in), and **(2)** carry an **explicit instruction to author and run a real dynamic Workflow via the Workflow tool** — a `pipeline()` / `parallel()` over `agent()` orchestration. The keyword **alone is too weak a signal**: an authorized session handed a bare `ultracode` + natural-language brief will **emulate** the workflow by hand-dispatching `Agent`/`Task` subagents instead of invoking the Workflow tool. So spell out the mechanism — this is the exact instruction `orchestrate-spec` uses to launch a real Workflow every time.
+
+**Two emit forms are valid — both stay emit-only.** Emit-only means `launch-spec` writes **no** `.js`/workflow file and runs nothing; emitting the instruction *or the script* **as pasteable text** is fine (the belief that "a script would have to be written to a repo file" was the misconception that weakened this driver):
+- **(default) an explicit brief** whose lead instruction is *"**Use the Workflow tool to author and run a dynamic workflow** that implements `@spec.md` (and `@tasks.md`), shaped as a `pipeline()` / `parallel()` over `agent()` subagents, phased by AC group in `needs §X` order …"* followed by the parts below.
+- **(when the shape is concrete) a copy-pastable workflow script** — the actual `pipeline()` / `parallel()` / `agent()` calls filled in, in a fenced code block the user pastes to run. This does **not** write a file and does **not** break emit-only; it is often the clearest, most reliable form.
+
+Do **not** emit a bare `ultracode` + prose brief with no Workflow-tool instruction and no script — that is the wording that regressed activation into subagent emulation. Either way the driver leads with `ultracode` and carries **every** part a `/goal` driver carries — not just the shape-specific ones:
 
 - **Read directive** — *"read `@spec.md` (and `@tasks.md`) in full first."*
 - **Measurable goal** — the spec implemented so **every acceptance criterion holds**, grounded by `verify-spec` (zero contradicted).
-- **Workflow shape** — phased by **AC group** in `needs §X` order, with `verify-spec` as the **final gate and each phase's exit gate**; where a workflow `agent()` can't spawn a `Task`, the verify stage dispatches its cross-model judge as **sibling stages** (the Codex bridge standalone + `agent({ agentType: 'spec-ops:spec-verify-judge' })`).
+- **Workflow shape (name the tool + the calls)** — instruct the session to **author and run** (via the Workflow tool) a `pipeline()` / `parallel()` over `agent()`, phased by **AC group** in `needs §X` order, with `verify-spec` as the **final gate and each phase's exit gate**; where a workflow `agent()` can't spawn a `Task`, the verify stage dispatches its cross-model judge as **sibling stages** (the Codex bridge standalone + `agent({ agentType: 'spec-ops:spec-verify-judge' })`). Reference the `pipeline()`/`parallel()`/`agent()` calls explicitly — merely describing "phases" reads as followable-by-subagents and gets emulated.
 - **Boundaries** — the spec's Boundaries, **inlined**.
 - **Engineering quality + leave-it-better** — build to the quality bar (architecture / security / performance / tests / maintainability, scaled to the change); where you'd build on a poor existing pattern, prefer a **bounded** refactor within Boundaries and the objective over piling on — proportionate, never past a Boundary.
 - **Commit cadence** — one scoped commit per phase once its acceptance criteria verify clean (conventional message; don't push).
 - **Artifact hygiene** — deliver code/docs/tests that read standalone: no spec ids, phase/§ numbers, spec-named identifiers, or build-increment framing; keep load-bearing rationale.
 
-A single paste opts into orchestration and Claude **authors + runs** the workflow from the brief — `launch-spec` stays emit-only. When you preview the `ultracode` option with `AskUserQuestion` before compiling, keep that preview **natural-language too — never a script-shaped preview**, which primes the wrong mental model and risks the final compile copying its shape.
+The **keyword provides the opt-in**; the **explicit Workflow-tool instruction (or the pasted script)** is what makes the authorized session author + run a **real** Workflow instead of emulating it — you need **both**, and `launch-spec` still writes nothing and runs nothing (emit-only). A `pipeline()`/`parallel()` **preview or script is fine and usually clearer** — emitting the shape as text is **not** the emit-only violation (writing a `.js` file to the repo would be). A script-shaped `AskUserQuestion` preview is allowed.
 
 ## Context bounding — phase by AC group only when escalated
 
