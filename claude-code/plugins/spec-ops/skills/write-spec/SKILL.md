@@ -138,9 +138,9 @@ The canonical fill-in skeleton — single-sourced in `spec-format.md` (pointer b
 
 **The fill-in template is single-sourced in `${CLAUDE_PLUGIN_ROOT}/references/spec-format.md`** ("The fill-in template") — the full-rigor skeleton with per-rigor `[all]` / `[standard+]` / `[full]` / `[optional]` tags and the drafting comments. Copy the sections your rigor includes, fill them, and delete the guidance comments. The per-section drafting rules above (keep the TL;DR tight, write the Summary for a newcomer, plain language, show-don't-tell, code-free at light/standard) still apply.
 
-## Requirements reviewer — full rigor only, advisory
+## Requirements reviewer — standard/full, advisory
 
-At **`full` rigor only**, after the AC table is distilled **and before the draft is committed**, get a second, **different-provider** opinion (OpenAI Codex) on *what the feature implies that the draft missed* — the single highest-value spot, since a requirement dropped at discovery is the most expensive miss. It is **optional, advisory, and fail-open**: it never gates, never blocks the draft from being written or committed, and is a no-op when Codex is absent / unauthenticated / off / slow / malformed. Run it **at most once**.
+At **`standard` and `full` rigor** (skip at `light` — a trivial task has little a reviewer would surface), after the AC table is distilled **and before the draft is committed**, get a second, **different-provider** opinion (OpenAI Codex) on *what the feature implies that the draft missed* — the single highest-value spot, since a requirement dropped at discovery is the most expensive miss (and these misses cluster at `standard`, the common tier — which is why the pass runs there too, not just at `full`). At `standard` the pass is naturally lighter (fewer implied criteria to surface); the mechanism is identical. It is **optional, advisory, and fail-open**: it never gates, never blocks the draft from being written or committed, and is a no-op when Codex is absent / unauthenticated / off / slow / malformed. Run it **at most once**.
 
 It has its **own independent off-switch**, `SPEC_OPS_CODEX_WRITE=0` (separate from the verify/refine judges' `SPEC_OPS_CODEX`), enforced by the bridge — set, the reviewer is skipped and the draft proceeds unchanged.
 
