@@ -63,6 +63,10 @@ PASS_FAIL = ("PASS", "FAIL")
 # Optional here (a degraded reply that omits it still validates and is treated as blocking by
 # the skill); the bundled --output-schema lists it required so Codex is shaped to emit it.
 SEVERITY = ("CRITICAL", "WARNING", "SUGGESTION")
+# A refine finding's classification. Optional at validation time (same degraded-reply leniency as
+# severity), but when present it must be one of these — so a mis-emitted label (e.g. a rubric term
+# like "Debt-perpetuation") is caught and re-dispatched rather than flowing through off-contract.
+FINDING_TYPES = ("Gap", "Ambiguity", "Conflict")
 REFINE_CRITERIA = (
     "claims_verified", "no_open_questions", "no_overengineering",
     "no_bloat", "implementable_cold", "ac_complete",
@@ -220,13 +224,20 @@ def validate_judge_refine(data):
     if "findings" in data and not isinstance(findings, list):
         problems.append("'findings' must be a JSON array when present")
     elif isinstance(findings, list):
-        # severity is optional (a degraded reply may drop it → the skill treats absence as
-        # CRITICAL), but when present it must be one of the three tiers.
+        # severity and type are optional (a degraded reply may drop either → the skill treats an
+        # absent severity as CRITICAL), but when present each must be one of its allowed values.
         for i, f in enumerate(findings):
-            if isinstance(f, dict) and "severity" in f and f.get("severity") not in SEVERITY:
+            if not isinstance(f, dict):
+                continue
+            if "severity" in f and f.get("severity") not in SEVERITY:
                 problems.append(
                     f"findings[{i}].severity must be one of {'/'.join(SEVERITY)} when present "
                     f"(got {f.get('severity')!r})"
+                )
+            if "type" in f and f.get("type") not in FINDING_TYPES:
+                problems.append(
+                    f"findings[{i}].type must be one of {'/'.join(FINDING_TYPES)} when present "
+                    f"(got {f.get('type')!r})"
                 )
     return problems
 

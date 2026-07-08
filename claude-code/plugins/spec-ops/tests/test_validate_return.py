@@ -71,6 +71,16 @@ def test_judge_refine_rejects_bad_severity():
     data = _refine_verdict([{"type": "Gap", "severity": "BLOCKER", "acId": "AC-1", "detail": "x"}])
     assert any("severity" in p for p in vr.validate("judge-refine", data))
 
+def test_judge_refine_accepts_missing_type():
+    # type is optional at validation time (same degraded-reply leniency as severity)
+    data = _refine_verdict([{"severity": "CRITICAL", "acId": "AC-1", "detail": "x"}])
+    assert vr.validate("judge-refine", data) == []
+
+def test_judge_refine_rejects_bad_type():
+    # a mis-emitted rubric label (not one of Gap/Ambiguity/Conflict) is caught, not passed through
+    data = _refine_verdict([{"type": "Debt-perpetuation", "severity": "CRITICAL", "acId": "AC-1", "detail": "x"}])
+    assert any("type" in p for p in vr.validate("judge-refine", data))
+
 
 def _main():
     funcs = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
