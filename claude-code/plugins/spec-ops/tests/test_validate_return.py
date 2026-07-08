@@ -121,6 +121,29 @@ def test_loop_review_not_an_object_fails():
     assert vr.validate("loop-review", ["a", "b"]) != []
 
 
+# ---- judge-verify codeQualitySweepAttested (optional, bool-when-present) --------------
+
+def _verify_verdict(**over):
+    d = {"verdict": "complete", "missed": [], "weakEvidence": [],
+         "backwardSweepAttested": True, "specLinkageSweepAttested": True,
+         "codeQualitySweepAttested": True, "notes": ""}
+    d.update(over)
+    return d
+
+def test_judge_verify_accepts_code_quality_attested():
+    assert vr.validate("judge-verify", _verify_verdict()) == []
+
+def test_judge_verify_code_quality_optional():
+    # optional at validation time (degraded-reply leniency, like the other two attestations)
+    d = _verify_verdict()
+    del d["codeQualitySweepAttested"]
+    assert vr.validate("judge-verify", d) == []
+
+def test_judge_verify_rejects_bad_code_quality_attested():
+    bad = _verify_verdict(codeQualitySweepAttested="yes")
+    assert any("codeQualitySweepAttested" in p for p in vr.validate("judge-verify", bad))
+
+
 def _main():
     funcs = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failures = 0

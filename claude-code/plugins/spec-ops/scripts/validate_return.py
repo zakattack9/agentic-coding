@@ -101,7 +101,8 @@ SCHEMAS = {
         '  "missed": ["checkable claim / AC-id absent from the ledger"],\n'
         '  "weakEvidence": ["claim whose evidence is hollow / stale / doc-based / below standard"],\n'
         '  "backwardSweepAttested": true,\n'
-        '  "specLinkageSweepAttested": true\n'
+        '  "specLinkageSweepAttested": true,\n'
+        '  "codeQualitySweepAttested": true\n'
         '}'
     ),
     "judge-refine": (
@@ -205,7 +206,7 @@ def validate_judge_verify(data):
     for key in ("missed", "weakEvidence"):
         if not isinstance(data.get(key), list):
             problems.append(f"'{key}' must be a JSON array (empty when none)")
-    for key in ("backwardSweepAttested", "specLinkageSweepAttested"):
+    for key in ("backwardSweepAttested", "specLinkageSweepAttested", "codeQualitySweepAttested"):
         if key in data and not isinstance(data.get(key), bool):
             problems.append(f"'{key}' must be a JSON boolean when present")
     return problems

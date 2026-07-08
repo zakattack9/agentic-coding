@@ -58,10 +58,10 @@ Readiness (all required) once the ledger is valid:
   4. The independent judge ran (`judge.ran`), returned `verdict: "complete"`, and
      reported no `missed` claims and no `weakEvidence`.
   `contradicted` claims are findings, not blockers — they do NOT hold the stop.
-  `backwardSweep` (backward-coverage pass) and `specLinkageSweep` (spec-linkage hygiene
-  pass) are both OPTIONAL and shape-validated when present, but NEVER gate the stop —
-  their `findings` are reports like `contradicted` claims, and the judge (not this hook)
-  attests each sweep actually ran.
+  `backwardSweep` (backward-coverage pass), `specLinkageSweep` (spec-linkage hygiene pass),
+  and `codeQualitySweep` (code-quality / leave-it-better pass) are all OPTIONAL and
+  shape-validated when present, but NEVER gate the stop — their `findings` are reports like
+  `contradicted` claims, and the judge (not this hook) attests each sweep actually ran.
 
 Input:  JSON on stdin (hook payload; uses `session_id`).
 Output: nothing to allow the stop; {"decision":"block","reason":...} to force
@@ -165,6 +165,17 @@ SCHEMA_HINT = (
     f'        "patternType": "{" | ".join(PATTERN_TYPES)}",\n'
     '        "snippet": "the offending text",\n'
     '        "suggested": "the line with the linkage stripped (or empty)"\n'
+    "      }\n"
+    "    ]\n"
+    "  },\n"
+    '  "codeQualitySweep": {\n'
+    '    "ran": false,\n'
+    '    "findings": [\n'
+    "      {\n"
+    '        "file": "file:line of delivered code",\n'
+    '        "vertical": "architecture | code-design | security | performance | scalability | maintainability | error-handling | observability | backward-compat | leave-it-better",\n'
+    '        "concern": "what is sloppy / debt-entrenching / could be better designed",\n'
+    '        "suggestion": "the concrete improvement (or a proposed AC for a warranted refactor)"\n'
     "      }\n"
     "    ]\n"
     "  }\n"
@@ -346,6 +357,41 @@ def validate_ledger(m):
                         if key in f and not isinstance(f.get(key), str):
                             problems.append(
                                 f"specLinkageSweep.findings[{i}].{key} must be a string"
+                            )
+
+    # codeQualitySweep: OPTIONAL, report-only (the code-quality / leave-it-better pass —
+    # sloppy or debt-entrenching delivered code). Shape-validated when present so a malformed
+    # sweep self-corrects, but it NEVER gates the stop — its findings are reports, exactly
+    # like backwardSweep / specLinkageSweep. Omitted for non-spec-implementation targets.
+    quality = m.get("codeQualitySweep")
+    if quality is not None:
+        if not isinstance(quality, dict):
+            problems.append(
+                "'codeQualitySweep' must be a JSON object {ran, findings} when present"
+            )
+        else:
+            if not isinstance(quality.get("ran"), bool):
+                problems.append(
+                    "'codeQualitySweep.ran' must be a JSON boolean (true/false)"
+                )
+            qfindings = quality.get("findings")
+            if qfindings is not None and not isinstance(qfindings, list):
+                problems.append("'codeQualitySweep.findings' must be a JSON array")
+            elif isinstance(qfindings, list):
+                for i, f in enumerate(qfindings):
+                    if not isinstance(f, dict):
+                        problems.append(
+                            f"codeQualitySweep.findings[{i}] must be an object"
+                        )
+                        continue
+                    if not isinstance(f.get("file"), str) or not f.get("file").strip():
+                        problems.append(
+                            f"codeQualitySweep.findings[{i}].file must be a non-empty string"
+                        )
+                    for key in ("vertical", "concern", "suggestion"):
+                        if key in f and not isinstance(f.get(key), str):
+                            problems.append(
+                                f"codeQualitySweep.findings[{i}].{key} must be a string"
                             )
 
     return problems
