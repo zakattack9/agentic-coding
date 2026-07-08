@@ -1,6 +1,6 @@
 ---
 name: loop-spec
-description: Compile a spec into a self-contained review→fix CONVERGENCE-LOOP driver prompt that a fresh session runs to harden the spec until an independent sweep finds nothing material — then stop. Use it for a heavy, unbiased, cross-model spec-hardening pass in a dedicated session: "loop on this spec", "converge this spec", "run a review loop until the spec is airtight", "beat on this spec with fresh reviewers" — especially big / high-stakes / infra specs. It reads the spec, derives tailored review lenses + grounding + a consistency check, and emits the loop brief (fresh Claude lens reviewers AND the codex:codex-review agent fire concurrently each round, adjudicate, edit the spec in place, converge on two clean rounds), then copies it to the clipboard and quits. It does NOT run the loop or edit the spec — the emitted driver does. NOT refine-spec (the in-session interactive hardening loop); NOT launch-spec/goal (those implement a finished spec; loop-spec improves the spec doc).
+description: Compile a spec into a self-contained review→fix CONVERGENCE-LOOP driver prompt that a fresh session runs to harden the spec until an independent sweep finds nothing material — then stop. Use it for a heavy, unbiased, cross-model spec-hardening pass in a dedicated session: "loop on this spec", "converge this spec", "run a review loop until the spec is airtight", "beat on this spec with fresh reviewers" — especially big / high-stakes / infra specs. It reads the spec, derives tailored review lenses + grounding + a consistency check, and emits the loop brief (fresh Claude lens reviewers AND the spec-ops:codex-review agent fire concurrently each round, adjudicate, edit the spec in place, converge on two clean rounds), then copies it to the clipboard and quits. It does NOT run the loop or edit the spec — the emitted driver does. NOT refine-spec (the in-session interactive hardening loop); NOT launch-spec/goal (those implement a finished spec; loop-spec improves the spec doc).
 argument-hint: [@path/to/spec.md] [focus areas] [--rounds N]
 model: opus
 effort: high
@@ -43,12 +43,22 @@ This is a heuristic, not a gate — `loop-spec` works on any spec, even one stil
 
 ## What it compiles
 
-The emitted brief is the fill-in skeleton in **`${CLAUDE_PLUGIN_ROOT}/references/loop-brief.md`** —
-read it; the driver is the part **below the `---` rule** (from `# TASK:` down — the file's header is
-guidance for you, not part of the driver), a verbatim template with `«…»` placeholders. Your job is
-to **derive each placeholder from the spec + repo**, fill them, and emit that filled driver.
-Everything outside the placeholders is fixed (the materiality bar, the loop, the Codex-concurrency
-rule, the convergence rule) — never rewrite it.
+The emitted driver is the fill-in skeleton in **`${CLAUDE_PLUGIN_ROOT}/references/loop-brief.md`** —
+read it; the driver is the part **below the `---` rule** (from the `/goal ` line down — the file's
+header is guidance for you, not part of the driver), a verbatim template with `«…»` placeholders. It
+is a **`/goal `-prefixed prompt**: the emitted text starts with the literal `/goal ` token so one
+paste into a fresh session (with auto mode) runs the loop autonomously — `/goal` drives the turns and
+the loop self-terminates on the convergence rule. Your job is to **derive each placeholder from the
+spec + repo**, fill them, and emit the filled `/goal` driver. Everything outside the placeholders is
+fixed (the materiality bar, the loop, the Codex-concurrency rule, the convergence rule) — never
+rewrite it.
+
+**Keep the filled driver within `/goal`'s ~4,000-char condition budget** (the `/goal ` prefix counts;
+overflow behavior is undocumented). The fixed text is already tight; the flex is your fills — for a
+big / infra spec, trim `«GROUNDING»` / `«LENSES»` / `«CONSISTENCY_CHECK»` to essentials (fewer,
+broader lenses; a lean grounding block; a one-line consistency check) rather than exceed the budget.
+The loop still converges — a lens is a *focus*, not a scope limit (each reviewer reads the whole
+spec + repo regardless), so fewer explicit lenses is broader coverage, not less.
 
 Derive:
 
@@ -69,12 +79,18 @@ Derive:
   testable AC). **For a code-touching spec, also include an engineering-quality / leave-it-better
   lens** — architecture fit, security, performance, maintainability, and whether the change would
   build atop an existing **poor pattern** where a bounded, warranted refactor is called for
-  (`${CLAUDE_PLUGIN_ROOT}/references/quality-bar.md`). Fold any user **focus areas** in as an extra
-  lens or by weighting an existing one. Format each as a `Lens X — <focus>` line.
+  (`${CLAUDE_PLUGIN_ROOT}/references/quality-bar.md`). **Match the spec's rigor** (that reference's
+  rigor rule): for a **code-free** `light`/`standard` spec this lens may surface leave-it-better
+  only as an **observable-outcome** AC — never a code-structural refactor AC ("consolidate helper
+  X"), which belongs to a full-rigor / code-naming spec that already pins internal code. Fold any
+  user **focus areas** in as an extra lens or by weighting an existing one. Format each as a
+  `Lens X — <focus>` line.
 - **`«CONSISTENCY_CHECK»`** — a shell check matched to the spec's **actual AC-table format** so the
   orchestrator can catch conflict markers, duplicate AC numbers, and dangling AC refs after each
-  edit batch. Start from the default below and **adapt it to the spec** — the default assumes the
-  canonical spec-ops format (AC definitions are bare-number table rows `| 1 |`, cited as `AC-1`):
+  edit batch. **Emit it compact** to fit the `/goal` budget — a terse one-liner chain or a short
+  prose instruction naming the three checks; the block below is your reference for WHAT to check, not
+  the literal text to paste. Start from it and **adapt to the spec** — it assumes the canonical
+  spec-ops format (AC definitions are bare-number table rows `| 1 |`, cited as `AC-1`):
 
   ```bash
   F="«SPEC_PATH»"
@@ -97,39 +113,48 @@ Derive:
 ### The Codex-concurrency optimization (the point of the loop's dispatch shape)
 
 The brief tells the orchestrator to dispatch the cross-model reviewer as **one `Agent` of type
-`codex:codex-review`, in the SAME message as the Claude lens agents**, so Codex runs **concurrently**
-with them — not as a separate skill call after they return. That agent (shipped by the `codex`
-plugin) invokes `ask-codex` internally, distills the answer to material findings, and returns
+`spec-ops:codex-review`, in the SAME message as the Claude lens agents**, so Codex runs
+**concurrently** with them — not as a separate call after they return. That agent is **shipped by
+spec-ops and self-contained** — it calls spec-ops's own codex bridge
+(`scripts/codex_bridge.py --kind loop-review`) directly, so the loop has **no dependency on the
+`codex` plugin**. It distills Codex's answer to material findings and returns
 `{ codexAvailable, findings }` in the loop's finding shape — so the orchestrator adjudicates it
 exactly like a Claude lens and its context stays lean. It is **fail-open**: a `codexAvailable: false`
-return **or** a dispatch error (an uninstalled `codex:codex-review` raises a tool error, not a JSON
-return — the brief treats both the same) → the round proceeds Claude-only, the same-message Claude
-lenses unaffected, and the orchestrator notes it. Keep this dispatch rule in the brief verbatim; it
-is the efficiency win over running a Codex skill sequentially.
+return **or** a dispatch error (an uninstalled `spec-ops:codex-review` raises a tool error, not a
+JSON return — the brief treats both the same) → the round proceeds Claude-only, the same-message
+Claude lenses unaffected, and the orchestrator notes it. Keep this dispatch rule in the brief
+verbatim; it is the efficiency win over running Codex sequentially.
 
 **Prerequisite — state it in the Handoff.** For the Codex reviewer to actually run — especially in
-the *unattended auto-mode* session this skill recommends — the fresh session needs the `codex` plugin
-installed + OpenAI-authenticated **and** `Bash(python3 *codex_bridge.py*)` allowed (in auto mode the
-classifier blocks the bridge otherwise, so Codex reports unavailable every round). Absent that, the
+the *unattended auto-mode* session this skill recommends — the fresh session needs the **Codex CLI
+installed + OpenAI-authenticated** **and** `Bash(python3 *codex_bridge.py*)` allowed (in auto mode
+the classifier blocks the bridge otherwise, so Codex reports unavailable every round). The bridge
+itself **ships with spec-ops** — no `codex` plugin needed. Absent Codex / auth / the permission, the
 loop silently degrades to Claude-only — a real loss of the cross-model differentiator over
 `refine-spec`, so surface the prerequisite rather than let Codex vanish quietly.
 
 ## Handoff
 
-Show the filled brief in chat, then **copy it to the clipboard** so the handoff is a single ⌘V —
+Show the filled driver in chat, then **copy it to the clipboard** so the handoff is a single ⌘V —
 follow **`${CLAUDE_PLUGIN_ROOT}/references/clipboard-copy.md`** (portable heredoc, session-gated
-tool selection, chat-only fallback). The clipboard bytes must be byte-identical to what you showed.
-Copying is not running — it stays emit-only.
+tool selection, chat-only fallback). The clipboard bytes must be byte-identical to what you showed,
+**including the leading `/goal ` prefix**. Copying is not running — it stays emit-only.
 
-- **On success**, print e.g. `📋 Copied — ⌘V into a fresh session to run the convergence loop`.
+- **On success**, print e.g. `📋 Copied — ⌘V into a fresh session (it's already prefixed with /goal); pair with auto mode to run the loop unattended`.
 - **On no clipboard tool / non-zero exit**, fall back to chat-only per the reference and name the remedy.
 
-Tell the user to paste it into a **fresh session** (optionally with auto mode so the loop runs
-unattended), and **stop**. Also tell them the **Codex prerequisite** (above): for the cross-model
-reviewer to run — especially unattended — the fresh session needs the `codex` plugin installed +
-OpenAI-authenticated and `Bash(python3 *codex_bridge.py*)` allowed; otherwise the loop runs
+Tell the user to paste it into a **fresh session** — it's already prefixed with `/goal`, so pair it
+with **auto mode** to run the loop unattended — and **stop**. Also tell them the **Codex
+prerequisite** (above): for the cross-model reviewer to run — especially unattended — the fresh
+session needs the **Codex CLI installed + OpenAI-authenticated** and `Bash(python3 *codex_bridge.py*)`
+allowed (the bridge ships with spec-ops — no `codex` plugin needed); otherwise the loop runs
 Claude-only (still valid, just not cross-model). The fresh session then runs the loop and converges
 the spec; re-run `loop-spec` only if you want a new driver.
+
+The emitted loop leaves the spec **edited but uncommitted** (it stops for review). Tell the user to
+review the FIX-log, then **commit the hardened spec** (or re-run `refine-spec` to re-gate it)
+**before `launch-spec`** — so `verify-spec`'s diff base anchors on the hardened spec, not a
+pre-loop commit.
 
 ## Guardrails
 

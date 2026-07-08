@@ -82,6 +82,45 @@ def test_judge_refine_rejects_bad_type():
     assert any("type" in p for p in vr.validate("judge-refine", data))
 
 
+# ---- loop-review (loop-spec cross-model reviewer) -----------------------------------
+
+def test_loop_review_registered():
+    assert "loop-review" in vr.VALIDATORS
+
+def test_loop_review_empty_findings_pass():
+    # nothing material this round is a valid, expected result
+    assert vr.validate("loop-review", {"findings": []}) == []
+
+def test_loop_review_valid_populated_passes():
+    data = {"findings": [
+        {"severity": "CRITICAL", "location": "AC-7", "scenario": "builds wrong thing",
+         "evidence": "src/x.py:12", "edit": "add an AC pinning the tenant scope"},
+    ]}
+    assert vr.validate("loop-review", data) == []
+
+def test_loop_review_missing_findings_fails():
+    assert any("findings" in p for p in vr.validate("loop-review", {}))
+
+def test_loop_review_findings_not_array_fails():
+    assert any("findings" in p for p in vr.validate("loop-review", {"findings": "oops"}))
+
+def test_loop_review_accepts_missing_severity():
+    # severity is optional at validation time (degraded-reply leniency, like judge-refine)
+    data = {"findings": [{"location": "AC-1", "scenario": "x", "evidence": "a:1", "edit": "y"}]}
+    assert vr.validate("loop-review", data) == []
+
+def test_loop_review_rejects_bad_severity():
+    data = {"findings": [{"severity": "BLOCKER", "scenario": "x"}]}
+    assert any("severity" in p for p in vr.validate("loop-review", data))
+
+def test_loop_review_non_string_field_fails():
+    data = {"findings": [{"severity": "WARNING", "evidence": 123}]}
+    assert any("findings[0].evidence" in p for p in vr.validate("loop-review", data))
+
+def test_loop_review_not_an_object_fails():
+    assert vr.validate("loop-review", ["a", "b"]) != []
+
+
 def _main():
     funcs = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failures = 0
