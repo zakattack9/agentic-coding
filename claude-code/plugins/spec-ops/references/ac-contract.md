@@ -78,4 +78,4 @@ The "Explore on your own" block **complements, never repeats**: it lists only wh
 - **`standard`** — a lean form: `### For agents` plus a lean `### For humans` of capability checks and a short explore prompt.
 - **`full`** — the complete structure: smoke checks first, grouped capability checks with the required edge / error cases, the full explore block, and the sign-off.
 
-The write-spec skeleton carries the fill-in template. This checklist is the single verification section — it replaces any older "code area → `AC-id`" index; a spec still carrying that flat legacy shape (no `### For agents` / `### For humans`) is a pre-format spec and is left as-is.
+The write-spec skeleton carries the fill-in template. This checklist is the single verification section — it replaces any older "code area → `AC-id`" index; a spec still carrying that flat legacy shape (no `### For agents` / `### For humans`) is **migrated into this two-subsection form**, not grandfathered (see `spec-format.md`, "Conform any spec to its shape").
