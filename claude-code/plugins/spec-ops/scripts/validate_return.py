@@ -8,7 +8,7 @@ ledger or a gate decision — never trust a subagent's prose. This script is tha
 validation step (the plan-validate-execute pattern): pipe a subagent's return
 through it and branch on the exit code.
 
-Five contracts (`--kind`):
+Six contracts (`--kind`):
 
   grounder-verify : verify-spec step 2 — a JSON ARRAY, one object per claim:
         [{ "claim", "verdict": confirmed|contradicted|unverifiable,
@@ -32,6 +32,11 @@ Five contracts (`--kind`):
         three string arrays naming what the feature implies but the draft missed:
         { "missingACs": [...], "unaskedQuestions": [...], "scopeRisks": [...] }
         Advisory only — the caller surfaces it for disposition, never gates on it.
+
+  loop-review     : loop-spec cross-model reviewer — a JSON OBJECT:
+        { "findings": [{ "severity": CRITICAL|WARNING|SUGGESTION, "location": "AC-id/§",
+            "scenario", "evidence": "file:line", "edit" }] }
+        The spec-ops:codex-review agent wraps this into { codexAvailable, findings }.
 
 Input: the JSON on stdin, or a file path argument. Usage:
     python3 validate_return.py --kind <kind> [file.json]
@@ -63,6 +68,10 @@ PASS_FAIL = ("PASS", "FAIL")
 # Optional here (a degraded reply that omits it still validates and is treated as blocking by
 # the skill); the bundled --output-schema lists it required so Codex is shaped to emit it.
 SEVERITY = ("CRITICAL", "WARNING", "SUGGESTION")
+# A refine finding's classification. Optional at validation time (same degraded-reply leniency as
+# severity), but when present it must be one of these — so a mis-emitted label (e.g. a rubric term
+# like "Debt-perpetuation") is caught and re-dispatched rather than flowing through off-contract.
+FINDING_TYPES = ("Gap", "Ambiguity", "Conflict")
 REFINE_CRITERIA = (
     "claims_verified", "no_open_questions", "no_overengineering",
     "no_bloat", "implementable_cold", "ac_complete",
@@ -92,7 +101,8 @@ SCHEMAS = {
         '  "missed": ["checkable claim / AC-id absent from the ledger"],\n'
         '  "weakEvidence": ["claim whose evidence is hollow / stale / doc-based / below standard"],\n'
         '  "backwardSweepAttested": true,\n'
-        '  "specLinkageSweepAttested": true\n'
+        '  "specLinkageSweepAttested": true,\n'
+        '  "codeQualitySweepAttested": true\n'
         '}'
     ),
     "judge-refine": (
@@ -111,6 +121,17 @@ SCHEMAS = {
         '  "missingACs": ["a requirement the feature implies but the AC table never captures"],\n'
         '  "unaskedQuestions": ["a product decision the discovery transcript never put to the user"],\n'
         '  "scopeRisks": ["a scope/over-reach risk in what was drafted"]\n'
+        '}'
+    ),
+    "loop-review": (
+        '{\n'
+        '  "findings": [\n'
+        '    { "severity": "' + " | ".join(SEVERITY) + '",\n'
+        '      "location": "the AC-id / § the finding is about",\n'
+        '      "scenario": "the concrete \'implementer builds the wrong thing\' or \'risk\' scenario",\n'
+        '      "evidence": "file:line from the actual repo",\n'
+        '      "edit": "the precise spec edit needed" }\n'
+        '  ]\n'
         '}'
     ),
 }
@@ -185,7 +206,7 @@ def validate_judge_verify(data):
     for key in ("missed", "weakEvidence"):
         if not isinstance(data.get(key), list):
             problems.append(f"'{key}' must be a JSON array (empty when none)")
-    for key in ("backwardSweepAttested", "specLinkageSweepAttested"):
+    for key in ("backwardSweepAttested", "specLinkageSweepAttested", "codeQualitySweepAttested"):
         if key in data and not isinstance(data.get(key), bool):
             problems.append(f"'{key}' must be a JSON boolean when present")
     return problems
@@ -220,13 +241,20 @@ def validate_judge_refine(data):
     if "findings" in data and not isinstance(findings, list):
         problems.append("'findings' must be a JSON array when present")
     elif isinstance(findings, list):
-        # severity is optional (a degraded reply may drop it → the skill treats absence as
-        # CRITICAL), but when present it must be one of the three tiers.
+        # severity and type are optional (a degraded reply may drop either → the skill treats an
+        # absent severity as CRITICAL), but when present each must be one of its allowed values.
         for i, f in enumerate(findings):
-            if isinstance(f, dict) and "severity" in f and f.get("severity") not in SEVERITY:
+            if not isinstance(f, dict):
+                continue
+            if "severity" in f and f.get("severity") not in SEVERITY:
                 problems.append(
                     f"findings[{i}].severity must be one of {'/'.join(SEVERITY)} when present "
                     f"(got {f.get('severity')!r})"
+                )
+            if "type" in f and f.get("type") not in FINDING_TYPES:
+                problems.append(
+                    f"findings[{i}].type must be one of {'/'.join(FINDING_TYPES)} when present "
+                    f"(got {f.get('type')!r})"
                 )
     return problems
 
@@ -246,12 +274,38 @@ def validate_write_requirements(data):
     return problems
 
 
+def validate_loop_review(data):
+    problems = []
+    if not isinstance(data, dict):
+        return ["the return must be a JSON object { findings: [...] }"]
+    findings = data.get("findings")
+    if not isinstance(findings, list):
+        return ["'findings' must be a JSON array (empty when nothing material)"]
+    # Shape only, with the same degraded-reply leniency as judge-refine: a finding's
+    # fields are strings when present and severity is enum-when-present; substance is the
+    # orchestrator's call, not this validator's.
+    for i, f in enumerate(findings):
+        if not isinstance(f, dict):
+            problems.append(f"findings[{i}] must be an object")
+            continue
+        if "severity" in f and f.get("severity") not in SEVERITY:
+            problems.append(
+                f"findings[{i}].severity must be one of {'/'.join(SEVERITY)} when present "
+                f"(got {f.get('severity')!r})"
+            )
+        for key in ("location", "scenario", "evidence", "edit"):
+            if key in f and not _is_str(f.get(key)):
+                problems.append(f"findings[{i}].{key} must be a string when present")
+    return problems
+
+
 VALIDATORS = {
     "grounder-verify": validate_grounder_verify,
     "grounder-refine": validate_grounder_refine,
     "judge-verify": validate_judge_verify,
     "judge-refine": validate_judge_refine,
     "write-requirements": validate_write_requirements,
+    "loop-review": validate_loop_review,
 }
 
 

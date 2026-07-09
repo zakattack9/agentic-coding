@@ -32,6 +32,9 @@ Readiness (all required) once the ledger is valid:
   1. Every gate flag is true        (agent attestation per dimension)
   2. Every open question is resolved (agent ledger)
   3. The spec file has no leftover not-finalized markers (mechanical scan)
+  3b. The Acceptance Criteria have no duplicate ids and no leftover conflict
+      markers (mechanical scan via spec_consistency.py; dangling `AC-N`
+      references are reported as advisories and do not block)
   4. The ready spec is committed     (scoped to the spec file via spec_git.py;
                                       fail-OPEN if it isn't a git repo / git errors,
                                       so an unenforceable commit never traps a user)
@@ -56,6 +59,13 @@ try:
     import spec_git
 except Exception:  # noqa: BLE001 — a missing helper must never disable the gate
     spec_git = None
+
+# Deterministic AC-integrity check (duplicate ids / dangling refs / conflict markers).
+# Guarded so a missing helper never disables the gate.
+try:
+    import spec_consistency
+except Exception:  # noqa: BLE001 — a missing helper must never disable the gate
+    spec_consistency = None
 
 # Ledger is considered abandoned/stuck if not rewritten within this window.
 # Long enough for a heavy pass (parallel verification subagents + user Q&A),
@@ -231,6 +241,25 @@ def evaluate(marker_path: str, marker: dict):
             "(TODO/TBD/FIXME/???/'to be decided'/'open question'/'NEEDS CLARIFICATION'):\n  "
             + "\n  ".join(hits)
         )
+
+    # 3b. Deterministic AC-integrity: no duplicate AC ids or leftover conflict markers.
+    #     refine edits ACs heavily, so this is the highest-risk place for them. Only the
+    #     *blocking* problems (conflict markers, duplicate AC numbers) hold the stop;
+    #     dangling `AC-N` references are advisory (a bare AC-N may reference a sibling
+    #     spec) and don't block here. Fail-SAFE — a real blocking defect blocks; fail-OPEN
+    #     only when the check can't run (missing helper, unreadable, or no AC section to
+    #     check → check() returns (None, None)), so it never traps a user.
+    if spec_consistency is not None:
+        try:
+            blocking, _advisory = spec_consistency.check(
+                open(spec_path, "r", errors="replace").read())
+        except OSError:
+            blocking = None
+        if blocking:
+            failures.append(
+                "Acceptance-Criteria integrity problems — fix before finalizing:\n  "
+                + "\n  ".join(blocking[:10])
+            )
 
     # Ready on the verification gate — but also require the ready spec be
     # committed (scoped to the spec file) before releasing the stop. The model

@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "loop-spec cross-model review findings",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "severity": { "type": "string", "enum": ["CRITICAL", "WARNING", "SUGGESTION"] },
+          "location": { "type": "string" },
+          "scenario": { "type": "string" },
+          "evidence": { "type": "string" },
+          "edit": { "type": "string" }
+        },
+        "required": ["severity", "location", "scenario", "evidence", "edit"]
+      }
+    }
+  },
+  "required": ["findings"]
+}

@@ -34,8 +34,9 @@ Design contract (why it is shaped this way):
     file is a private temp for Codex's last-message channel, cleaned up on exit.
 
 Usage:
-    codex_bridge.py --kind <judge-verify|judge-refine|write-requirements> \
-                    --prompt-file <f> [--schema-file <f>] [--cd <repo>] \
+    codex_bridge.py --kind <judge-verify|judge-refine|write-requirements|loop-review> \
+                    --prompt-file <f|-> [--schema-file <f>] [--cd <repo>] \
+                    # --prompt-file - reads the prompt from stdin (heredoc-friendly)
                     [--model <m>] [--effort xhigh|high|medium|low|minimal] [--timeout 1170]
                     # default timeout is SPEC_OPS_CODEX_TIMEOUT (seconds) or 1170; --timeout wins
                     # default effort is SPEC_OPS_CODEX_EFFORT or xhigh; --effort wins
@@ -498,7 +499,8 @@ def main(argv):
 
     if kind not in validate_return.VALIDATORS:
         sys.stderr.write(
-            "codex_bridge: --kind must be one of judge-verify, judge-refine, write-requirements\n"
+            "codex_bridge: --kind must be one of judge-verify, judge-refine, "
+            "write-requirements, loop-review\n"
         )
         return 3
     if do_probe:
@@ -513,7 +515,7 @@ def main(argv):
         )
         return 3
     try:
-        prompt = open(prompt_file, "r", encoding="utf-8").read()
+        prompt = sys.stdin.read() if prompt_file == "-" else open(prompt_file, "r", encoding="utf-8").read()
     except OSError as e:
         sys.stderr.write(f"codex_bridge: cannot read --prompt-file: {e}\n")
         return 3

@@ -28,7 +28,7 @@ allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 
 ## Inputs
 
-Start from whatever the user has — a rough idea, loose requirements, or a fully-formed change. You do **not** need a destination file to begin: when you start from an idea (and questions aren't disabled), run **[Discovery](#discovery--turn-a-bare-idea-into-requirements)** first and **name the spec file at the end**, once there's a draft worth saving (ask where to save it then, or propose a path the user confirms). Only take a save path up front when the user already gave one, or is updating an existing spec.
+Start from whatever the user has — a rough idea, loose requirements, or a fully-formed change. You do **not** need a destination file to begin: when you start from an idea (and questions aren't disabled), run **[Discovery](#discovery--turn-a-bare-idea-into-requirements)** first and **name the spec file at the end**, once there's a draft worth saving (ask where to save it then, or propose a path the user confirms). Only take a save path up front when the user already gave one, or is updating an existing spec — and when you **update an existing spec, conform it to its rigor's canonical shape and template** (`${CLAUDE_PLUGIN_ROOT}/references/spec-format.md`), migrating any legacy layout while preserving every substance.
 
 **Elicit before you write — don't guess at behavior.** Clarify any genuine ambiguity with `AskUserQuestion` before drafting; it is better to ask one too many questions than to produce an inaccurate spec. Whether that elicitation is interactive is governed by **`--disable-questions`**, not the rigor (see [Rigor](#rigor--how-deep-to-go) and [Discovery](#discovery--turn-a-bare-idea-into-requirements)) — under the flag, draft from what's given and leave a `[NEEDS CLARIFICATION: …]` marker on each genuine unknown instead of opening a question loop.
 
@@ -47,12 +47,15 @@ Discovery is **convergent**: diverge just enough to surface what matters, then c
 - **The decisions only the user can make** — the genuine product forks (e.g. "notifications batch hourly vs. send immediately", "soft-delete vs. hard-delete"). Offer concrete options; don't silently pick for them.
 - **Scope boundaries** — what is explicitly *out*, and anything the implementer must not touch.
 - **The non-obvious edge cases** — the empty / limit / conflict / permission cases the happy path skips.
+- **The quality bar & leave-it-better appetite** — any performance / security / scale / robustness the change must meet, and whether you want it to **leave the touched area better** (a warranted, in-scope cleanup) rather than pile onto existing patterns. This is a *product* decision about the desired end state — you are **not** inspecting code; `refine-spec` grounds which debt actually exists and scopes any bounded refactor (`${CLAUDE_PLUGIN_ROOT}/references/quality-bar.md`).
+
+**Sweep the requirements-coverage checklist so nothing is missed by omission.** Walk **`${CLAUDE_PLUGIN_ROOT}/references/requirements-coverage.md`** — for **each** dimension (actors, triggers, inputs / validation, states / lifecycle, edge & boundary cases, error / failure handling, concurrency, data lifecycle, permissions, notifications / side-effects, integrations, limits, observability, rollout / compatibility, accessibility / i18n, the quality bar, explicit out-of-scope), either elicit a concrete requirement (→ an `AC`) or **explicitly mark it N/A** for this change; **never skip a dimension silently** — that omission is exactly how a requirement goes missing. Scale to the change: a `light` task N/As most dimensions; a `standard` feature works the ones it touches; a `full` change sweeps all. This is a prompt for finding holes, not a section to add — the output is ACs.
 
 **Grill the design tree.** Walk these in **dependency order** — settle the decisions other choices hang on first, then the ones that depend on them — and **lead every question with your recommended answer**, so the user is confirming a default rather than starting from a blank. Ask relentlessly while the answers still change *what gets built*, but **stop when the returns diminish**: once the open items are low-stakes details an implementer can reasonably choose, you're done — don't manufacture questions to seem thorough.
 
 Discovery may legitimately conclude that the idea **isn't ready to spec** (it's blocked on a decision only the user can make) or is **actually several specs** — surface that rather than forcing a draft. Otherwise, distill the answers into the AC-first draft below.
 
-The line that keeps this from overlapping `refine-spec`: write-spec asks **requirements** questions sourced from the *idea* ("should it batch or send immediately?"); `refine-spec` asks **grounding** questions sourced from the *codebase* ("there's no `users.email` column — did you mean `contact_email`?"). Different questions, different stage. **Under `--disable-questions`** (batch / delegated calls) there is **no discovery loop** at any rigor — draft from what's given and leave `[NEEDS CLARIFICATION]` markers.
+The line that keeps this from overlapping `refine-spec`: write-spec asks **requirements** questions sourced from the *idea* ("should it batch or send immediately?"); `refine-spec` asks **grounding** questions sourced from the *codebase* ("there's no `users.email` column — did you mean `contact_email`?"). Different questions, different stage. **Under `--disable-questions`** (batch / delegated calls) there is **no discovery loop** at any rigor — draft from what's given and leave `[NEEDS CLARIFICATION]` markers; still mentally sweep the requirements-coverage dimensions and mark any the input leaves uncovered with a `[NEEDS CLARIFICATION]` rather than dropping it silently.
 
 ## Writing Philosophy
 
@@ -80,7 +83,7 @@ Lead with a **markdown table** of **acceptance criteria** — every behavior and
 
 - **Enumerate exhaustively — never condense.** The criteria are the one place you list *everything* — a requirement that lives only in a paragraph below gets missed at completion. Brevity is for wording, not coverage. A separate **Validation** / "how we'll test it" list is acceptance criteria wearing another hat — put those assertions here.
 - **Each criterion is one atomic, observable end-state** — "Unrouted mail is quarantined, never dropped", not "build the quarantine system". Phrase what is *true* when done; the detailed rule that implements it lives in the body under its `AC-id`. Encode a **walking skeleton** as a behavioral AC (*an end-to-end path from {X} to an observable {Y} runs*), not a build step.
-- **Don't silently drop non-functional constraints** — performance, security, idempotency, limits, concurrency: if the change implies one, make it its own `AC`. These are the most-lost requirements; capture the obvious ones (`refine-spec` hunts the rest).
+- **Don't silently drop non-functional constraints** — the quality verticals in `${CLAUDE_PLUGIN_ROOT}/references/quality-bar.md` (performance, security, scalability, maintainability, error-handling, …): if the change materially implies one, make it its own `AC`. If the user set a **leave-it-better appetite**, note it as intent for `refine-spec` to scope. These are the most-lost requirements; capture the obvious ones (`refine-spec` hunts the rest).
 - **Group only to aid the reader, never assert an order you can't ground.** A single flat table is the default; you *may* loosely group ≥2 obvious capability clusters under `### N. <capability>` headers as a "what am I building" map. Do **not** assert a build order or a cross-group `needs §X` dependency — that is a grounded fact `refine-spec` commits. Ids stay globally unique and stable across groups.
 
 ### Show, don't tell
@@ -133,117 +136,13 @@ The **`## Summary`** and the **`### For humans`** checklist are read by a person
 
 ## Spec Structure
 
-The skeleton below is the **`full`**-rigor shape; `light` is the Acceptance Criteria table alone and `standard` is TL;DR + Summary + AC + Boundaries + a lean Checklist (see [Rigor](#rigor--how-deep-to-go)). The **`## TL;DR`, `## Summary`, `## Acceptance Criteria`, and `## Checklist` sections are mandatory at standard/full** (plus **Boundaries** where the change has out-of-bounds areas) — never drop them, and never replace `## TL;DR` with an unlabeled intro paragraph. "Use only sections that are relevant" governs the **optional** ones (UI Changes, Data Migration, Current state → Target, Architecture); not every spec needs those. The full skeleton is shaped for a typical feature change: **infra / platform / migration specs** usually drop **UI Changes** and **Data Migration** and add two — a **Current state → Target** view (what exists today vs. the end state, load-bearing when you're changing a running system) and a short **Architecture** diagram (mermaid). Add them only when they earn their place.
+The canonical fill-in skeleton — single-sourced in `spec-format.md` (pointer below) — is the **`full`**-rigor shape; `light` is the Acceptance Criteria table alone and `standard` is TL;DR + Summary + AC + Boundaries + a lean Checklist (see [Rigor](#rigor--how-deep-to-go)). The per-rigor section-set, the code-free rule, and the rule that an **updated / passed-in spec is conformed to its rigor's shape** (rewriting a legacy layout, never grandfathering it) are single-sourced in **`${CLAUDE_PLUGIN_ROOT}/references/spec-format.md`** — shared with `refine-spec`. The **`## TL;DR`, `## Summary`, `## Acceptance Criteria`, and `## Checklist` sections are mandatory at standard/full** (plus **Boundaries** where the change has out-of-bounds areas) — never drop them, and never replace `## TL;DR` with an unlabeled intro paragraph. "Use only sections that are relevant" governs the **optional** ones (UI Changes, Data Migration, Current state → Target, Architecture); not every spec needs those. The full skeleton is shaped for a typical feature change: **infra / platform / migration specs** usually drop **UI Changes** and **Data Migration** and add two — a **Current state → Target** view (what exists today vs. the end state, load-bearing when you're changing a running system) and a short **Architecture** diagram (mermaid). Add them only when they earn their place.
 
-```markdown
-# {Feature Name} Spec
+**The fill-in template is single-sourced in `${CLAUDE_PLUGIN_ROOT}/references/spec-format.md`** ("The fill-in template") — the full-rigor skeleton with per-rigor `[all]` / `[standard+]` / `[full]` / `[optional]` tags and the drafting comments. Copy the sections your rigor includes, fill them, and delete the guidance comments. The per-section drafting rules above (keep the TL;DR tight, write the Summary for a newcomer, plain language, show-don't-tell, code-free at light/standard) still apply.
 
-## TL;DR
-- {What the change is in one line}
-- {The most important behavioral detail someone might get wrong — point at its AC-id}
+## Requirements reviewer — standard/full, advisory
 
-## Summary
-<!-- Zero-context onboarding for a human (dev / QA). Short: ~3 small paragraphs / 4–8 sentences. CODE-FREE even at full — no file paths, functions/classes, tables/columns, or config keys. Order: what it is → why → key behaviors → out of scope. A DERIVED view: restates the contract in plain language, adds NO fact absent from the AC table, never the sole home of a fact. Follows the plain-language rules (short active-voice sentences, one term per concept, UI labels quoted verbatim). -->
-
-**What this is:** {one sentence — what the feature is}
-**Why:** {the problem it solves / who is slowed down today}
-**Expected result:** {the key behaviors a user or admin can perform once it is built}
-**Out of scope:** {what it explicitly does not do}
-
----
-
-## Acceptance Criteria
-<!-- The enumerated contract: every behavior/constraint that must hold when done, as a discrete, testable assertion with a stable id. The reader's 2-minute scan AND what launch-spec's done-gate and verify-spec check 1:1. Enumerate exhaustively — never condense. Each AC is ONE atomic, observable end-state ("X is true"), not a task. Detailed rules in the body cite their AC-id so each fact is said once. -->
-<!-- Default to a single FLAT table. OPTIONALLY split into named groups (### N. <capability>), one table per group, when the ACs fall into ≥2 obvious capabilities — a "what am I building" map. AC-ids stay globally unique and stable across groups. Do NOT assert a build order or cross-group `needs §X` here; refine-spec commits that after grounding against the codebase. -->
-
-| AC  | Criterion                                       |
-| --- | ----------------------------------------------- |
-| 1   | {single testable assertion about the end state} |
-| 2   | {…}                                             |
-
----
-
-## {Feature Name}
-<!-- Name this after the feature, not a generic label like "Solution" -->
-<!-- One table for field/input definitions with constraints inline -->
-<!-- A few bullets ONLY for behavior that isn't obvious from definitions -->
-<!-- Examples/tables showing how it works in practice -->
-<!-- Use mermaid diagrams for flows or multi-step processes instead of ordered lists -->
-
----
-
-## UI Changes
-<!-- Only if there are UI changes -->
-<!-- Group by page/area -->
-<!-- Each page section MUST include the URL as a clickable markdown link: [url](url) -->
-<!-- Prefer screenshots/mockups over text instructions for form and layout changes -->
-<!-- Use the placeholder format below for each visual that needs to be added -->
-<!-- Use ASCII mockups for data display formats (pricing, line items, etc.) -->
-
-### {Page Name}
-**URL:** [{https://example.com/path/to/page}]({https://example.com/path/to/page})
-
-> **[Screenshot needed]:** {Describe exactly what the screenshot should show, e.g., "Current pricing rule form with annotations: (1) arrow on Rule Type dropdown → rename to 'Long-Term Discount', (2) strikethrough on 'Price per Day' field → replace with 'Discount (%)' input, (3) strikethrough on 'Maximum Days' field → remove entirely"}
-
-
----
-
-## Data Migration
-<!-- Only if existing data/logic is affected -->
-<!-- 1-2 lines -->
-
----
-
-## Boundaries
-<!-- What the implementer must NOT touch — the key to preventing drift in a long implementation (/goal) run -->
-<!-- List files/dirs/systems/patterns to leave alone, and decisions already made that must not be revisited -->
-<!-- Keep these change-specific. A boundary that is really a standing project convention (architecture, "don't touch prod") belongs in CLAUDE.md, not here — it's re-injected every turn regardless of which driver implements the spec -->
-<!-- Include only real boundaries; omit the section if the change is fully self-contained -->
-
----
-
-## Checklist
-<!-- The FINAL section. MANDATORY at standard/full (omit only at light). ONE checklist, split by the KIND of check into two subsections — no inline human/auto tags, no second checklist section anywhere. It is the VERIFICATION view: how a reader confirms each criterion holds once the change is built. Every verification item ends with a parenthetical (AC-…) tracing an EXISTING id; it never re-describes the criterion and never introduces a fact absent from the AC table. Coverage is exhaustive: every AC is traced by ≥1 item across the two subsections; one item may cover several ACs, one AC may need several items. A part-automatable criterion appears in BOTH subsections (the For humans line marked (partial)). Rigor: `standard` = For agents + a lean For humans (capability checks + a short explore prompt); `full` = the complete structure below. -->
-
-### For agents
-<!-- Runnable by an agent or CI: a command, a test, a static read. Terse + the expected result. -->
-- [ ] {exact command or test} → {expected result} (AC-3)
-
-### For humans
-<!-- A person must look and judge (UI clickthrough, visual, UX, logic review — no runnable command). Read the line, do it, confirm what you see. Plain language, code-free — a zero-context non-native-English reader can perform it without opening the code. Group by user-facing capability/flow (~5–9 checks per group), smoke / happy-path first, then the required empty / edge / error cases the spec calls for. -->
-
-**Setup:** {role / state / test data / where to look — plain placeholders}
-
-**{Capability or flow — ~5–9 checks, smoke/happy-path first}**
-- [ ] {observable action} → {expected observable result} (AC-2, AC-5)
-- [ ] (empty case) {action} → {expected result} (AC-6)
-- [ ] (error case) {action} → {expected result} (AC-6)
-
-**Explore on your own** — go past the checks above and report anything that looks wrong; the goal is to find what they did not. (Never restate a scripted check here.)
-- **Scenarios to try:**
-  - {an open scenario tailored to this feature's risk areas}
-  - {another}
-- **Test ideas** (apply to any field or action):
-  - Empty
-  - Very long
-  - 0 / huge / negative
-  - Emoji & accents
-  - Just over a limit
-  - Create / read / update / delete
-  - Refresh / Back / double-click / lose network / timeout
-  - A different role
-  - Small screen
-
-**Sign-off**
-- [ ] All `### For agents` checks pass
-- [ ] All `### For humans` checks pass
-- [ ] Explored past the checklist; anything wrong is reported
-- [ ] No open critical problems
-```
-
-## Requirements reviewer — full rigor only, advisory
-
-At **`full` rigor only**, after the AC table is distilled **and before the draft is committed**, get a second, **different-provider** opinion (OpenAI Codex) on *what the feature implies that the draft missed* — the single highest-value spot, since a requirement dropped at discovery is the most expensive miss. It is **optional, advisory, and fail-open**: it never gates, never blocks the draft from being written or committed, and is a no-op when Codex is absent / unauthenticated / off / slow / malformed. Run it **at most once**.
+At **`standard` and `full` rigor** (skip at `light` — a trivial task has little a reviewer would surface), after the AC table is distilled **and before the draft is committed**, get a second, **different-provider** opinion (OpenAI Codex) on *what the feature implies that the draft missed* — the single highest-value spot, since a requirement dropped at discovery is the most expensive miss (and these misses cluster at `standard`, the common tier — which is why the pass runs there too, not just at `full`). At `standard` the pass is naturally lighter (fewer implied criteria to surface); the mechanism is identical. It is **optional, advisory, and fail-open**: it never gates, never blocks the draft from being written or committed, and is a no-op when Codex is absent / unauthenticated / off / slow / malformed. Run it **at most once**.
 
 It has its **own independent off-switch**, `SPEC_OPS_CODEX_WRITE=0` (separate from the verify/refine judges' `SPEC_OPS_CODEX`), enforced by the bridge — set, the reviewer is skipped and the draft proceeds unchanged.
 
