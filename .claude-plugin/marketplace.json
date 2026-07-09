@@ -14,7 +14,7 @@
       "name": "spec-ops",
       "source": "./claude-code/plugins/spec-ops",
       "description": "A spec-driven development workflow that turns a rough idea into a verified implementation. It elicits and hardens an acceptance-criteria-first spec against your codebase, compiles it into an execution driver, then checks the built code against every criterion \u2014 with read-only adversarial judges gating quality at each stage and every spec change committed automatically. When OpenAI Codex CLI is available it adds an optional, fail-open second judge of a different provider, so every quality gate is cross-checked rather than one model auditing itself.",
-      "version": "0.39.0"
+      "version": "0.40.0"
     },
     {
       "name": "ralph",

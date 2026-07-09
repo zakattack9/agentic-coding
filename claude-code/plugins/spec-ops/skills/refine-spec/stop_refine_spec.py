@@ -32,8 +32,9 @@ Readiness (all required) once the ledger is valid:
   1. Every gate flag is true        (agent attestation per dimension)
   2. Every open question is resolved (agent ledger)
   3. The spec file has no leftover not-finalized markers (mechanical scan)
-  3b. The Acceptance Criteria have no duplicate ids, dangling references, or
-      leftover conflict markers (mechanical scan via spec_consistency.py)
+  3b. The Acceptance Criteria have no duplicate ids and no leftover conflict
+      markers (mechanical scan via spec_consistency.py; dangling `AC-N`
+      references are reported as advisories and do not block)
   4. The ready spec is committed     (scoped to the spec file via spec_git.py;
                                       fail-OPEN if it isn't a git repo / git errors,
                                       so an unenforceable commit never traps a user)
@@ -241,20 +242,23 @@ def evaluate(marker_path: str, marker: dict):
             + "\n  ".join(hits)
         )
 
-    # 3b. Deterministic AC-integrity: no duplicate AC ids, dangling AC references,
-    #     or leftover conflict markers. refine edits ACs heavily, so this is the
-    #     highest-risk place for them. Fail-SAFE — a real defect blocks; fail-OPEN
-    #     only when the check can't run (missing helper, unreadable, or no AC section
-    #     to check → check() returns None), so it never traps a user.
+    # 3b. Deterministic AC-integrity: no duplicate AC ids or leftover conflict markers.
+    #     refine edits ACs heavily, so this is the highest-risk place for them. Only the
+    #     *blocking* problems (conflict markers, duplicate AC numbers) hold the stop;
+    #     dangling `AC-N` references are advisory (a bare AC-N may reference a sibling
+    #     spec) and don't block here. Fail-SAFE — a real blocking defect blocks; fail-OPEN
+    #     only when the check can't run (missing helper, unreadable, or no AC section to
+    #     check → check() returns (None, None)), so it never traps a user.
     if spec_consistency is not None:
         try:
-            ac_problems = spec_consistency.check(open(spec_path, "r", errors="replace").read())
+            blocking, _advisory = spec_consistency.check(
+                open(spec_path, "r", errors="replace").read())
         except OSError:
-            ac_problems = None
-        if ac_problems:
+            blocking = None
+        if blocking:
             failures.append(
                 "Acceptance-Criteria integrity problems — fix before finalizing:\n  "
-                + "\n  ".join(ac_problems[:10])
+                + "\n  ".join(blocking[:10])
             )
 
     # Ready on the verification gate — but also require the ready spec be

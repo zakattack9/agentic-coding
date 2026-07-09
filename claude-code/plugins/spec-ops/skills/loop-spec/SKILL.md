@@ -106,7 +106,9 @@ Derive:
   keep only the conflict-marker check; if the spec has **other** numeric tables, scope `defs` to
   the Acceptance-Criteria section (e.g. `awk '/^## +Acceptance/{f=1;next}/^## /{f=0}f'`) so
   non-AC `| N |` rows aren't read as duplicate ACs. (The conflict grep matches only `<<<<<<<` /
-  `>>>>>>>`, never a `=======` setext underline.)
+  `>>>>>>>`, never a `=======` setext underline.) A `<<<<<<<`/`>>>>>>>` or `AC-N` shown **inside a
+  ``` ``` ``` code fence** is illustrative, not a real defect — ignore it. A dangling `AC-N` is
+  **advisory**: it may reference a **sibling spec**, so adjudicate it, don't auto-renumber.
 - **`«SPEC_PATH»`, `«BRANCH»`, `«ROUNDS»`** — the spec path, its current branch (`git rev-parse
   --abbrev-ref HEAD`), and the round cap (`--rounds`, else 6).
 
