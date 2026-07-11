@@ -15,9 +15,10 @@ import time
 from pathlib import Path
 
 from pre_ai import (
-    DEFAULT_PREFIX_STATE,
+    DEFAULT_SLASH_STATE,
     DEFAULT_SNIPPETS,
     SLASH_COMMAND,
+    clear_pending_slash_commands,
     load_snippets,
     snippet_checksum,
 )
@@ -149,43 +150,179 @@ def process(text: str, snippets_path: Path) -> str:
     return expand(text, snippets_path)
 
 
-def consume_pending_prefix(
-    state_path: Path = DEFAULT_PREFIX_STATE,
+def consume_pending_slash_commands(
+    state_path: Path = DEFAULT_SLASH_STATE,
     max_age_seconds: float = 120.0,
-) -> str:
-    """Consume a recent one-shot leading slash snippet, if one exists."""
+) -> list[dict[str, object]]:
+    """Consume recent one-shot slash snippets, if any exist."""
     try:
         data = json.loads(state_path.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return ""
+        return []
     except (OSError, ValueError):
-        state_path.unlink(missing_ok=True)
-        return ""
+        return []
     finally:
         # A state record belongs to one Post-AI invocation only.
-        state_path.unlink(missing_ok=True)
+        clear_pending_slash_commands(state_path)
 
     if not isinstance(data, dict):
-        return ""
-    prefix = data.get("prefix")
+        return []
+    commands = data.get("commands")
     created_at = data.get("created_at")
-    if not isinstance(prefix, str) or not SLASH_COMMAND.fullmatch(prefix):
-        return ""
+    if not isinstance(commands, list):
+        return []
     if not isinstance(created_at, (int, float)):
-        return ""
+        return []
     age = time.time() - created_at
     if age < 0 or age > max_age_seconds:
-        return ""
-    return prefix
+        return []
+
+    validated = []
+    for item in commands:
+        if not isinstance(item, dict):
+            return []
+        command = item.get("text")
+        leading = item.get("leading")
+        consume = item.get("consume_trailing_punctuation")
+        left_anchor = item.get("left_anchor", [])
+        right_anchor = item.get("right_anchor", [])
+        if not isinstance(command, str) or not SLASH_COMMAND.fullmatch(command):
+            return []
+        if not isinstance(leading, bool) or not isinstance(consume, bool):
+            return []
+        if not isinstance(left_anchor, list) or not all(
+            isinstance(word, str) and word for word in left_anchor
+        ):
+            return []
+        if not isinstance(right_anchor, list) or not all(
+            isinstance(word, str) and word for word in right_anchor
+        ):
+            return []
+        validated.append(
+            {
+                "text": command,
+                "leading": leading,
+                "consume_trailing_punctuation": consume,
+                "left_anchor": left_anchor,
+                "right_anchor": right_anchor,
+            }
+        )
+    return validated
 
 
-def restore_pending_prefix(text: str, prefix: str) -> str:
-    if not prefix:
+SLASH_LIKE = re.compile(
+    r"(?<!\S)/(?:[A-Za-z][A-Za-z0-9_:\-]*)?(?=\s|[.,!?;:]|$)"
+)
+
+
+def slash_command_key(command: str) -> str:
+    return re.sub(r"[-_:]", "", command.casefold())
+
+
+def find_recoverable_slash(
+    text: str, position: int, known_keys: set[str]
+) -> re.Match[str] | None:
+    for match in SLASH_LIKE.finditer(text, position):
+        if match.group(0) == "/" or slash_command_key(match.group(0)) in known_keys:
+            return match
+    return None
+
+
+def consume_recovered_punctuation(text: str, command_end: int) -> str:
+    tail = text[command_end:]
+    cleaned = consume_boundary_punctuation(tail)
+    if cleaned == tail:
         return text
-    cleaned = text.lstrip()
-    if cleaned == prefix or cleaned.startswith(prefix + " "):
+    return join_at_protected_boundary(text[:command_end], cleaned)
+
+
+def find_word_anchor(
+    text: str, words: list[str], position: int
+) -> re.Match[str] | None:
+    if not words:
+        return None
+    separator = r"(?:[\W_]+)"
+    pattern = re.compile(
+        r"(?<!\w)" + separator.join(re.escape(word) for word in words) + r"(?!\w)",
+        re.IGNORECASE,
+    )
+    return pattern.search(text, position)
+
+
+def insert_before_anchor(
+    text: str, command: str, anchor: re.Match[str]
+) -> tuple[str, int]:
+    left = text[: anchor.start()].rstrip()
+    right = text[anchor.start() :].lstrip()
+    result = join_at_protected_boundary(left, command)
+    command_end = len(result)
+    return join_at_protected_boundary(result, right), command_end
+
+
+def insert_after_anchor(
+    text: str, command: str, anchor: re.Match[str]
+) -> tuple[str, int]:
+    left = text[: anchor.end()].rstrip()
+    right = text[anchor.end() :].lstrip()
+    result = join_at_protected_boundary(left, command)
+    command_end = len(result)
+    return join_at_protected_boundary(result, right), command_end
+
+
+def restore_pending_slash_commands(
+    text: str, commands: list[dict[str, object]]
+) -> str:
+    """Restore ordered slash commands that Qwen reduced to bare slashes."""
+    if not commands:
         return text
-    return join_at_protected_boundary(prefix, cleaned)
+    result = text
+    cursor = 0
+    known_keys = {slash_command_key(str(item["text"])) for item in commands}
+    for item in commands:
+        command = str(item["text"])
+        consume = bool(item["consume_trailing_punctuation"])
+        if bool(item["leading"]):
+            content_start = len(result) - len(result.lstrip())
+            leading_placeholder = find_recoverable_slash(
+                result, content_start, known_keys
+            )
+            if leading_placeholder and leading_placeholder.start() == content_start:
+                start, end = leading_placeholder.span()
+                result = result[:start] + command + result[end:]
+                cursor = start + len(command)
+                if consume:
+                    result = consume_recovered_punctuation(result, cursor)
+                continue
+            result = join_at_protected_boundary(command, result.lstrip())
+            cursor = len(command)
+            continue
+
+        placeholder = find_recoverable_slash(result, cursor, known_keys)
+        if placeholder:
+            start, end = placeholder.span()
+            result = result[:start] + command + result[end:]
+            cursor = start + len(command)
+            if consume:
+                result = consume_recovered_punctuation(result, cursor)
+            continue
+
+        right_anchor = find_word_anchor(
+            result, list(item.get("right_anchor", [])), cursor
+        )
+        if right_anchor:
+            result, cursor = insert_before_anchor(result, command, right_anchor)
+            continue
+
+        left_anchor = find_word_anchor(
+            result, list(item.get("left_anchor", [])), cursor
+        )
+        if left_anchor:
+            result, cursor = insert_after_anchor(result, command, left_anchor)
+            continue
+
+        raise ValueError(f"missing recoverable slash command: {command}")
+
+    return result
 
 
 def parse_args() -> argparse.Namespace:
@@ -197,10 +334,10 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     original = sys.stdin.read()
-    pending_prefix = consume_pending_prefix()
+    pending_commands = consume_pending_slash_commands()
     try:
         expanded = expand(original, args.snippets)
-        sys.stdout.write(restore_pending_prefix(expanded, pending_prefix))
+        sys.stdout.write(restore_pending_slash_commands(expanded, pending_commands))
     except Exception as error:
         print(f"Spokenly postprocessor failed closed: {error}", file=sys.stderr)
         return 1

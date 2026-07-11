@@ -74,8 +74,54 @@ class ProcessorTests(unittest.TestCase):
             "The meeting is Friday. I mean Monday.", self.snippets
         )
         self.assertEqual(
-            value, "The meeting is Friday. [[SPK_CMD_SELF_CORRECTION]] Monday."
+            value, "The meeting is Friday, [[SPK_CMD_REPLACE_NEAREST]] Monday."
         )
+
+    def test_i_mean_can_correct_a_repeated_clause(self):
+        value = pre_ai.process(
+            "We should ship Friday, I mean we should ship Monday after review.",
+            self.snippets,
+        )
+        self.assertIn("[[SPK_CMD_REPLACE_NEAREST]]", value)
+
+    def test_i_mean_can_correct_to_infinitive_phrase(self):
+        value = pre_ai.process(
+            "I want to send the old version, I mean to create the new version.",
+            self.snippets,
+        )
+        self.assertIn("[[SPK_CMD_REPLACE_NEAREST]]", value)
+
+    def test_long_clear_i_mean_correction_gets_hint(self):
+        value = pre_ai.process(
+            "The meeting is Friday, I mean Monday morning at nine with the entire "
+            "product and engineering team in the main conference room.",
+            self.snippets,
+        )
+        self.assertIn("[[SPK_CMD_REPLACE_NEAREST]]", value)
+
+    def test_other_clear_repair_phrases_get_hints(self):
+        cases = [
+            "The meeting is Tuesday, or rather Thursday.",
+            "The meeting is Tuesday. No, wait, Thursday.",
+            "The meeting is Tuesday, actually Thursday.",
+            "The meeting is Tuesday, correct that, Thursday.",
+            "The meeting is Tuesday. What I meant was Thursday.",
+        ]
+        for transcript in cases:
+            with self.subTest(transcript=transcript):
+                value = pre_ai.process(transcript, self.snippets)
+                self.assertIn("[[SPK_CMD_REPLACE_NEAREST]]", value)
+
+    def test_ambiguous_repair_words_are_not_marked(self):
+        cases = [
+            "I actually think Thursday is better.",
+            "There is no reason to change the meeting.",
+            "Sorry, I cannot attend the meeting.",
+        ]
+        for transcript in cases:
+            with self.subTest(transcript=transcript):
+                value = pre_ai.process(transcript, self.snippets)
+                self.assertNotIn("[[SPK_CMD_REPLACE_NEAREST]]", value)
 
     def test_snippet_is_protected_and_expanded_exactly(self):
         protected = pre_ai.process(
@@ -124,14 +170,37 @@ class ProcessorTests(unittest.TestCase):
             "The meeting is at 3. No, actually 4.", self.snippets
         )
         self.assertEqual(
-            value, "The meeting is at 3. [[SPK_CMD_SELF_CORRECTION]] 4."
+            value, "The meeting is at 3, [[SPK_CMD_REPLACE_NEAREST]] 4."
         )
 
     def test_explanatory_i_mean_is_not_marked(self):
         value = pre_ai.process(
             "I mean that sincerely and without qualification.", self.snippets
         )
-        self.assertNotIn("[[SPK_CMD_SELF_CORRECTION]]", value)
+        self.assertNotIn("[[SPK_CMD_REPLACE_NEAREST]]", value)
+
+    def test_reported_explicit_correction_is_preserved(self):
+        cases = [
+            'Write the phrase "no, actually" in the guide.',
+            "Write the phrase no, actually in the guide.",
+            "Type the example or rather into the document.",
+        ]
+        for transcript in cases:
+            with self.subTest(transcript=transcript):
+                value = pre_ai.process(transcript, self.snippets)
+                self.assertNotIn("[[SPK_CMD_REPLACE_NEAREST]]", value)
+
+    def test_sentence_boundary_correction_is_scoped_as_replacement(self):
+        value = pre_ai.process(
+            "Tomorrow I want to send the onboarding guide to the sales team. "
+            "I mean the support team.",
+            self.snippets,
+        )
+        self.assertEqual(
+            value,
+            "Tomorrow I want to send the onboarding guide to the sales team, "
+            "[[SPK_CMD_REPLACE_NEAREST]] the support team.",
+        )
 
     def test_that_sentence_variant(self):
         value = pre_ai.process(
@@ -148,6 +217,22 @@ class ProcessorTests(unittest.TestCase):
     def test_delete_last_word(self):
         value = pre_ai.process("Keep this extra delete the last word now.", self.snippets)
         self.assertEqual(value, "Keep this now.")
+
+    def test_scratch_word_deletes_previous_word(self):
+        value = pre_ai.process("Keep this extra scratch word now.", self.snippets)
+        self.assertEqual(value, "Keep this now.")
+
+    def test_delete_that_discards_previous_utterance(self):
+        value = pre_ai.process(
+            "Keep this. Remove this. Delete that. Continue.", self.snippets
+        )
+        self.assertEqual(value, "Keep this. Continue.")
+
+    def test_delete_that_inside_sentence_is_not_a_directive(self):
+        value = pre_ai.process(
+            "We should delete that file after review.", self.snippets
+        )
+        self.assertEqual(value, "We should delete that file after review.")
 
     def test_delete_bounded_phrase(self):
         value = pre_ai.process(
@@ -343,19 +428,185 @@ class ProcessorTests(unittest.TestCase):
         protected = pre_ai.process(
             "slash go i want to create everything", config
         )
-        pre_ai.record_pending_prefix(protected, config, state)
-        prefix = post_ai.consume_pending_prefix(state)
-        final = post_ai.restore_pending_prefix(
+        pre_ai.record_pending_slash_commands(protected, config, state)
+        commands = post_ai.consume_pending_slash_commands(state)
+        final = post_ai.restore_pending_slash_commands(
             post_ai.process("I want to be able to create everything.", config),
-            prefix,
+            commands,
         )
         self.assertEqual(final, "/goal I want to be able to create everything.")
         self.assertFalse(state.exists())
 
     def test_slash_goal_recovery_does_not_duplicate_preserved_prefix(self):
         self.assertEqual(
-            post_ai.restore_pending_prefix("/goal Keep everything.", "/goal"),
+            post_ai.restore_pending_slash_commands(
+                "/goal Keep everything.",
+                [
+                    {
+                        "text": "/goal",
+                        "leading": True,
+                        "consume_trailing_punctuation": True,
+                    }
+                ],
+            ),
             "/goal Keep everything.",
+        )
+
+    def test_recovered_slash_command_consumes_added_punctuation(self):
+        commands = [
+            {
+                "text": "/goal",
+                "leading": True,
+                "consume_trailing_punctuation": True,
+            }
+        ]
+        self.assertEqual(
+            post_ai.restore_pending_slash_commands("/goal. Continue.", commands),
+            "/goal Continue.",
+        )
+        commands[0]["leading"] = False
+        self.assertEqual(
+            post_ai.restore_pending_slash_commands("Use /. Continue.", commands),
+            "Use /goal Continue.",
+        )
+
+    def test_slash_recovery_ignores_unrelated_longer_command(self):
+        commands = [
+            {
+                "text": "/goal",
+                "leading": False,
+                "consume_trailing_punctuation": True,
+            }
+        ]
+        self.assertEqual(
+            post_ai.restore_pending_slash_commands(
+                "Keep /goalkeeper and /.", commands
+            ),
+            "Keep /goalkeeper and /goal",
+        )
+
+    def test_missing_middle_slash_command_fails_closed(self):
+        commands = [
+            {
+                "text": "/spec-ops:refine-spec",
+                "leading": False,
+                "consume_trailing_punctuation": True,
+            }
+        ]
+        with self.assertRaisesRegex(ValueError, "missing recoverable slash command"):
+            post_ai.restore_pending_slash_commands(
+                "Refine the spec without a placeholder.", commands
+            )
+
+    def test_invalid_recovery_state_path_does_not_crash_processors(self):
+        config = Path(self.tempdir.name) / "state-snippets.json"
+        config.write_text(
+            json.dumps(
+                [
+                    {
+                        "id": "SLASH_GOAL",
+                        "triggers": ["slash goal"],
+                        "text": "/goal",
+                        "consume_trailing_punctuation": True,
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
+        invalid_parent = Path(self.tempdir.name) / "not-a-directory"
+        invalid_parent.write_text("occupied", encoding="utf-8")
+        state = invalid_parent / "state.json"
+        protected = pre_ai.process("slash goal do the work", config)
+        pre_ai.clear_pending_slash_commands(state)
+        pre_ai.record_pending_slash_commands(protected, config, state)
+        self.assertEqual(post_ai.consume_pending_slash_commands(state), [])
+
+    def test_all_slash_commands_are_restored_from_bare_placeholders(self):
+        config = Path(self.tempdir.name) / "slash-command-snippets.json"
+        state = Path(self.tempdir.name) / "pending-commands.json"
+        config.write_text(
+            json.dumps(
+                [
+                    {
+                        "id": "SLASH_GOAL",
+                        "triggers": ["slash goal"],
+                        "text": "/goal",
+                        "consume_trailing_punctuation": True,
+                    },
+                    {
+                        "id": "SPEC_OPS_REFINE_SPEC",
+                        "triggers": ["slash refine spec"],
+                        "text": "/spec-ops:refine-spec",
+                        "consume_trailing_punctuation": True,
+                    },
+                    {
+                        "id": "SPEC_OPS_LAUNCH_SPEC",
+                        "triggers": ["slash launch spec"],
+                        "text": "/spec-ops:launch-spec",
+                        "consume_trailing_punctuation": True,
+                    },
+                ]
+            ),
+            encoding="utf-8",
+        )
+        source = (
+            "slash goal perform a comprehensive review of the spec and all the code "
+            "then use slash refine spec to refine the spec until everything is "
+            "completed finally you will run slash launch spec to produce the final prompt"
+        )
+        protected = pre_ai.process(source, config)
+        pre_ai.record_pending_slash_commands(protected, config, state)
+        commands = post_ai.consume_pending_slash_commands(state)
+        model_output = (
+            "/goal perform a comprehensive review of the spec and all the code then "
+            "use / to refine the spec until everything is completed. Finally, you "
+            "will run / to produce the final prompt"
+        )
+        self.assertEqual(
+            post_ai.restore_pending_slash_commands(model_output, commands),
+            "/goal perform a comprehensive review of the spec and all the code then "
+            "use /spec-ops:refine-spec to refine the spec until everything is "
+            "completed. Finally, you will run /spec-ops:launch-spec to produce the "
+            "final prompt",
+        )
+
+        shifted_model_output = (
+            "perform a comprehensive review of the spec and all the code then use / "
+            "to refine the spec until everything is completed. Finally you will run "
+            "/ to produce the final prompt."
+        )
+        self.assertEqual(
+            post_ai.restore_pending_slash_commands(shifted_model_output, commands),
+            "/goal perform a comprehensive review of the spec and all the code then "
+            "use /spec-ops:refine-spec to refine the spec until everything is "
+            "completed. Finally you will run /spec-ops:launch-spec to produce the "
+            "final prompt.",
+        )
+
+        rewritten_model_output = (
+            "/goal perform a comprehensive review of the spec and all the code. Then "
+            "use /goal to refine the spec until everything is completed. Finally, "
+            "you will run /spec_ops_refine_spec to produce the final output."
+        )
+        self.assertEqual(
+            post_ai.restore_pending_slash_commands(rewritten_model_output, commands),
+            "/goal perform a comprehensive review of the spec and all the code. Then "
+            "use /spec-ops:refine-spec to refine the spec until everything is "
+            "completed. Finally, you will run /spec-ops:launch-spec to produce the "
+            "final output.",
+        )
+
+        missing_model_output = (
+            "/goal perform a comprehensive review of the spec and all the code. Then "
+            "use to refine the spec until everything is completed. Finally, you will "
+            "run to produce the final prompt."
+        )
+        self.assertEqual(
+            post_ai.restore_pending_slash_commands(missing_model_output, commands),
+            "/goal perform a comprehensive review of the spec and all the code. Then "
+            "use /spec-ops:refine-spec to refine the spec until everything is "
+            "completed. Finally, you will run /spec-ops:launch-spec to produce the "
+            "final prompt.",
         )
 
 

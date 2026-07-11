@@ -18,16 +18,16 @@ The preprocessor deliberately recognizes a finite set of nearby, reversible tran
 
 | Spoken command | Behavior |
 | --- | --- |
-| Delete/remove the last word | Deletes the immediately preceding word |
+| Delete/remove the last word; scratch word | Deletes the immediately preceding word |
 | Delete/remove the last phrase | Deletes a clearly comma-, colon-, or semicolon-delimited phrase; otherwise Qwen receives a control token |
 | Delete/remove the last sentence | Deletes the nearest punctuated sentence; otherwise Qwen receives a control token |
-| Scratch that / never mind / undo that | Discards the nearest clear thought or asks Qwen to resolve ambiguous scope |
+| Scratch that / delete that / never mind / undo that | Discards the nearest clear thought or asks Qwen to resolve ambiguous scope |
 | New line / new paragraph | Inserts the requested break deterministically |
 | Make/format those as a list | Gives Qwen an explicit protected list-formatting command |
 | Number those items | Gives Qwen an explicit numbered-list command |
-| I mean / sorry, I meant / no, actually | Gives Qwen a conservative self-correction hint |
+| I mean / sorry, I meant / no, actually / no, wait / or rather / what I meant was / correct that | Gives Qwen a conservative self-correction hint |
 
-The script avoids acting when a command is obviously being discussed, as in “write the phrase delete the last sentence.” Ambiguous language is preserved or handed to Qwen rather than destructively guessed.
+The script avoids acting when a command is quoted or obviously being discussed, as in “write the phrase delete the last sentence.” Ambiguous standalone words such as “actually,” “no,” and “sorry” require a preceding dictation boundary and a short, correction-like continuation. Ambiguous language is preserved or handed to Qwen rather than destructively guessed.
 
 ## Configure snippets
 
