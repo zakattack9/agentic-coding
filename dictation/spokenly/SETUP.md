@@ -200,10 +200,14 @@ The plugin is disabled unless all of the following are true:
 - Focused App Context is enabled and reports iTerm2
 - the iTerm2 context daemon is installed and current
 - the focused local foreground job is Codex or Claude Code
-- its CWD belongs to a Git working tree or linked worktree
+- its OS process CWD belongs to a Git working tree or linked worktree
 
 Follow the plugin README for installation and acceptance tests. Do not enable it
 for a portable profile intended to work unchanged across unrelated machines.
+Launch the CLI from the directory or worktree that should be used as the
+reference base. Without optional CLI hooks, a Codex `-C/--cd` override, Claude
+Code `/cd`, or persistent in-session shell directory change can differ from the
+OS process CWD and is not supported by this version.
 
 ## 9. Run local tests
 
@@ -323,6 +327,7 @@ Common failure boundaries:
 - Qwen is probabilistic and may not match a purpose-built dictation service on every input.
 - Snippet triggers are exact case-insensitive phrases; use distinctive wording to prevent accidental expansion.
 - The optional iTerm2 file-reference plugin is local-only and deliberately rejects SSH, regular tmux, unverified containers, and non-Git directories.
+- The optional file-reference plugin resolves from the foreground CLI process's OS CWD; logical directory changes made with Codex `-C/--cd`, Claude Code `/cd`, or persistent in-session shell `cd` are not tracked without CLI hooks.
 
 ## References
 

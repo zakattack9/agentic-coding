@@ -9,7 +9,8 @@ processors do not load it unless `SPOKENLY_ITERM_FILE_REFERENCES=1` is set.
 - macOS with the sideload build of Spokenly
 - iTerm2 with its Python API runtime and shell integration enabled
 - one local Codex or Claude Code process in the focused iTerm2 pane
-- a current working directory inside a Git working tree or linked worktree
+- a foreground CLI process whose OS working directory is inside a Git working
+  tree or linked worktree
 
 The first version intentionally rejects SSH sessions, regular tmux sessions,
 containers without a verified local path mapping, non-Git directories, other
@@ -17,6 +18,13 @@ terminal emulators, desktop agent apps, unrelated foreground processes, and
 extra workspace roots added outside the harness's primary Git worktree. A Git
 submodule is its own project when the harness is launched inside it; submodule
 contents are not folded into a superproject index.
+
+The plugin uses the foreground CLI process's OS working directory, with iTerm's
+pane path as a fallback. It does not install Codex or Claude Code hooks and
+therefore cannot observe a different logical directory maintained internally by
+the CLI. For reliable references, launch `codex` or `claude` from the intended
+project or worktree and do not relocate the session with Codex `-C/--cd`, Claude
+Code `/cd`, or persistent in-session shell directory changes.
 
 ## Install the iTerm2 context daemon
 
@@ -88,15 +96,17 @@ whose targets leave the worktree are excluded. Paths containing terminal
 control characters are also excluded.
 
 The absolute canonical file is retained internally. The inserted `@` path is
-rendered relative to the active harness CWD and verified by resolving it back to
-the same canonical file. This handles normal branches, linked worktrees, nested
-working directories, multiple windows, multiple tabs, and multiple split panes.
+rendered relative to the foreground process's OS CWD and verified by resolving
+it back to the same canonical file. This handles normal branches, linked
+worktrees, CLIs launched from nested working directories, multiple windows,
+multiple tabs, and multiple split panes.
 
 Pre-AI stores exact resolved references in private state keyed by both a random
 run nonce and the globally unique iTerm2 session ID. Qwen receives only protected
-tokens. Post-AI rechecks the pane ID, foreground PID, harness, CWD, worktree, and
-file before restoring each path. Changing panes, restarting the harness, deleting
-the file, corrupting structural tokens, or losing state fails closed.
+tokens. Post-AI rechecks the pane ID, foreground PID, harness, process CWD,
+worktree, and file before restoring each path. Changing panes, restarting the
+harness, deleting the file, corrupting structural tokens, or losing state fails
+closed.
 
 Ambiguous or unrecognized spoken file names are left as ordinary transcript
 text and never guessed. A plugin prerequisite failure before a protected
