@@ -1,0 +1,28 @@
+{
+  "snippets": [
+  {
+    "id": "EMAIL_SIGNATURE",
+    "triggers": [
+      "insert my email signature"
+    ],
+    "text": "Best,\nYour Name",
+    "consume_trailing_punctuation": true
+  },
+  {
+    "id": "BOOKING_LINK",
+    "triggers": [
+      "insert my booking link"
+    ],
+    "text": "https://example.com/book",
+    "consume_trailing_punctuation": true
+  },
+  {
+    "id": "BUSINESS_ADDRESS",
+    "triggers": [
+      "insert my business address"
+    ],
+    "text": "123 Example Street\nHonolulu, HI 96815",
+    "consume_trailing_punctuation": true
+  }
+  ]
+}

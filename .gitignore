@@ -1,5 +1,7 @@
 .serena
 .DS_Store
 __pycache__/
-# Claude Code git worktrees
+.pytest_cache/
+.conductor
 .claude/worktrees/
+**/spokenly/**/snippets.json
