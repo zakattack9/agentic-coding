@@ -12,15 +12,22 @@ Output: transformed transcript on stdout
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
 import re
 import sys
+import tempfile
+import time
 from pathlib import Path
 from typing import Dict, Iterable, List, Match, Tuple
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_SNIPPETS = SCRIPT_DIR.parent / "config" / "snippets.json"
+DEFAULT_PREFIX_STATE = (
+    Path(tempfile.gettempdir()) / f"spokenly-prefix-snippet-{os.getuid()}.json"
+)
 
 TOKENS = {
     "delete_sentence": "[[SPK_CMD_DELETE_SENTENCE]]",
@@ -32,6 +39,14 @@ TOKENS = {
 }
 
 SNIPPET_ID = re.compile(r"^[A-Z][A-Z0-9_]*$")
+SNIPPET_TOKEN = re.compile(
+    r"\[\[SPK_SNIPPET_([A-Z][A-Z0-9_]*)__([1-9][0-9]*)__([A-F0-9]{8})\]\]"
+)
+LEADING_SNIPPET = re.compile(
+    r"^\[\[SPK_SEGMENT_0_START\]\]\[\[SPK_SEGMENT_0_END\]\]"
+    r"\[\[SPK_SNIPPET_([A-Z][A-Z0-9_]*)__1__[A-F0-9]{8}\]\]"
+)
+SLASH_COMMAND = re.compile(r"/[A-Za-z][A-Za-z0-9_-]*")
 
 POLITE = r"(?:(?:please|can\s+you|could\s+you|would\s+you)\s+)?"
 DIRECTIVES = re.compile(
@@ -161,7 +176,6 @@ def load_snippets(path: Path) -> List[Dict[str, object]]:
 
 def protect_snippets(text: str, snippets: Iterable[Dict[str, object]]) -> str:
     pairs = []
-    occurrence_by_id: Dict[str, int] = {}
     for snippet in snippets:
         for trigger in snippet["triggers"]:  # type: ignore[index]
             pairs.append(
@@ -171,21 +185,79 @@ def protect_snippets(text: str, snippets: Iterable[Dict[str, object]]) -> str:
                     bool(snippet.get("consume_trailing_punctuation", False)),
                 )
             )
-    for trigger, snippet_id, consume_punctuation in sorted(
-        pairs, key=lambda pair: len(pair[0]), reverse=True
+    if not pairs:
+        return text
+
+    # Match all triggers in one left-to-right pass. Repeated per-trigger
+    # substitutions can number tokens by configuration order rather than by
+    # their actual position in the transcript.
+    alternatives = []
+    trigger_metadata: Dict[str, Tuple[str, bool]] = {}
+    for index, (trigger, snippet_id, consume_punctuation) in enumerate(
+        sorted(pairs, key=lambda pair: len(pair[0]), reverse=True)
     ):
+        group = f"trigger_{index}"
         spaced_trigger = r"\s+".join(re.escape(part) for part in trigger.split())
-        suffix = r"(?:[.!?])?" if consume_punctuation else ""
-        pattern = re.compile(
-            rf"(?<!\w){spaced_trigger}(?!\w){suffix}", re.IGNORECASE
-        )
+        alternatives.append(rf"(?P<{group}>(?<!\w){spaced_trigger}(?!\w))")
+        trigger_metadata[group] = (snippet_id, consume_punctuation)
 
-        def replace(_match: Match[str]) -> str:
-            occurrence_by_id[snippet_id] = occurrence_by_id.get(snippet_id, 0) + 1
-            return f"[[SPK_SNIPPET_{snippet_id}__{occurrence_by_id[snippet_id]}]]"
+    pattern = re.compile("|".join(alternatives), re.IGNORECASE)
+    parts: List[str] = []
+    position = 0
+    occurrence = 0
+    for match in pattern.finditer(text):
+        group = match.lastgroup
+        if group is None:
+            continue
+        snippet_id, consume_punctuation = trigger_metadata[group]
+        end = match.end()
+        if consume_punctuation and end < len(text) and text[end] in ".!?":
+            end += 1
+        occurrence += 1
+        checksum = snippet_checksum(snippet_id, occurrence)
+        parts.append(text[position : match.start()])
+        parts.append(f"[[SPK_SNIPPET_{snippet_id}__{occurrence}__{checksum}]]")
+        position = end
+    parts.append(text[position:])
+    return "".join(parts)
 
-        text = pattern.sub(replace, text)
-    return text
+
+def snippet_checksum(snippet_id: str, position: int) -> str:
+    """Detect accidental model edits to a snippet's identity or position."""
+    value = f"spokenly-snippet-v1:{position}:{snippet_id}".encode("ascii")
+    return hashlib.blake2s(value, digest_size=4).hexdigest().upper()
+
+
+def frame_snippet_segments(text: str) -> str:
+    """Frame editable spans so post-AI can restore every snippet's position."""
+    matches = list(SNIPPET_TOKEN.finditer(text))
+    if not matches:
+        return text
+
+    parts: List[str] = []
+    position = 0
+    for segment, match in enumerate(matches):
+        if segment == 0:
+            parts.append("[[SPK_SEGMENT_0_START]]")
+        else:
+            previous = matches[segment - 1]
+            parts.append(
+                f"[[SPK_SEGMENT_{segment}_START_AFTER_"
+                f"{previous.group(1)}__{previous.group(3)}]]"
+            )
+        parts.append(text[position : match.start()])
+        parts.append(f"[[SPK_SEGMENT_{segment}_END]]")
+        parts.append(match.group(0))
+        position = match.end()
+    final_segment = len(matches)
+    final_match = matches[-1]
+    parts.append(
+        f"[[SPK_SEGMENT_{final_segment}_START_AFTER_"
+        f"{final_match.group(1)}__{final_match.group(3)}]]"
+    )
+    parts.append(text[position:])
+    parts.append(f"[[SPK_SEGMENT_{final_segment}_END]]")
+    return "".join(parts)
 
 
 def discussed_as_text(prefix: str) -> bool:
@@ -325,7 +397,39 @@ def process(text: str, snippets_path: Path) -> str:
     text = protect_snippets(text, snippets)
     text = apply_directives(text)
     text = add_correction_hints(text)
-    return normalize(text)
+    return frame_snippet_segments(normalize(text))
+
+
+def clear_pending_prefix(state_path: Path = DEFAULT_PREFIX_STATE) -> None:
+    state_path.unlink(missing_ok=True)
+
+
+def record_pending_prefix(
+    processed: str,
+    snippets_path: Path,
+    state_path: Path = DEFAULT_PREFIX_STATE,
+) -> None:
+    """Record a leading slash snippet for one-shot post-AI recovery."""
+    clear_pending_prefix(state_path)
+    match = LEADING_SNIPPET.match(processed)
+    if not match:
+        return
+    expansions = {
+        str(item["id"]): str(item["text"])
+        for item in load_snippets(snippets_path)
+    }
+    prefix = expansions.get(match.group(1), "")
+    if not SLASH_COMMAND.fullmatch(prefix):
+        return
+
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = state_path.with_name(f".{state_path.name}.{os.getpid()}.tmp")
+    temporary.write_text(
+        json.dumps({"prefix": prefix, "created_at": time.time()}),
+        encoding="utf-8",
+    )
+    temporary.chmod(0o600)
+    os.replace(temporary, state_path)
 
 
 def parse_args() -> argparse.Namespace:
@@ -337,8 +441,11 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     original = sys.stdin.read()
+    clear_pending_prefix()
     try:
-        sys.stdout.write(process(original, args.snippets))
+        processed = process(original, args.snippets)
+        record_pending_prefix(processed, args.snippets)
+        sys.stdout.write(processed)
     except Exception as error:
         print(f"Spokenly preprocessor failed open: {error}", file=sys.stderr)
         sys.stdout.write(original)

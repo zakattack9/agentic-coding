@@ -61,13 +61,18 @@ Rules:
 - Expansions may contain multiple lines, URLs, punctuation, or standard text.
 - Set `consume_trailing_punctuation` to `true` for signatures, URLs, addresses, and other exact snippets when a period inferred after the spoken trigger should not be appended to the expansion. It defaults to `false`.
 
-When a trigger is recognized, the preprocessor replaces it with an occurrence-specific token such as `[[SPK_SNIPPET_EMAIL_SIGNATURE__1]]`. Qwen must preserve that token. The postprocessor replaces it with the exact configured text. Qwen never receives the expansion itself, so it cannot rewrite a signature, URL, disclaimer, or address. If Qwen duplicates a token, the postprocessor stops instead of inserting the snippet twice.
+When a trigger is recognized, the preprocessor replaces it with a position-specific, checksummed token such as `[[SPK_SNIPPET_EMAIL_SIGNATURE__1__A1B2C3D4]]`. It also wraps every editable span before, between, and after snippets in numbered `SPK_SEGMENT` boundaries. The segment following a snippet redundantly records its identity and checksum in a `START_AFTER` marker. Qwen must preserve these structural tokens. The postprocessor verifies the metadata, reconstructs the numbered spans and snippet slots in their original order, then inserts the exact configured text. A snippet moved to the end or even dropped by Qwen is therefore restored from the segment metadata, and a final snippet is followed by a protected empty segment so it cannot be lost accidentally.
+
+Qwen never receives the expansion itself, so it cannot rewrite a signature, URL, disclaimer, command, or address. A missing standalone snippet token is recovered from redundant segment metadata. Missing or malformed segment metadata, conflicting or duplicated tokens, and unframed tokens fail closed instead of producing damaged text.
 
 ## Script safety behavior
 
 - A missing snippet file disables snippets. Invalid JSON makes the preprocessor report an error and preserve the original transcript.
 - An unknown snippet token causes the postprocessor to fail instead of guessing.
+- Missing or malformed segment metadata and duplicated, conflicting, or malformed snippet tokens cause the postprocessor to fail closed.
+- Model-generated text outside protected transcript segments causes the postprocessor to fail closed.
 - Any command token left behind by Qwen also causes the postprocessor to fail. This prevents internal control text from being pasted into an application.
+- The postprocessor removes all trailing whitespace, including newlines, so auto-inserted output cannot submit a form or execute a command by carrying a final Return.
 - The processors have no network access and never execute transcript text as shell code.
 - Snippet expansions are data loaded from JSON, not commands.
 
@@ -80,10 +85,11 @@ printf '%s' 'The old meeting is Friday. Delete the last sentence. The new meetin
   | dictation/spokenly/scripts/pre_ai.sh
 ```
 
-Test a protected snippet round trip without Qwen:
+Test a protected snippet round trip without Qwen by piping through both scripts:
 
 ```bash
-printf '%s' 'Message body. [[SPK_SNIPPET_EMAIL_SIGNATURE__1]]' \
+printf '%s' 'Message body. Insert my email signature.' \
+  | dictation/spokenly/scripts/pre_ai.sh \
   | dictation/spokenly/scripts/post_ai.sh
 ```
 
@@ -93,5 +99,7 @@ Use Spokenly's **Test Script** button to confirm the actual app environment can 
 
 Qwen still handles grammar, capitalization, number formatting, email layout,
 recognition repair, list item segmentation, and deciding whether a hinted
-self-correction is truly a replacement. Keeping semantic decisions out of the
-regex parser avoids dangerously broad deletion behavior.
+self-correction is truly a replacement. The framing protocol protects snippet
+position and rejects text outside the transcript, but it cannot prove that
+Qwen preserved the meaning of ordinary prose inside a segment. Keeping semantic
+decisions out of the regex parser avoids dangerously broad deletion behavior.

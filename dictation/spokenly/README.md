@@ -11,7 +11,8 @@ Spokenly
   -> Qwen 3.5 9B through Ollama
        - cleans and formats the transcript
   -> scripts/post_ai.py
-       - expands protected snippets exactly
+       - restores snippet placement and expands snippets exactly
+       - strips trailing whitespace before insertion
   -> active application
 ```
 

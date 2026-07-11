@@ -62,7 +62,7 @@ The profile uses:
 ```text
 num_ctx: 32768
 num_predict: 16384
-temperature: 0.7
+temperature: 0.0
 top_p: 0.8
 top_k: 20
 min_p: 0.0
@@ -176,8 +176,13 @@ exec "/absolute/path/to/agentic-coding/dictation/spokenly/scripts/post_ai.sh"
 ```
 
 This performs exact expansion after Qwen. It does not rewrite any other text.
-It fails closed on unknown snippet tokens or leaked command tokens, preventing
-internal metadata from being pasted into the active application.
+It reconstructs snippets between protected numbered transcript segments. Each
+following segment redundantly records the preceding snippet, so a standalone
+snippet token moved or dropped by Qwen is restored to its original position. It
+fails closed on missing segment metadata, conflicting, duplicated, unknown, or
+malformed structural tokens, text outside the protected segments, or leaked
+command tokens. Finally, it strips trailing whitespace so an inferred Return
+cannot submit or execute the inserted text.
 
 ## 9. Run local tests
 
@@ -282,7 +287,7 @@ Common failure boundaries:
 
 - Wrong raw words: usually Parakeet recognition; Qwen can repair only obvious contextual errors.
 - Correct Pre-AI output but wrong final prose: Qwen prompt/model behavior.
-- Missing or altered snippet token: confirm the protected-token section is in the AI prompt.
+- Missing or altered snippet/segment token: confirm the protected-structure section is in the AI prompt.
 - Token remains after final output: confirm the Post-AI script and snippet ID are configured.
 - First request is slow: expected Qwen cold load; later requests within keep-alive should be faster.
 - High memory while loaded: expected model weights plus the 32K context cache; unload with `ollama stop`.
