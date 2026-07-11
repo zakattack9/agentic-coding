@@ -17,6 +17,12 @@ if [[ ! -d "/Applications/iTerm.app" && ! -d "$HOME/Applications/iTerm.app" ]]; 
 fi
 
 mkdir -p "$target_dir"
+if [[ -e "$target_script" || -L "$target_script" ]]; then
+  if [[ ! -L "$target_script" || "$(readlink "$target_script")" != "$source_script" ]]; then
+    echo "Refusing to replace an unrelated entry at $target_script" >&2
+    exit 1
+  fi
+fi
 ln -sfn "$source_script" "$target_script"
 
 printf '%s\n' \

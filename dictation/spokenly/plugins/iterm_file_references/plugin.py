@@ -9,7 +9,6 @@ import os
 import re
 import secrets
 import shutil
-import socket
 import stat
 import subprocess
 import tempfile
@@ -140,7 +139,9 @@ def is_iterm_app(active_app: str) -> bool:
 
 
 def _read_private_json(path: Path) -> object:
-    info = path.stat()
+    info = path.lstat()
+    if not stat.S_ISREG(info.st_mode):
+        raise ValueError(f"state is not a regular file: {path}")
     if info.st_uid != os.getuid():
         raise ValueError(f"state is not owned by the current user: {path}")
     if stat.S_IMODE(info.st_mode) & 0o022:
@@ -362,7 +363,10 @@ def list_project_files(
         if relative_text in seen:
             continue
         if any(
-            ord(character) < 32 or ord(character) == 127 for character in relative_text
+            ord(character) < 32
+            or ord(character) == 127
+            or 0xD800 <= ord(character) <= 0xDFFF
+            for character in relative_text
         ):
             # Never insert a path containing a newline, tab, or other terminal
             # control character into an interactive agent prompt.
@@ -409,25 +413,36 @@ def _extension_variants(extension: str) -> tuple[tuple[str, ...], ...]:
 def _filename_variants(
     name: str, include_stem: bool
 ) -> list[tuple[tuple[str, ...], bool]]:
-    if name.startswith(".") and name.count(".") == 1:
-        words = _identifier_words(name[1:])
-        return [(("dot",) + words, False)] if words else []
-
-    if "." not in name or name.endswith("."):
-        words = _identifier_words(name)
+    leading_dot = name.startswith(".")
+    working_name = name[1:] if leading_dot else name
+    prefix = ("dot",) if leading_dot else ()
+    if "." not in working_name or working_name.endswith("."):
+        words = prefix + _identifier_words(working_name)
         return [(words, False)] if words else []
 
-    stem, extension = name.rsplit(".", 1)
-    stem_words = _identifier_words(stem)
-    if not stem_words:
+    components = working_name.split(".")
+    extension = components[-1]
+    stem_components = [_identifier_words(component) for component in components[:-1]]
+    if any(not words for words in stem_components):
         return []
-    variants = [
-        (stem_words + ("dot",) + extension_words, False)
-        for extension_words in _extension_variants(extension)
-    ]
+    stem_with_dots: list[str] = list(prefix)
+    stem_without_dots: list[str] = list(prefix)
+    for words in stem_components:
+        if len(stem_with_dots) > len(prefix):
+            stem_with_dots.append("dot")
+        stem_with_dots.extend(words)
+        stem_without_dots.extend(words)
+
+    stem_variants = {tuple(stem_with_dots), tuple(stem_without_dots)}
+    variants = []
+    for stem_words in stem_variants:
+        variants.extend(
+            (stem_words + ("dot",) + extension_words, False)
+            for extension_words in _extension_variants(extension)
+        )
     if include_stem:
-        variants.append((stem_words, True))
-    return variants
+        variants.extend((stem_words, True) for stem_words in stem_variants)
+    return list(dict.fromkeys(variants))
 
 
 def _path_component_words(component: str) -> tuple[str, ...]:
@@ -452,6 +467,11 @@ def build_alias_index(
             add(tokens, AliasEntry(candidate, 1 if is_stem else 2))
 
         parent_parts = parts[:-1]
+        if not parent_parts:
+            # A root-level basename is still only a basename. Treating it as a
+            # higher-priority full path would silently beat duplicate basenames
+            # in subdirectories even though no directory was spoken.
+            continue
         # Include the full path and up to three trailing path components. This
         # makes spoken directory qualifiers deterministic without exploding the
         # alias index for deeply nested monorepos.
@@ -609,15 +629,28 @@ def resolve_references(
     return resolved, warnings
 
 
+def _ensure_private_directory(path: Path, *, parents: bool = False) -> None:
+    try:
+        path.mkdir(mode=0o700, parents=parents, exist_ok=False)
+    except FileExistsError:
+        pass
+    info = path.lstat()
+    if not stat.S_ISDIR(info.st_mode):
+        raise ValueError(f"file-reference state is not a directory: {path}")
+    if info.st_uid != os.getuid():
+        raise ValueError(
+            f"file-reference state is not owned by the current user: {path}"
+        )
+    if stat.S_IMODE(info.st_mode) != 0o700:
+        path.chmod(0o700)
+
+
 def _ensure_pending_directories(pending_dir: Path) -> tuple[Path, Path]:
-    pending_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-    pending_dir.chmod(0o700)
+    _ensure_private_directory(pending_dir, parents=True)
     runs = pending_dir / "runs"
     sessions = pending_dir / "sessions"
-    runs.mkdir(mode=0o700, exist_ok=True)
-    sessions.mkdir(mode=0o700, exist_ok=True)
-    runs.chmod(0o700)
-    sessions.chmod(0o700)
+    _ensure_private_directory(runs)
+    _ensure_private_directory(sessions)
     return runs, sessions
 
 
@@ -653,16 +686,25 @@ def clear_pending(
     pointer_path: Path,
     manifest_path: Path | None = None,
 ) -> None:
-    if manifest_path is None and pointer_path.exists():
+    pointer_nonce: str | None = None
+    if pointer_path.exists():
         try:
             pointer = _read_private_json(pointer_path)
             if isinstance(pointer, dict) and isinstance(pointer.get("nonce"), str):
-                manifest_path = (
-                    pointer_path.parents[1] / "runs" / f"{pointer['nonce']}.json"
-                )
+                pointer_nonce = pointer["nonce"]
+                if manifest_path is None:
+                    manifest_path = (
+                        pointer_path.parents[1] / "runs" / f"{pointer_nonce}.json"
+                    )
         except (OSError, ValueError):
             pass
-    pointer_path.unlink(missing_ok=True)
+    manifest_nonce = manifest_path.stem if manifest_path is not None else None
+    if (
+        manifest_path is None
+        or pointer_nonce is None
+        or pointer_nonce == manifest_nonce
+    ):
+        pointer_path.unlink(missing_ok=True)
     if manifest_path is not None:
         manifest_path.unlink(missing_ok=True)
 
@@ -839,7 +881,9 @@ def load_pending_file_references(
             context_path, max_age_seconds=max_context_age_seconds
         )
     except (OSError, ValueError):
-        if output_nonce:
+        if output_nonce or _recent_manifest_nonces(
+            pending_dir, max_pending_age_seconds
+        ):
             raise ValueError(
                 "cannot verify the iTerm pane for a protected file reference"
             )
@@ -856,13 +900,22 @@ def load_pending_file_references(
         value = pointer.get("nonce")
         if not isinstance(value, str):
             raise ValueError("file-reference session pointer has no nonce")
+        if pointer.get("session_id") != session.session_id:
+            raise ValueError("file-reference session pointer belongs to another pane")
         pointer_nonce = value
     except FileNotFoundError:
         pointer = None
 
+    if output_nonce is None:
+        recent = _recent_manifest_nonces(pending_dir, max_pending_age_seconds)
+        if len(recent) > 1:
+            # A pane pointer identifies the focused pane, not the model run
+            # that produced tokenless output. Never consume another pane's (or
+            # a newer same-pane run's) state merely because it is focused now.
+            raise ValueError("cannot identify the pending file-reference run")
+
     nonce = pointer_nonce or output_nonce
     if nonce is None:
-        recent = _recent_manifest_nonces(pending_dir, max_pending_age_seconds)
         if len(recent) == 1:
             # Even if Qwen removed every structural marker, retain enough
             # out-of-band state to detect a pane switch and fail closed.
@@ -872,7 +925,10 @@ def load_pending_file_references(
         else:
             return None
     if pointer_nonce and output_nonce and pointer_nonce != output_nonce:
-        clear_pending(pointer_path)
+        clear_pending(
+            pointer_path,
+            pending_dir / "runs" / f"{output_nonce}.json",
+        )
         raise ValueError("protected file reference does not belong to the focused pane")
 
     manifest_path: Path | None = None
@@ -899,9 +955,12 @@ def load_pending_file_references(
         expansions: dict[str, str] = {}
         counts: dict[str, int] = {}
         for reference_id, record in expansion_data.items():
-            if not isinstance(reference_id, str) or not FILE_REFERENCE_ID.fullmatch(
-                reference_id
-            ):
+            id_match = (
+                FILE_REFERENCE_ID.fullmatch(reference_id)
+                if isinstance(reference_id, str)
+                else None
+            )
+            if id_match is None or id_match.group(1) != nonce:
                 raise ValueError("file-reference manifest has an invalid identifier")
             if not isinstance(record, dict):
                 raise ValueError("file-reference manifest has an invalid record")
@@ -953,11 +1012,3 @@ def load_pending_file_references(
 def finish_pending_file_references(pending: PendingReferences | None) -> None:
     if pending is not None:
         clear_pending(pending.pointer_path, pending.manifest_path)
-
-
-def default_context_state_payload() -> dict[str, object]:
-    """Return static metadata used by the iTerm helper and setup diagnostics."""
-    return {
-        "version": STATE_VERSION,
-        "hostname": socket.gethostname(),
-    }

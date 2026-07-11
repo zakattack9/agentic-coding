@@ -274,6 +274,17 @@ class ItermFileReferenceTests(unittest.TestCase):
         self.assertEqual(prepared.snippets, [])
         self.assertTrue(any("ambiguous" in warning for warning in prepared.warnings))
 
+    def test_root_file_does_not_outrank_duplicate_basename(self):
+        root = self.make_repo()
+        (root / "config.py").write_text("root", encoding="utf-8")
+        nested = root / "server" / "config.py"
+        nested.parent.mkdir()
+        nested.write_text("server", encoding="utf-8")
+        self.write_context(root)
+        prepared = self.prepare("Inspect at file config dot py first.")
+        self.assertEqual(prepared.snippets, [])
+        self.assertTrue(any("ambiguous" in warning for warning in prepared.warnings))
+
     def test_unique_candidate_under_cwd_breaks_project_wide_tie(self):
         root = self.make_repo()
         for directory in ("client", "server"):
@@ -383,6 +394,45 @@ class ItermFileReferenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "pane|workspace"):
             self.load(protected)
 
+    def test_failed_old_pane_post_does_not_delete_new_pane_state(self):
+        repo_a = self.make_repo("repo-a")
+        repo_b = self.make_repo("repo-b")
+        (repo_a / "alpha.py").write_text("a", encoding="utf-8")
+        (repo_b / "beta.py").write_text("b", encoding="utf-8")
+        self.write_context(repo_a, session_id="pane-a")
+        prepared_a = self.prepare("Review at file alpha dot py.")
+        protected_a = pre_ai.process(
+            "Review at file alpha dot py.", self.snippets, prepared_a.snippets
+        )
+
+        self.write_context(repo_b, session_id="pane-b", tab_id="tab-b")
+        prepared_b = self.prepare("Review at file beta dot py.")
+        protected_b = pre_ai.process(
+            "Review at file beta dot py.", self.snippets, prepared_b.snippets
+        )
+        with self.assertRaisesRegex(ValueError, "focused pane"):
+            self.load(protected_a)
+
+        pending_b = self.load(protected_b)
+        self.assertEqual(set(pending_b.expansions.values()), {"@beta.py"})
+        plugin.finish_pending_file_references(pending_b)
+
+    def test_finishing_old_run_does_not_remove_newer_session_pointer(self):
+        root = self.make_repo()
+        (root / "alpha.py").write_text("a", encoding="utf-8")
+        (root / "beta.py").write_text("b", encoding="utf-8")
+        self.write_context(root)
+        prepared_a = self.prepare("Review at file alpha dot py.")
+        prepared_b = self.prepare("Review at file beta dot py.")
+        protected_b = pre_ai.process(
+            "Review at file beta dot py.", self.snippets, prepared_b.snippets
+        )
+
+        plugin.finish_pending_file_references(prepared_a.pending)
+        pending_b = self.load(protected_b)
+        self.assertEqual(set(pending_b.expansions.values()), {"@beta.py"})
+        plugin.finish_pending_file_references(pending_b)
+
     def test_switching_panes_fails_closed_even_if_model_drops_all_tokens(self):
         repo_a = self.make_repo("repo-a")
         repo_b = self.make_repo("repo-b")
@@ -393,6 +443,35 @@ class ItermFileReferenceTests(unittest.TestCase):
         self.write_context(repo_b, session_id="pane-b", tab_id="tab-b")
         with self.assertRaisesRegex(ValueError, "pane|workspace"):
             self.load("Review the file.")
+
+    def test_missing_context_fails_closed_when_model_drops_all_tokens(self):
+        root = self.make_repo()
+        (root / "main.py").write_text("main", encoding="utf-8")
+        self.write_context(root)
+        self.prepare("Review at file main dot py.")
+        self.context_state.unlink()
+        with self.assertRaisesRegex(ValueError, "cannot verify"):
+            self.load("Review the file.")
+
+    def test_tokenless_old_run_cannot_consume_newer_pane_state(self):
+        repo_a = self.make_repo("repo-a")
+        repo_b = self.make_repo("repo-b")
+        (repo_a / "alpha.py").write_text("a", encoding="utf-8")
+        (repo_b / "beta.py").write_text("b", encoding="utf-8")
+        self.write_context(repo_a, session_id="pane-a")
+        self.prepare("Review at file alpha dot py.")
+        self.write_context(repo_b, session_id="pane-b", tab_id="tab-b")
+        prepared_b = self.prepare("Review at file beta dot py.")
+
+        with self.assertRaisesRegex(ValueError, "cannot identify"):
+            self.load("Review the file.")
+
+        protected_b = pre_ai.process(
+            "Review at file beta dot py.", self.snippets, prepared_b.snippets
+        )
+        pending_b = self.load(protected_b)
+        self.assertEqual(set(pending_b.expansions.values()), {"@beta.py"})
+        plugin.finish_pending_file_references(pending_b)
 
     def test_restarting_harness_during_ai_fails_closed(self):
         root = self.make_repo()
@@ -514,12 +593,50 @@ class ItermFileReferenceTests(unittest.TestCase):
             "Review @My Config.json carefully.",
         )
 
+    def test_hidden_multi_dot_file_preserves_spoken_leading_dot(self):
+        root = self.make_repo()
+        (root / ".env.local").write_text("LOCAL=1", encoding="utf-8")
+        self.write_context(root)
+        self.assertEqual(
+            self.round_trip("Review at file dot env dot local carefully."),
+            "Review @.env.local carefully.",
+        )
+
+    def test_multi_dot_filename_accepts_each_spoken_dot(self):
+        root = self.make_repo()
+        (root / "button.test.ts").write_text("test", encoding="utf-8")
+        self.write_context(root)
+        self.assertEqual(
+            self.round_trip("Review at file button dot test dot tee ess."),
+            "Review @button.test.ts.",
+        )
+
     def test_non_git_directory_is_not_treated_as_a_project(self):
         directory = self.base / "not-git"
         directory.mkdir()
         (directory / "main.py").write_text("main", encoding="utf-8")
         self.write_context(directory)
         with self.assertRaisesRegex(ValueError, "Git worktree"):
+            self.prepare("Review at file main dot py.")
+
+    def test_symlinked_context_state_is_rejected(self):
+        root = self.make_repo()
+        real_state = self.base / "real-context.json"
+        self.context_state = real_state
+        self.write_context(root)
+        linked_state = self.base / "linked-context.json"
+        linked_state.symlink_to(real_state)
+        with self.assertRaisesRegex(ValueError, "regular file"):
+            plugin.read_iterm_context(linked_state, max_age_seconds=60)
+
+    def test_symlinked_pending_directory_is_rejected(self):
+        root = self.make_repo()
+        (root / "main.py").write_text("main", encoding="utf-8")
+        self.write_context(root)
+        real_pending = self.base / "real-pending"
+        real_pending.mkdir()
+        self.pending_dir.symlink_to(real_pending, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "not a directory"):
             self.prepare("Review at file main dot py.")
 
     def test_ssh_context_is_rejected(self):

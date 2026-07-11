@@ -50,19 +50,46 @@ def atomic_write(value: dict[str, object]) -> None:
         temporary.unlink(missing_ok=True)
 
 
-async def snapshot(connection: iterm2.Connection) -> dict[str, object]:
-    app = await iterm2.async_get_app(connection)
-    window = app.current_terminal_window
-    if window is None or window.current_tab is None:
-        return {"version": STATE_VERSION, "observed_at": time.time()}
-    tab = window.current_tab
-    session = tab.current_session
-    if session is None:
-        return {"version": STATE_VERSION, "observed_at": time.time()}
+def empty_snapshot() -> dict[str, object]:
+    return {
+        "version": STATE_VERSION,
+        "observed_at": time.time(),
+    }
 
-    values = await asyncio.gather(
-        *(session.async_get_variable(name) for name in VARIABLES)
-    )
+
+async def snapshot(connection: iterm2.Connection) -> dict[str, object]:
+    # Focus can change while session variables are being fetched. Re-read the
+    # active chain before publishing so a pane ID can never be paired with a
+    # different pane's PID or working directory.
+    for _attempt in range(3):
+        app = await iterm2.async_get_app(connection)
+        window = app.current_terminal_window
+        if window is None or window.current_tab is None:
+            return empty_snapshot()
+        tab = window.current_tab
+        session = tab.current_session
+        if session is None:
+            return empty_snapshot()
+
+        values = await asyncio.gather(
+            *(session.async_get_variable(name) for name in VARIABLES)
+        )
+        refreshed_app = await iterm2.async_get_app(connection)
+        refreshed_window = refreshed_app.current_terminal_window
+        refreshed_tab = refreshed_window.current_tab if refreshed_window else None
+        refreshed_session = refreshed_tab.current_session if refreshed_tab else None
+        if (
+            refreshed_window is not None
+            and refreshed_tab is not None
+            and refreshed_session is not None
+            and refreshed_window.window_id == window.window_id
+            and refreshed_tab.tab_id == tab.tab_id
+            and refreshed_session.session_id == session.session_id
+        ):
+            break
+    else:
+        return empty_snapshot()
+
     variables = dict(zip(VARIABLES, values))
 
     job_pid = variables.get("jobPid")
@@ -96,9 +123,10 @@ async def publish(connection: iterm2.Connection, lock: asyncio.Lock) -> None:
         try:
             atomic_write(await snapshot(connection))
         except Exception:
-            # A partial or stale state is more dangerous than no state. The
-            # resolver rejects a missing/stale file and leaves dictation alone.
-            CONTEXT_STATE.unlink(missing_ok=True)
+            # Never unlink the shared state here: a newly started daemon may
+            # have replaced it already. Any prior snapshot expires within the
+            # resolver's short freshness window and is then rejected.
+            pass
 
 
 async def monitor_focus(connection: iterm2.Connection, lock: asyncio.Lock) -> None:
@@ -116,13 +144,10 @@ async def poll_context(connection: iterm2.Connection, lock: asyncio.Lock) -> Non
 
 async def main(connection: iterm2.Connection) -> None:
     lock = asyncio.Lock()
-    try:
-        await asyncio.gather(
-            monitor_focus(connection, lock),
-            poll_context(connection, lock),
-        )
-    finally:
-        CONTEXT_STATE.unlink(missing_ok=True)
+    await asyncio.gather(
+        monitor_focus(connection, lock),
+        poll_context(connection, lock),
+    )
 
 
 iterm2.run_forever(main)
