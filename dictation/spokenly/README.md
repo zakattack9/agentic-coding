@@ -8,6 +8,7 @@ Spokenly
   -> scripts/pre_ai.py
        - applies safe inline editing commands
        - protects snippet triggers with tokens
+       - optionally loads explicitly enabled platform plugins
   -> Qwen 3.5 9B through Ollama
        - cleans and formats the transcript
   -> scripts/post_ai.py
@@ -29,7 +30,12 @@ subscriptions, word limits, or transcription quotas.
 - [config/snippets.example.json](config/snippets.example.json) — example snippet definitions
 - [scripts/pre_ai.sh](scripts/pre_ai.sh) — portable Bash Pre-AI entry point
 - [scripts/post_ai.sh](scripts/post_ai.sh) — portable Bash Post-AI entry point
+- [plugins/iterm_file_references](plugins/iterm_file_references/README.md) — optional macOS/iTerm2 file references for local Codex and Claude Code panes
 - [tests/test_processors.py](tests/test_processors.py) — regression tests for both processors
+
+The core scripts remain portable and load no platform integration by default.
+Optional plugins require an explicit environment opt-in and validate their own
+runtime prerequisites before transforming text.
 
 Dictionary biasing is intentionally out of scope for now. Parakeet remains the
 speech model, and no list of speculative misrecognition variants is maintained.

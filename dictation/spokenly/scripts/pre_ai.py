@@ -24,6 +24,12 @@ from typing import Dict, Iterable, List, Match, Tuple
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+SPOKENLY_DIR = SCRIPT_DIR.parent
+if str(SPOKENLY_DIR) not in sys.path:
+    sys.path.insert(0, str(SPOKENLY_DIR))
+
+from plugins import load_iterm_file_references  # noqa: E402
+
 DEFAULT_SNIPPETS = SCRIPT_DIR.parent / "config" / "snippets.json"
 DEFAULT_SLASH_STATE = (
     Path(tempfile.gettempdir()) / f"spokenly-slash-snippets-{os.getuid()}.json"
@@ -501,8 +507,32 @@ def normalize(text: str) -> str:
     return text.strip()
 
 
-def process(text: str, snippets_path: Path) -> str:
+def process(
+    text: str,
+    snippets_path: Path,
+    extra_snippets: Iterable[Dict[str, object]] = (),
+) -> str:
     snippets = load_snippets(snippets_path)
+    seen_ids = {str(item["id"]) for item in snippets}
+    seen_triggers = {
+        " ".join(str(trigger).strip().split()).casefold()
+        for item in snippets
+        for trigger in item["triggers"]  # type: ignore[index]
+    }
+    for item in extra_snippets:
+        snippet_id = str(item.get("id", ""))
+        triggers = item.get("triggers")
+        if snippet_id in seen_ids:
+            raise ValueError(f"duplicate protected expansion id: {snippet_id}")
+        if not isinstance(triggers, list):
+            raise ValueError(f"protected expansion {snippet_id} has invalid triggers")
+        for trigger in triggers:
+            normalized = " ".join(str(trigger).strip().split()).casefold()
+            if normalized in seen_triggers:
+                raise ValueError(f"duplicate protected trigger: {trigger}")
+            seen_triggers.add(normalized)
+        seen_ids.add(snippet_id)
+        snippets.append(item)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = protect_snippets(text, snippets)
     text = apply_directives(text)
@@ -601,9 +631,43 @@ def main() -> int:
     args = parse_args()
     original = sys.stdin.read()
     clear_pending_slash_commands()
+    file_reference_plugin = load_iterm_file_references()
+    prepared_references = None
+    extra_snippets: Iterable[Dict[str, object]] = ()
+    if file_reference_plugin is not None:
+        try:
+            context_path = Path(
+                os.environ.get(
+                    "SPOKENLY_ITERM_CONTEXT_STATE",
+                    str(file_reference_plugin.DEFAULT_CONTEXT_STATE),
+                )
+            ).expanduser()
+            pending_dir = Path(
+                os.environ.get(
+                    "SPOKENLY_ITERM_FILE_REFERENCE_STATE_DIR",
+                    str(file_reference_plugin.DEFAULT_PENDING_DIR),
+                )
+            ).expanduser()
+            prepared_references = file_reference_plugin.prepare_file_references(
+                original,
+                os.environ.get("SPOKENLY_ACTIVE_APP", ""),
+                context_path=context_path,
+                pending_dir=pending_dir,
+            )
+            extra_snippets = prepared_references.snippets
+            for warning in prepared_references.warnings:
+                print(f"Spokenly file reference: {warning}", file=sys.stderr)
+        except Exception as error:
+            # The plugin is opt-in enrichment. Before it creates a protected
+            # reference, any missing prerequisite leaves portable dictation intact.
+            print(f"Spokenly file references unavailable: {error}", file=sys.stderr)
     try:
-        processed = process(original, args.snippets)
+        processed = process(original, args.snippets, extra_snippets)
     except Exception as error:
+        if prepared_references is not None:
+            file_reference_plugin.finish_pending_file_references(
+                prepared_references.pending
+            )
         print(f"Spokenly preprocessor failed open: {error}", file=sys.stderr)
         sys.stdout.write(original)
         return 0

@@ -117,7 +117,7 @@ Create a mode named `Clean Local`:
 | Text model | `spokenly-qwen9b` |
 | Reasoning | **None** |
 | Agentic Actions | Off |
-| Focused-app context | Off initially |
+| Focused-app context | Off initially; On for the optional iTerm2 plugin |
 | Clipboard context | Off |
 | Cursor context | Off initially |
 | Browser URL context | Off |
@@ -183,6 +183,27 @@ fails closed on missing segment metadata, conflicting, duplicated, unknown, or
 malformed structural tokens, text outside the protected segments, or leaked
 command tokens. Finally, it strips trailing whitespace so an inferred Return
 cannot submit or execute the inserted text.
+
+## Optional: iTerm2 file references for Codex and Claude Code
+
+The portable mode does not enable platform integrations. On macOS, local Codex
+and Claude Code CLI users can explicitly enable the
+[iTerm2 file-reference plugin](plugins/iterm_file_references/README.md). It
+detects the exact focused iTerm2 window, tab, and split pane; scopes discovery to
+that harness's Git worktree; and converts phrases such as `at file pre AI dot
+pie` into a verified CWD-relative reference such as `@../../scripts/pre_ai.py`.
+
+The plugin is disabled unless all of the following are true:
+
+- the machine is running macOS
+- `SPOKENLY_ITERM_FILE_REFERENCES=1` is exported by both script wrappers
+- Focused App Context is enabled and reports iTerm2
+- the iTerm2 context daemon is installed and current
+- the focused local foreground job is Codex or Claude Code
+- its CWD belongs to a Git working tree or linked worktree
+
+Follow the plugin README for installation and acceptance tests. Do not enable it
+for a portable profile intended to work unchanged across unrelated machines.
 
 ## 9. Run local tests
 
@@ -289,6 +310,8 @@ Common failure boundaries:
 - Correct Pre-AI output but wrong final prose: Qwen prompt/model behavior.
 - Missing or altered snippet/segment token: confirm the protected-structure section is in the AI prompt.
 - Token remains after final output: confirm the Post-AI script and snippet ID are configured.
+- File-reference phrase is unchanged: confirm the plugin opt-in, Focused App Context, iTerm2 daemon, foreground harness, and uniqueness of the spoken filename.
+- File-reference postprocessor fails after changing panes: expected fail-closed behavior; dictate again in the intended pane.
 - First request is slow: expected Qwen cold load; later requests within keep-alive should be faster.
 - High memory while loaded: expected model weights plus the 32K context cache; unload with `ollama stop`.
 
@@ -299,6 +322,7 @@ Common failure boundaries:
 - The finite command allowlist favors preserving text over risky deletion.
 - Qwen is probabilistic and may not match a purpose-built dictation service on every input.
 - Snippet triggers are exact case-insensitive phrases; use distinctive wording to prevent accidental expansion.
+- The optional iTerm2 file-reference plugin is local-only and deliberately rejects SSH, regular tmux, unverified containers, and non-Git directories.
 
 ## References
 

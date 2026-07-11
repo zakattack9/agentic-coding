@@ -8,7 +8,9 @@ Output: exact snippet-expanded text on stdout
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
+import os
 import re
 import sys
 import time
@@ -22,6 +24,7 @@ from pre_ai import (
     load_snippets,
     snippet_checksum,
 )
+from plugins import load_iterm_file_references
 
 
 TOKEN = re.compile(
@@ -52,13 +55,23 @@ def consume_boundary_punctuation(text: str) -> str:
     return re.sub(r"^[ \t]*[.,!?;:]+[ \t]*", "", text, count=1)
 
 
-def expand(text: str, snippets_path: Path) -> str:
+def expand(
+    text: str,
+    snippets_path: Path,
+    extra_expansions: dict[str, str] | None = None,
+    expected_expansion_counts: dict[str, int] | None = None,
+) -> str:
     snippets = load_snippets(snippets_path)
     expansions = {str(item["id"]): str(item["text"]) for item in snippets}
     consume_punctuation = {
         str(item["id"]): bool(item.get("consume_trailing_punctuation", False))
         for item in snippets
     }
+    for reference_id, expansion in (extra_expansions or {}).items():
+        if reference_id in expansions:
+            raise ValueError(f"duplicate protected expansion id: {reference_id}")
+        expansions[reference_id] = expansion
+        consume_punctuation[reference_id] = False
 
     tokens = list(TOKEN.finditer(text))
     segments = list(SEGMENT.finditer(text))
@@ -109,6 +122,14 @@ def expand(text: str, snippets_path: Path) -> str:
             if snippet_by_position.get(position) != snippet_id:
                 raise ValueError(f"snippet token disagrees with segment {position}")
 
+        if expected_expansion_counts:
+            actual_counts = Counter(snippet_by_position.values())
+            for reference_id, expected_count in expected_expansion_counts.items():
+                if actual_counts.get(reference_id, 0) != expected_count:
+                    raise ValueError(
+                        f"missing protected file reference: {reference_id}"
+                    )
+
         # No model-generated prose may escape the protected segment frames.
         residue = SEGMENT.sub("", text)
         residue = TOKEN.sub("", residue)
@@ -128,6 +149,8 @@ def expand(text: str, snippets_path: Path) -> str:
                     content = consume_boundary_punctuation(content)
             result = join_at_protected_boundary(result, TOKEN.sub("", content))
     else:
+        if expected_expansion_counts:
+            raise ValueError("missing protected file-reference transcript structure")
         result = text
 
     malformed = ANY_SNIPPET_TOKEN.search(result)
@@ -363,12 +386,49 @@ def main() -> int:
     args = parse_args()
     original = sys.stdin.read()
     pending_commands = consume_pending_slash_commands()
+    file_reference_plugin = load_iterm_file_references()
+    pending_references = None
     try:
-        expanded = expand(original, args.snippets)
+        if file_reference_plugin is not None:
+            context_path = Path(
+                os.environ.get(
+                    "SPOKENLY_ITERM_CONTEXT_STATE",
+                    str(file_reference_plugin.DEFAULT_CONTEXT_STATE),
+                )
+            ).expanduser()
+            pending_dir = Path(
+                os.environ.get(
+                    "SPOKENLY_ITERM_FILE_REFERENCE_STATE_DIR",
+                    str(file_reference_plugin.DEFAULT_PENDING_DIR),
+                )
+            ).expanduser()
+            pending_references = (
+                file_reference_plugin.load_pending_file_references(
+                    original,
+                    os.environ.get("SPOKENLY_ACTIVE_APP", ""),
+                    context_path=context_path,
+                    pending_dir=pending_dir,
+                )
+            )
+        expanded = expand(
+            original,
+            args.snippets,
+            extra_expansions=(
+                pending_references.expansions if pending_references else None
+            ),
+            expected_expansion_counts=(
+                pending_references.expected_counts if pending_references else None
+            ),
+        )
         sys.stdout.write(restore_pending_slash_commands(expanded, pending_commands))
     except Exception as error:
         print(f"Spokenly postprocessor failed closed: {error}", file=sys.stderr)
         return 1
+    finally:
+        if file_reference_plugin is not None:
+            file_reference_plugin.finish_pending_file_references(
+                pending_references
+            )
     return 0
 
 

@@ -76,6 +76,20 @@ Qwen never receives the expansion itself, so it cannot rewrite a signature, URL,
 - The processors have no network access and never execute transcript text as shell code.
 - Snippet expansions are data loaded from JSON, not commands.
 
+## Optional plugins
+
+The core processors are platform-independent and do not import platform plugins
+unless explicitly enabled. The
+[iTerm2 file-reference plugin](plugins/iterm_file_references/README.md) is an
+opt-in macOS extension for local Codex and Claude Code CLI panes. It reuses the
+same protected segment protocol for dynamic `@path` expansions, but resolves
+paths deterministically from the focused iTerm2 session and active Git worktree.
+
+Qwen never selects, sees, repairs, or rewrites a resolved path. Pre-AI stores it
+in private per-session state, and Post-AI verifies the same pane, process, CWD,
+worktree, and canonical file before insertion. Ambiguous names are left alone;
+context or structural failures after protection fail closed.
+
 ## Direct tests
 
 Test preprocessing:

@@ -1,0 +1,103 @@
+# iTerm2 file-reference plugin
+
+This optional plugin expands explicitly spoken file references for local Codex
+and Claude Code CLI sessions running in iTerm2 on macOS. The portable Spokenly
+processors do not load it unless `SPOKENLY_ITERM_FILE_REFERENCES=1` is set.
+
+## Supported environment
+
+- macOS with the sideload build of Spokenly
+- iTerm2 with its Python API runtime and shell integration enabled
+- one local Codex or Claude Code process in the focused iTerm2 pane
+- a current working directory inside a Git working tree or linked worktree
+
+The first version intentionally rejects SSH sessions, regular tmux sessions,
+containers without a verified local path mapping, non-Git directories, other
+terminal emulators, desktop agent apps, unrelated foreground processes, and
+extra workspace roots added outside the harness's primary Git worktree. A Git
+submodule is its own project when the harness is launched inside it; submodule
+contents are not folded into a superproject index.
+
+## Install the iTerm2 context daemon
+
+Run:
+
+```bash
+dictation/spokenly/plugins/iterm_file_references/install.sh
+```
+
+The installer creates a symlink in iTerm2's `Scripts/AutoLaunch` directory.
+Restart iTerm2, or launch `spokenly_iterm_context.py` once from the **Scripts**
+menu. If iTerm2 asks to install or update its Python runtime, allow it. Check
+**Scripts → Manage → Console** if the daemon reports an error.
+
+The daemon monitors only iTerm2 focus and session metadata. It writes the
+focused window, tab, pane/session ID, TTY, foreground PID, process title,
+working directory, hostname, and SSH integration level to a mode-`0600` file
+in the current user's temporary directory. It does not read transcript text,
+terminal contents, project file contents, or command history.
+
+## Enable the plugin in Spokenly
+
+Turn on **Include Focused App Context** for the Spokenly mode. Keep the existing
+Pre-AI and Post-AI scripts, but export the opt-in variable in both wrappers.
+
+Pre-AI:
+
+```bash
+#!/usr/bin/env bash
+export SPOKENLY_ITERM_FILE_REFERENCES=1
+exec "/absolute/path/to/agentic-coding/dictation/spokenly/scripts/pre_ai.sh"
+```
+
+Post-AI:
+
+```bash
+#!/usr/bin/env bash
+export SPOKENLY_ITERM_FILE_REFERENCES=1
+exec "/absolute/path/to/agentic-coding/dictation/spokenly/scripts/post_ai.sh"
+```
+
+Unset the variable, set it to `0`, or remove the two export lines to disable the
+plugin without changing the portable processors. Run `uninstall.sh` to remove
+the iTerm2 AutoLaunch symlink.
+
+## Spoken forms
+
+The parser intentionally requires an explicit file-reference phrase:
+
+| Dictation | Example result |
+| --- | --- |
+| `at file readme dot markdown` | `@README.md` |
+| `mention file pre AI dot pie` | `@scripts/pre_ai.py` when unique |
+| `at file server slash config dot pie` | `@server/config.py` |
+| `at file button dot tee ess ex` | `@../../src/Button.tsx` from a nested CWD |
+| literal `@README.md` from transcription | `@README.md` |
+
+Bare conversational uses of “at” are not commands. A basename is expanded only
+when it is unique in the project or exactly one matching candidate is beneath
+the active harness CWD. Speak one or more parent directories to disambiguate.
+
+## Resolution and safety
+
+The plugin obtains the exact focused iTerm2 session rather than using titles or
+recency. It verifies that the foreground job is Codex or Claude Code, discovers
+the actual Git worktree with `git rev-parse --show-toplevel`, and indexes tracked
+plus untracked, non-ignored files. Missing sparse-checkout files and symlinks
+whose targets leave the worktree are excluded. Paths containing terminal
+control characters are also excluded.
+
+The absolute canonical file is retained internally. The inserted `@` path is
+rendered relative to the active harness CWD and verified by resolving it back to
+the same canonical file. This handles normal branches, linked worktrees, nested
+working directories, multiple windows, multiple tabs, and multiple split panes.
+
+Pre-AI stores exact resolved references in private state keyed by both a random
+run nonce and the globally unique iTerm2 session ID. Qwen receives only protected
+tokens. Post-AI rechecks the pane ID, foreground PID, harness, CWD, worktree, and
+file before restoring each path. Changing panes, restarting the harness, deleting
+the file, corrupting structural tokens, or losing state fails closed.
+
+Ambiguous or unrecognized spoken file names are left as ordinary transcript
+text and never guessed. A plugin prerequisite failure before a protected
+reference is created fails open to the unchanged portable dictation pipeline.
