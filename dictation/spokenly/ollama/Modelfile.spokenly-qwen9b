@@ -4,8 +4,8 @@ FROM qwen3.5:9b
 PARAMETER num_ctx 32768
 PARAMETER num_predict 16384
 
-# Qwen non-reasoning sampling baseline used by this setup.
-PARAMETER temperature 0.7
+# Transcript cleanup should be stable and conservative, not creative.
+PARAMETER temperature 0.0
 PARAMETER top_p 0.8
 PARAMETER top_k 20
 PARAMETER min_p 0.0

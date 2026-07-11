@@ -12,15 +12,22 @@ Output: transformed transcript on stdout
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
 import re
 import sys
+import tempfile
+import time
 from pathlib import Path
 from typing import Dict, Iterable, List, Match, Tuple
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_SNIPPETS = SCRIPT_DIR.parent / "config" / "snippets.json"
+DEFAULT_SLASH_STATE = (
+    Path(tempfile.gettempdir()) / f"spokenly-slash-snippets-{os.getuid()}.json"
+)
 
 TOKENS = {
     "delete_sentence": "[[SPK_CMD_DELETE_SENTENCE]]",
@@ -28,10 +35,26 @@ TOKENS = {
     "discard": "[[SPK_CMD_DISCARD_THOUGHT]]",
     "bullets": "[[SPK_CMD_BULLET_LIST]]",
     "numbers": "[[SPK_CMD_NUMBERED_LIST]]",
-    "correction": "[[SPK_CMD_SELF_CORRECTION]]",
+    "correction": "[[SPK_CMD_REPLACE_NEAREST]]",
 }
 
 SNIPPET_ID = re.compile(r"^[A-Z][A-Z0-9_]*$")
+SNIPPET_TOKEN = re.compile(
+    r"\[\[SPK_SNIPPET_([A-Z][A-Z0-9_]*)__([1-9][0-9]*)__([A-F0-9]{8})\]\]"
+)
+LEADING_SNIPPET = re.compile(
+    r"^\[\[SPK_SEGMENT_0_START\]\]\[\[SPK_SEGMENT_0_END\]\]"
+    r"\[\[SPK_SNIPPET_([A-Z][A-Z0-9_]*)__1__[A-F0-9]{8}\]\]"
+)
+SLASH_COMMAND = re.compile(
+    r"/[A-Za-z][A-Za-z0-9_-]*(?::[A-Za-z][A-Za-z0-9_-]*)?"
+)
+FRAMED_SEGMENT = re.compile(
+    r"\[\[SPK_SEGMENT_([0-9]+)_START(?:_AFTER_[^\]]+)?\]\](.*?)"
+    r"\[\[SPK_SEGMENT_\1_END\]\]",
+    re.DOTALL,
+)
+STRUCTURAL_TOKEN = re.compile(r"\[\[[^\]]+\]\]")
 
 POLITE = r"(?:(?:please|can\s+you|could\s+you|would\s+you)\s+)?"
 DIRECTIVES = re.compile(
@@ -47,8 +70,11 @@ DIRECTIVES = re.compile(
     )
     |
     (?P<delete_word>
-        \b{POLITE}(?:delete|remove|erase|drop|take\s+out)\s+
-        (?:(?:(?:the|my)\s+)?(?:last|previous|prior|most\s+recent)\s+(?:word|term)|that\s+(?:word|term))\b
+        \b{POLITE}(?:
+            (?:delete|remove|erase|drop|take\s+out)\s+
+            (?:(?:(?:the|my)\s+)?(?:last|previous|prior|most\s+recent)\s+(?:word|term)|that\s+(?:word|term))
+          | scratch\s+(?:(?:the\s+)?(?:last|previous)\s+)?word
+        )\b
     )
     |
     (?P<discard>
@@ -60,6 +86,7 @@ DIRECTIVES = re.compile(
           | undo\s+(?:that|the\s+last\s+(?:part|thing|thought))
           | cancel\s+(?:that|the\s+last\s+(?:part|thing|thought))
           | (?:delete|remove)\s+what\s+i\s+just\s+said
+          | delete\s+that(?=\s*(?:[,.!?;:]|$))
         )\b
     )
     |
@@ -95,15 +122,36 @@ DIRECTIVES = re.compile(
 )
 
 EXPLICIT_CORRECTIONS = re.compile(
-    r"\b(?:sorry\s*,?\s*i\s+(?:mean|meant)|oops\s*,?\s*i\s+(?:mean|meant)|no\s*,?\s*actually|correction\s*[:,])",
+    r"\b(?:"
+    r"sorry\s*,?\s*i\s+(?:mean|meant)|"
+    r"oops\s*,?\s*i\s+(?:mean|meant)|"
+    r"no\s*,?\s*(?:actually|wait)|"
+    r"correction(?:\s+is)?\s*[:,]|"
+    r"or\s+rather|"
+    r"what\s+i\s+(?:really\s+)?meant\s+(?:was|is)|"
+    r"let\s+me\s+(?:rephrase|correct\s+that)"
+    r")",
     re.IGNORECASE,
 )
 PLAIN_I_MEAN = re.compile(r"\bi\s+(?:mean|meant)\b", re.IGNORECASE)
+DELIMITED_REPAIR = re.compile(
+    r"\b(?:actually|no|sorry|correct\s+that)\b", re.IGNORECASE
+)
 REPORTING_CONTEXT = re.compile(
     r"\b(?:say|says|said|tell|tells|told|ask|asks|asked|write|writes|wrote|read|reads|quote|quotes|quoted|call|calls|called|mention|mentions|mentioned)\b(?:\s+(?:the|this|a))?(?:\s+(?:phrase|command|instruction|word|words|example))?\b[\s:\"'“”‘’,-]*$",
     re.IGNORECASE,
 )
+REPORTING_SPAN = re.compile(
+    r"\b(?:say|write|type|read|quote|mention)\s+"
+    r"(?:(?:the|this|a)\s+)?(?:phrase|command|instruction|words?|example)\b"
+    r"[^.!?\n]{0,120}$",
+    re.IGNORECASE,
+)
 NON_CORRECTION_START = re.compile(
+    r"^(?:that|this|what|when|where|why|how|like|for\s+example|in\s+other\s+words)\b",
+    re.IGNORECASE,
+)
+AMBIGUOUS_REPAIR_START = re.compile(
     r"^(?:that|this|it|what|when|where|why|how|to|we|you|i|there|like|for\s+example|in\s+other\s+words)\b",
     re.IGNORECASE,
 )
@@ -161,7 +209,6 @@ def load_snippets(path: Path) -> List[Dict[str, object]]:
 
 def protect_snippets(text: str, snippets: Iterable[Dict[str, object]]) -> str:
     pairs = []
-    occurrence_by_id: Dict[str, int] = {}
     for snippet in snippets:
         for trigger in snippet["triggers"]:  # type: ignore[index]
             pairs.append(
@@ -171,25 +218,95 @@ def protect_snippets(text: str, snippets: Iterable[Dict[str, object]]) -> str:
                     bool(snippet.get("consume_trailing_punctuation", False)),
                 )
             )
-    for trigger, snippet_id, consume_punctuation in sorted(
-        pairs, key=lambda pair: len(pair[0]), reverse=True
+    if not pairs:
+        return text
+
+    # Match all triggers in one left-to-right pass. Repeated per-trigger
+    # substitutions can number tokens by configuration order rather than by
+    # their actual position in the transcript.
+    alternatives = []
+    trigger_metadata: Dict[str, Tuple[str, bool]] = {}
+    for index, (trigger, snippet_id, consume_punctuation) in enumerate(
+        sorted(pairs, key=lambda pair: len(pair[0]), reverse=True)
     ):
+        group = f"trigger_{index}"
         spaced_trigger = r"\s+".join(re.escape(part) for part in trigger.split())
-        suffix = r"(?:[.!?])?" if consume_punctuation else ""
-        pattern = re.compile(
-            rf"(?<!\w){spaced_trigger}(?!\w){suffix}", re.IGNORECASE
-        )
+        alternatives.append(rf"(?P<{group}>(?<!\w){spaced_trigger}(?!\w))")
+        trigger_metadata[group] = (snippet_id, consume_punctuation)
 
-        def replace(_match: Match[str]) -> str:
-            occurrence_by_id[snippet_id] = occurrence_by_id.get(snippet_id, 0) + 1
-            return f"[[SPK_SNIPPET_{snippet_id}__{occurrence_by_id[snippet_id]}]]"
+    pattern = re.compile("|".join(alternatives), re.IGNORECASE)
+    parts: List[str] = []
+    position = 0
+    occurrence = 0
+    for match in pattern.finditer(text):
+        group = match.lastgroup
+        if group is None:
+            continue
+        snippet_id, consume_punctuation = trigger_metadata[group]
+        end = match.end()
+        if consume_punctuation and end < len(text) and text[end] in ".!?":
+            end += 1
+        occurrence += 1
+        checksum = snippet_checksum(snippet_id, occurrence)
+        parts.append(text[position : match.start()])
+        parts.append(f"[[SPK_SNIPPET_{snippet_id}__{occurrence}__{checksum}]]")
+        position = end
+    parts.append(text[position:])
+    return "".join(parts)
 
-        text = pattern.sub(replace, text)
-    return text
+
+def snippet_checksum(snippet_id: str, position: int) -> str:
+    """Detect accidental model edits to a snippet's identity or position."""
+    value = f"spokenly-snippet-v1:{position}:{snippet_id}".encode("ascii")
+    return hashlib.blake2s(value, digest_size=4).hexdigest().upper()
+
+
+def frame_snippet_segments(text: str) -> str:
+    """Frame editable spans so post-AI can restore every snippet's position."""
+    matches = list(SNIPPET_TOKEN.finditer(text))
+    if not matches:
+        return text
+
+    parts: List[str] = []
+    position = 0
+    for segment, match in enumerate(matches):
+        if segment == 0:
+            parts.append("[[SPK_SEGMENT_0_START]]")
+        else:
+            previous = matches[segment - 1]
+            parts.append(
+                f"[[SPK_SEGMENT_{segment}_START_AFTER_"
+                f"{previous.group(1)}__{previous.group(3)}]]"
+            )
+        parts.append(text[position : match.start()])
+        parts.append(f"[[SPK_SEGMENT_{segment}_END]]")
+        parts.append(match.group(0))
+        position = match.end()
+    final_segment = len(matches)
+    final_match = matches[-1]
+    parts.append(
+        f"[[SPK_SEGMENT_{final_segment}_START_AFTER_"
+        f"{final_match.group(1)}__{final_match.group(3)}]]"
+    )
+    parts.append(text[position:])
+    parts.append(f"[[SPK_SEGMENT_{final_segment}_END]]")
+    return "".join(parts)
 
 
 def discussed_as_text(prefix: str) -> bool:
-    return bool(REPORTING_CONTEXT.search(prefix[-120:]))
+    return bool(
+        REPORTING_CONTEXT.search(prefix[-160:])
+        or REPORTING_SPAN.search(prefix[-160:])
+    )
+
+
+def inside_quoted_text(text: str, position: int) -> bool:
+    prefix = text[:position]
+    return (
+        prefix.count('"') % 2 == 1
+        or prefix.rfind("“") > prefix.rfind("”")
+        or prefix.rfind("‘") > prefix.rfind("’")
+    )
 
 
 def sentence_boundaries(value: str) -> List[Match[str]]:
@@ -243,7 +360,7 @@ def apply_directives(text: str) -> str:
     position = 0
     for match in DIRECTIVES.finditer(text):
         candidate = output + text[position : match.start()]
-        if discussed_as_text(candidate):
+        if discussed_as_text(candidate) or inside_quoted_text(text, match.start()):
             continue
 
         kind = match.lastgroup
@@ -285,26 +402,91 @@ def apply_directives(text: str) -> str:
     return output + text[position:]
 
 
+def correction_suffix(text: str, match: Match[str]) -> Tuple[str, List[str]]:
+    suffix = text[match.end() :].lstrip(" ,:;-.!?")
+    local_suffix = re.split(r"[.!?\n]", suffix, maxsplit=1)[0].strip()
+    words = re.findall(
+        r"[^\W_]+(?:[-'][^\W_]+)*", local_suffix, flags=re.UNICODE
+    )
+    return local_suffix, words
+
+
 def should_mark_plain_i_mean(text: str, match: Match[str]) -> bool:
     prefix = text[: match.start()].rstrip()
-    if not prefix or discussed_as_text(prefix):
+    if (
+        not prefix
+        or discussed_as_text(prefix)
+        or inside_quoted_text(text, match.start())
+    ):
         return False
-    suffix = text[match.end() :].lstrip(" ,:;-")
-    local_suffix = re.split(r"[.!?\n]", suffix, maxsplit=1)[0].strip()
+    local_suffix, words = correction_suffix(text, match)
     if not local_suffix or NON_CORRECTION_START.match(local_suffix):
         return False
-    words = re.findall(r"[^\W_]+(?:[-'][^\W_]+)*", local_suffix, flags=re.UNICODE)
-    return 1 <= len(words) <= 10
+    return 1 <= len(words) <= 24
+
+
+def should_mark_delimited_repair(text: str, match: Match[str]) -> bool:
+    prefix = text[: match.start()].rstrip()
+    if (
+        not prefix
+        or prefix[-1] not in ",.;!?-—"
+        or discussed_as_text(prefix)
+        or inside_quoted_text(text, match.start())
+    ):
+        return False
+    local_suffix, words = correction_suffix(text, match)
+    if not local_suffix or AMBIGUOUS_REPAIR_START.match(local_suffix):
+        return False
+    return 1 <= len(words) <= 12
+
+
+def append_correction_hint(parts: List[str], prefix: str) -> None:
+    # ASR commonly inserts a sentence boundary before "I mean" and similar
+    # repairs. A comma makes the replacement relationship local and explicit
+    # to the cleanup model without changing question/exclamation boundaries.
+    prefix = re.sub(r"\.\s*$", ", ", prefix)
+    parts.append(prefix)
+    if prefix and not prefix.endswith((" ", "\n")):
+        parts.append(" ")
+    parts.append(f"{TOKENS['correction']} ")
 
 
 def add_correction_hints(text: str) -> str:
-    text = EXPLICIT_CORRECTIONS.sub(f" {TOKENS['correction']} ", text)
+    explicit_parts: List[str] = []
+    explicit_position = 0
+    for match in EXPLICIT_CORRECTIONS.finditer(text):
+        prefix = text[: match.start()].rstrip()
+        _local_suffix, words = correction_suffix(text, match)
+        if (
+            not prefix
+            or not words
+            or discussed_as_text(prefix)
+            or inside_quoted_text(text, match.start())
+        ):
+            continue
+        append_correction_hint(
+            explicit_parts, text[explicit_position : match.start()]
+        )
+        explicit_position = match.end()
+    explicit_parts.append(text[explicit_position:])
+    text = "".join(explicit_parts)
+
+    repair_parts: List[str] = []
+    repair_position = 0
+    for match in DELIMITED_REPAIR.finditer(text):
+        if should_mark_delimited_repair(text, match):
+            append_correction_hint(
+                repair_parts, text[repair_position : match.start()]
+            )
+            repair_position = match.end()
+    repair_parts.append(text[repair_position:])
+    text = "".join(repair_parts)
+
     parts: List[str] = []
     position = 0
     for match in PLAIN_I_MEAN.finditer(text):
         if should_mark_plain_i_mean(text, match):
-            parts.append(text[position : match.start()])
-            parts.append(f" {TOKENS['correction']} ")
+            append_correction_hint(parts, text[position : match.start()])
             position = match.end()
     parts.append(text[position:])
     return "".join(parts)
@@ -325,7 +507,88 @@ def process(text: str, snippets_path: Path) -> str:
     text = protect_snippets(text, snippets)
     text = apply_directives(text)
     text = add_correction_hints(text)
-    return normalize(text)
+    return frame_snippet_segments(normalize(text))
+
+
+def clear_pending_slash_commands(state_path: Path = DEFAULT_SLASH_STATE) -> None:
+    try:
+        state_path.unlink(missing_ok=True)
+    except OSError:
+        # Recovery state is optional; it must never break preprocessing.
+        pass
+
+
+def record_pending_slash_commands(
+    processed: str,
+    snippets_path: Path,
+    state_path: Path = DEFAULT_SLASH_STATE,
+) -> None:
+    """Record ordered slash snippets for one-shot post-AI recovery."""
+    clear_pending_slash_commands(state_path)
+    snippets = load_snippets(snippets_path)
+    settings = {
+        str(item["id"]): item
+        for item in snippets
+    }
+    segments = {
+        int(match.group(1)): match.group(2)
+        for match in FRAMED_SEGMENT.finditer(processed)
+    }
+    leading = LEADING_SNIPPET.match(processed)
+    commands = []
+    for match in SNIPPET_TOKEN.finditer(processed):
+        snippet = settings.get(match.group(1))
+        if snippet is None:
+            continue
+        command = str(snippet["text"])
+        if not SLASH_COMMAND.fullmatch(command):
+            continue
+        commands.append(
+            {
+                "text": command,
+                "leading": bool(
+                    leading
+                    and leading.group(1) == match.group(1)
+                    and int(match.group(2)) == 1
+                ),
+                "consume_trailing_punctuation": bool(
+                    snippet.get("consume_trailing_punctuation", False)
+                ),
+                "left_anchor": anchor_words(
+                    segments.get(int(match.group(2)) - 1, ""), from_end=True
+                ),
+                "right_anchor": anchor_words(
+                    segments.get(int(match.group(2)), ""), from_end=False
+                ),
+            }
+        )
+    if not commands:
+        return
+
+    temporary = state_path.with_name(f".{state_path.name}.{os.getpid()}.tmp")
+    try:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary.write_text(
+            json.dumps({"commands": commands, "created_at": time.time()}),
+            encoding="utf-8",
+        )
+        temporary.chmod(0o600)
+        os.replace(temporary, state_path)
+    except OSError:
+        # The in-band framing remains authoritative when recovery state cannot
+        # be persisted.
+        pass
+    finally:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def anchor_words(text: str, from_end: bool, limit: int = 6) -> List[str]:
+    text = STRUCTURAL_TOKEN.sub(" ", text)
+    words = re.findall(r"[^\W_]+(?:[-'][^\W_]+)*", text, flags=re.UNICODE)
+    return words[-limit:] if from_end else words[:limit]
 
 
 def parse_args() -> argparse.Namespace:
@@ -337,11 +600,19 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     original = sys.stdin.read()
+    clear_pending_slash_commands()
     try:
-        sys.stdout.write(process(original, args.snippets))
+        processed = process(original, args.snippets)
     except Exception as error:
         print(f"Spokenly preprocessor failed open: {error}", file=sys.stderr)
         sys.stdout.write(original)
+        return 0
+    # Optional recovery-state I/O must not discard successful preprocessing.
+    try:
+        record_pending_slash_commands(processed, args.snippets)
+    except Exception as error:
+        print(f"Spokenly slash recovery unavailable: {error}", file=sys.stderr)
+    sys.stdout.write(processed)
     return 0
 
 
