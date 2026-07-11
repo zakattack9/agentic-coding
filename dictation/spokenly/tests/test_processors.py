@@ -498,6 +498,43 @@ class ProcessorTests(unittest.TestCase):
                 "Refine the spec without a placeholder.", commands
             )
 
+    def test_leftover_normalized_slash_alias_is_removed(self):
+        commands = [
+            {
+                "text": "/goal",
+                "leading": True,
+                "consume_trailing_punctuation": False,
+            },
+            {
+                "text": "/spec-ops:refine-spec",
+                "leading": False,
+                "consume_trailing_punctuation": False,
+            },
+            {
+                "text": "/spec-ops:launch-spec",
+                "leading": False,
+                "consume_trailing_punctuation": False,
+            },
+            {
+                "text": "/spec-ops:verify-spec",
+                "leading": False,
+                "consume_trailing_punctuation": False,
+            },
+        ]
+        model_output = (
+            "/goal, we will refactor everything using the "
+            "/spec-ops:refine-spec, then run /spec-ops:launch-spec. After "
+            "implementation, verify using /spec-ops:verify-spec, and a human "
+            "will review/spec_ops_verify_spec"
+        )
+        self.assertEqual(
+            post_ai.restore_pending_slash_commands(model_output, commands),
+            "/goal, we will refactor everything using the "
+            "/spec-ops:refine-spec, then run /spec-ops:launch-spec. After "
+            "implementation, verify using /spec-ops:verify-spec, and a human "
+            "will review",
+        )
+
     def test_invalid_recovery_state_path_does_not_crash_processors(self):
         config = Path(self.tempdir.name) / "state-snippets.json"
         config.write_text(

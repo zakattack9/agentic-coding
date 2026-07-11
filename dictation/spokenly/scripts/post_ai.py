@@ -213,6 +213,9 @@ def consume_pending_slash_commands(
 SLASH_LIKE = re.compile(
     r"(?<!\S)/(?:[A-Za-z][A-Za-z0-9_:\-]*)?(?=\s|[.,!?;:]|$)"
 )
+SLASH_ALIAS = re.compile(
+    r"/(?:[A-Za-z][A-Za-z0-9_:\-]*)?(?=\s|[.,!?;:]|$)"
+)
 
 
 def slash_command_key(command: str) -> str:
@@ -226,6 +229,27 @@ def find_recoverable_slash(
         if match.group(0) == "/" or slash_command_key(match.group(0)) in known_keys:
             return match
     return None
+
+
+def remove_leftover_slash_aliases(
+    text: str, canonical_by_key: dict[str, str]
+) -> str:
+    """Remove model-rendered aliases left after all expected commands."""
+    matches = [
+        match
+        for match in SLASH_ALIAS.finditer(text)
+        if match.group(0) != "/"
+        and (canonical := canonical_by_key.get(slash_command_key(match.group(0))))
+        is not None
+        and match.group(0) != canonical
+    ]
+    for match in reversed(matches):
+        left = text[: match.start()]
+        right = text[match.end() :]
+        if left and left[-1] in " \t" and right and right[0] in " \t":
+            right = right.lstrip(" \t")
+        text = left + right
+    return text.rstrip()
 
 
 def consume_recovered_punctuation(text: str, command_end: int) -> str:
@@ -277,7 +301,11 @@ def restore_pending_slash_commands(
         return text
     result = text
     cursor = 0
-    known_keys = {slash_command_key(str(item["text"])) for item in commands}
+    canonical_by_key = {
+        slash_command_key(str(item["text"])): str(item["text"])
+        for item in commands
+    }
+    known_keys = set(canonical_by_key)
     for item in commands:
         command = str(item["text"])
         consume = bool(item["consume_trailing_punctuation"])
@@ -322,7 +350,7 @@ def restore_pending_slash_commands(
 
         raise ValueError(f"missing recoverable slash command: {command}")
 
-    return result
+    return remove_leftover_slash_aliases(result, canonical_by_key)
 
 
 def parse_args() -> argparse.Namespace:
