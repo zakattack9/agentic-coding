@@ -1,8 +1,8 @@
-# Fully local Spokenly setup for macOS
+# ParaQwen Dictation setup for macOS
 
-This guide configures Spokenly with Parakeet for transcription, a safe Pre-AI
-processor for inline commands, Qwen through Ollama for cleanup, and a Post-AI
-processor for exact snippets.
+This guide configures ParaQwen Dictation in Spokenly with Parakeet for
+transcription, a safe Pre-AI processor for inline commands, Qwen through Ollama
+for cleanup, and a Post-AI processor for exact snippets.
 
 Spokenly documents this order as Pre-AI Script → AI Instructions → Post-AI
 Script. Each script reads stdin, writes stdout, and must finish within 30
@@ -106,7 +106,7 @@ Leave the `snippets` array empty if snippets are not needed yet.
 
 ## 6. Configure the Spokenly mode
 
-Create a mode named `Clean Local`:
+Create a mode named `ParaQwen Dictation`:
 
 | Setting | Value |
 | --- | --- |
@@ -117,7 +117,7 @@ Create a mode named `Clean Local`:
 | Text model | `spokenly-qwen9b` |
 | Reasoning | **None** |
 | Agentic Actions | Off |
-| Focused-app context | Off initially |
+| Focused-app context | Off initially; On for the optional iTerm2 plugin |
 | Clipboard context | Off |
 | Cursor context | Off initially |
 | Browser URL context | Off |
@@ -128,8 +128,8 @@ Create a mode named `Clean Local`:
 Smart Paragraphs remains off because Qwen and explicit paragraph directives
 already control paragraph structure.
 
-Paste the code block from [prompts/clean-local.md](prompts/clean-local.md) into
-the mode's **AI Instructions** field.
+Paste the complete contents of [prompts/qwen-prompt.md](prompts/qwen-prompt.md)
+into the mode's **AI Instructions** field.
 
 ## 7. Configure the Pre-AI script
 
@@ -183,6 +183,32 @@ fails closed on missing segment metadata, conflicting, duplicated, unknown, or
 malformed structural tokens, text outside the protected segments, or leaked
 command tokens. Finally, it strips trailing whitespace so an inferred Return
 cannot submit or execute the inserted text.
+
+## Optional: iTerm2 file references for Codex and Claude Code
+
+The portable mode does not enable platform integrations. On macOS, local Codex
+and Claude Code CLI users can explicitly enable the
+[iTerm2 file-reference plugin](plugins/iterm_file_references/README.md). It
+detects the exact focused iTerm2 window, tab, and split pane; scopes discovery to
+that harness's Git worktree; and converts phrases such as `at file pre AI dot
+pie` into a verified CWD-relative reference such as `@../../scripts/pre_ai.py`.
+It also accepts `add file` when speech recognition substitutes “add” for “at.”
+
+The plugin is disabled unless all of the following are true:
+
+- the machine is running macOS
+- `SPOKENLY_ITERM_FILE_REFERENCES=1` is exported by both script wrappers
+- Focused App Context is enabled and reports iTerm2
+- the iTerm2 context daemon is installed and current
+- the focused local foreground job is Codex or Claude Code
+- its OS process CWD belongs to a Git working tree or linked worktree
+
+Follow the plugin README for installation and acceptance tests. Do not enable it
+for a portable profile intended to work unchanged across unrelated machines.
+Launch the CLI from the directory or worktree that should be used as the
+reference base. Without optional CLI hooks, a Codex `-C/--cd` override, Claude
+Code `/cd`, or persistent in-session shell directory change can differ from the
+OS process CWD and is not supported by this version.
 
 ## 9. Run local tests
 
@@ -289,6 +315,9 @@ Common failure boundaries:
 - Correct Pre-AI output but wrong final prose: Qwen prompt/model behavior.
 - Missing or altered snippet/segment token: confirm the protected-structure section is in the AI prompt.
 - Token remains after final output: confirm the Post-AI script and snippet ID are configured.
+- File-reference phrase is unchanged: confirm the plugin opt-in, Focused App Context, iTerm2 daemon, foreground harness, and that the spoken filename matches a project file.
+- File-reference validation changes panes, loses context, or detects a missing file: the optional path expansion is skipped and the original spoken file phrase is restored without blocking dictation.
+- File-reference diagnostics: inspect `~/Library/Logs/Spokenly/iterm-file-references.log`; plugin warnings are logged privately instead of being displayed by Spokenly.
 - First request is slow: expected Qwen cold load; later requests within keep-alive should be faster.
 - High memory while loaded: expected model weights plus the 32K context cache; unload with `ollama stop`.
 
@@ -299,6 +328,8 @@ Common failure boundaries:
 - The finite command allowlist favors preserving text over risky deletion.
 - Qwen is probabilistic and may not match a purpose-built dictation service on every input.
 - Snippet triggers are exact case-insensitive phrases; use distinctive wording to prevent accidental expansion.
+- The optional iTerm2 file-reference plugin is local-only and deliberately rejects SSH, regular tmux, unverified containers, and non-Git directories.
+- The optional file-reference plugin resolves from the foreground CLI process's OS CWD; logical directory changes made with Codex `-C/--cd`, Claude Code `/cd`, or persistent in-session shell `cd` are not tracked without CLI hooks.
 
 ## References
 

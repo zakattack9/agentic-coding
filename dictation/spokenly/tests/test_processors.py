@@ -1,5 +1,7 @@
 import json
+import os
 import re
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -70,9 +72,7 @@ class ProcessorTests(unittest.TestCase):
         self.assertNotIn("Make those a list", value)
 
     def test_correction_gets_hint(self):
-        value = pre_ai.process(
-            "The meeting is Friday. I mean Monday.", self.snippets
-        )
+        value = pre_ai.process("The meeting is Friday. I mean Monday.", self.snippets)
         self.assertEqual(
             value, "The meeting is Friday, [[SPK_CMD_REPLACE_NEAREST]] Monday."
         )
@@ -145,6 +145,51 @@ class ProcessorTests(unittest.TestCase):
         self.assertIn("https://example.com/book", expanded)
         self.assertIn("Best,\nExample Person", expanded)
 
+    def test_entrypoint_recovers_static_snippet_when_model_drops_all_frames(self):
+        recovery_state = Path(self.tempdir.name) / "source-recovery.json"
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "SPOKENLY_ITERM_FILE_REFERENCES": "0",
+                "SPOKENLY_SOURCE_RECOVERY_STATE": str(recovery_state),
+                "SPOKENLY_ITERM_FILE_REFERENCE_LOG": str(
+                    Path(self.tempdir.name) / "diagnostics.log"
+                ),
+            }
+        )
+        source = "Please reply and insert my email signature."
+        pre = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts" / "pre_ai.py"),
+                "--snippets",
+                str(self.snippets),
+            ],
+            input=source,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=environment,
+        )
+        self.assertEqual(pre.returncode, 0, pre.stderr)
+        post = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts" / "post_ai.py"),
+                "--snippets",
+                str(self.snippets),
+            ],
+            input="Please reply.",
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=environment,
+        )
+        self.assertEqual(post.returncode, 0, post.stderr)
+        self.assertEqual(post.stdout, "Please reply and Best,\nExample Person")
+
     def test_unresolved_control_token_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "unresolved internal token"):
             post_ai.process("Text [[SPK_CMD_BULLET_LIST]]", self.snippets)
@@ -166,12 +211,8 @@ class ProcessorTests(unittest.TestCase):
         self.assertEqual(value, "The release is Tuesday Friday.")
 
     def test_no_actually_gets_correction_hint(self):
-        value = pre_ai.process(
-            "The meeting is at 3. No, actually 4.", self.snippets
-        )
-        self.assertEqual(
-            value, "The meeting is at 3, [[SPK_CMD_REPLACE_NEAREST]] 4."
-        )
+        value = pre_ai.process("The meeting is at 3. No, actually 4.", self.snippets)
+        self.assertEqual(value, "The meeting is at 3, [[SPK_CMD_REPLACE_NEAREST]] 4.")
 
     def test_explanatory_i_mean_is_not_marked(self):
         value = pre_ai.process(
@@ -209,13 +250,13 @@ class ProcessorTests(unittest.TestCase):
         self.assertEqual(value, "Keep this. Continue.")
 
     def test_snippet_trigger_tolerates_repeated_spaces(self):
-        value = pre_ai.process(
-            "Use insert   my email signature.", self.snippets
-        )
+        value = pre_ai.process("Use insert   my email signature.", self.snippets)
         self.snippet_token(value, "EMAIL_SIGNATURE", 1)
 
     def test_delete_last_word(self):
-        value = pre_ai.process("Keep this extra delete the last word now.", self.snippets)
+        value = pre_ai.process(
+            "Keep this extra delete the last word now.", self.snippets
+        )
         self.assertEqual(value, "Keep this now.")
 
     def test_scratch_word_deletes_previous_word(self):
@@ -242,7 +283,9 @@ class ProcessorTests(unittest.TestCase):
         self.assertEqual(value, "Keep this continue.")
 
     def test_new_paragraph_is_deterministic(self):
-        value = pre_ai.process("First topic. New paragraph. Second topic.", self.snippets)
+        value = pre_ai.process(
+            "First topic. New paragraph. Second topic.", self.snippets
+        )
         self.assertEqual(value, "First topic.\n\nSecond topic.")
 
     def test_unknown_snippet_fails_closed(self):
@@ -308,10 +351,14 @@ class ProcessorTests(unittest.TestCase):
 
     def test_trailing_whitespace_is_removed_after_expansion(self):
         protected = pre_ai.process("insert my email signature", self.snippets)
-        self.assertFalse(post_ai.process(protected + "\n\t ", self.snippets).endswith("\n"))
+        self.assertFalse(
+            post_ai.process(protected + "\n\t ", self.snippets).endswith("\n")
+        )
 
     def test_trailing_whitespace_is_removed_without_snippets(self):
-        self.assertEqual(post_ai.process("safe command\n\t ", self.snippets), "safe command")
+        self.assertEqual(
+            post_ai.process("safe command\n\t ", self.snippets), "safe command"
+        )
 
     def test_post_ai_consumes_punctuation_added_after_final_snippet(self):
         protected = pre_ai.process("insert my email signature", self.snippets)
@@ -397,9 +444,7 @@ class ProcessorTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        protected = pre_ai.process(
-            "slash go i want to create everything", config
-        )
+        protected = pre_ai.process("slash go i want to create everything", config)
         token = self.snippet_token(protected, "SLASH_GOAL", 1)
         model_output = protected.replace(token, "").replace(
             " i want to create everything", "I want to be able to create everything."
@@ -425,9 +470,7 @@ class ProcessorTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        protected = pre_ai.process(
-            "slash go i want to create everything", config
-        )
+        protected = pre_ai.process("slash go i want to create everything", config)
         pre_ai.record_pending_slash_commands(protected, config, state)
         commands = post_ai.consume_pending_slash_commands(state)
         final = post_ai.restore_pending_slash_commands(
@@ -479,9 +522,7 @@ class ProcessorTests(unittest.TestCase):
             }
         ]
         self.assertEqual(
-            post_ai.restore_pending_slash_commands(
-                "Keep /goalkeeper and /.", commands
-            ),
+            post_ai.restore_pending_slash_commands("Keep /goalkeeper and /.", commands),
             "Keep /goalkeeper and /goal",
         )
 
