@@ -17,10 +17,12 @@ import time
 from pathlib import Path
 
 from pre_ai import (
+    DEFAULT_SOURCE_RECOVERY_STATE,
     DEFAULT_SLASH_STATE,
     DEFAULT_SNIPPETS,
     SLASH_COMMAND,
     clear_pending_slash_commands,
+    consume_source_recovery_state,
     load_snippets,
     snippet_checksum,
 )
@@ -175,8 +177,36 @@ def process(text: str, snippets_path: Path) -> str:
     return expand(text, snippets_path)
 
 
-def fail_forward_text(text: str, references=None) -> str:
+def source_recovery_text(
+    recovery: dict[str, object] | None,
+    references=None,
+    *,
+    verified: bool,
+) -> str | None:
+    if recovery is None:
+        return None
+    portable = recovery.get("portable_text")
+    protected = recovery.get("verified_text")
+    file_nonce = recovery.get("file_nonce")
+    if not isinstance(portable, str) or not isinstance(protected, str):
+        return None
+    if verified:
+        if file_nonce is None:
+            return protected.rstrip()
+        if references is not None and references.nonce == file_nonce:
+            return protected.rstrip()
+    return portable.rstrip()
+
+
+def fail_forward_text(text: str, references=None, recovery=None) -> str:
     """Return safe usable text when the main post-processing path fails."""
+    recovered_source = source_recovery_text(
+        recovery,
+        references,
+        verified=bool(references is not None and references.context is not None),
+    )
+    if recovered_source is not None:
+        return recovered_source
     if references is not None:
         if references.resolved_transcript is not None:
             return references.resolved_transcript.rstrip()
@@ -394,6 +424,13 @@ def main() -> int:
     args = parse_args()
     original = sys.stdin.read()
     pending_commands = consume_pending_slash_commands()
+    source_recovery_path = Path(
+        os.environ.get(
+            "SPOKENLY_SOURCE_RECOVERY_STATE",
+            str(DEFAULT_SOURCE_RECOVERY_STATE),
+        )
+    ).expanduser()
+    source_recovery = consume_source_recovery_state(source_recovery_path)
     try:
         file_reference_plugin = load_iterm_file_references()
     except Exception as error:
@@ -404,12 +441,19 @@ def main() -> int:
     pending_dir = None
 
     def expand_with(references):
+        recovery_counts = (
+            source_recovery.get("expected_counts")
+            if source_recovery is not None
+            else None
+        )
         return expand(
             original,
             args.snippets,
             extra_expansions=(references.expansions if references else None),
             expected_expansion_counts=(
-                references.expected_counts if references else None
+                recovery_counts
+                if isinstance(recovery_counts, dict) and recovery_counts
+                else references.expected_counts if references else None
             ),
         )
 
@@ -466,7 +510,14 @@ def main() -> int:
                 # but the model damaged the protected frames. Ignore its output
                 # and apply the recorded references to their original source
                 # spans so neither path content nor placement depends on Qwen.
-                expanded = pending_references.resolved_transcript.rstrip()
+                expanded = (
+                    source_recovery_text(
+                        source_recovery,
+                        pending_references,
+                        verified=True,
+                    )
+                    or pending_references.resolved_transcript.rstrip()
+                )
                 log_iterm_file_reference_event(
                     "post.deterministic_recovery",
                     str(expansion_error),
@@ -497,7 +548,14 @@ def main() -> int:
             except Exception:
                 # If Qwen damaged all structural framing, the safest
                 # non-blocking result is the untouched source transcript.
-                expanded = fallback_references.original_transcript.rstrip()
+                expanded = (
+                    source_recovery_text(
+                        source_recovery,
+                        fallback_references,
+                        verified=False,
+                    )
+                    or fallback_references.original_transcript.rstrip()
+                )
             log_iterm_file_reference_event(
                 "post.fallback_transcript",
                 str(expansion_error),
@@ -507,7 +565,9 @@ def main() -> int:
     except Exception as error:
         log_iterm_file_reference_event("post.core_fallback", str(error))
         recovered = fail_forward_text(
-            original, fallback_references or pending_references
+            original,
+            fallback_references or pending_references,
+            source_recovery,
         )
         try:
             recovered = restore_pending_slash_commands(recovered, pending_commands)

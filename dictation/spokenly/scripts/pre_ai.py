@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import sys
 import tempfile
 import time
@@ -36,6 +37,9 @@ from plugins import (  # noqa: E402
 DEFAULT_SNIPPETS = SCRIPT_DIR.parent / "config" / "snippets.json"
 DEFAULT_SLASH_STATE = (
     Path(tempfile.gettempdir()) / f"spokenly-slash-snippets-{os.getuid()}.json"
+)
+DEFAULT_SOURCE_RECOVERY_STATE = (
+    Path(tempfile.gettempdir()) / f"spokenly-source-recovery-{os.getuid()}.json"
 )
 
 TOKENS = {
@@ -218,7 +222,37 @@ def load_snippets(path: Path) -> List[Dict[str, object]]:
     return snippets
 
 
-def protect_snippets(text: str, snippets: Iterable[Dict[str, object]]) -> str:
+def merge_snippets(
+    snippets_path: Path,
+    extra_snippets: Iterable[Dict[str, object]] = (),
+) -> List[Dict[str, object]]:
+    snippets = load_snippets(snippets_path)
+    seen_ids = {str(item["id"]) for item in snippets}
+    seen_triggers = {
+        " ".join(str(trigger).strip().split()).casefold()
+        for item in snippets
+        for trigger in item["triggers"]  # type: ignore[index]
+    }
+    for item in extra_snippets:
+        snippet_id = str(item.get("id", ""))
+        triggers = item.get("triggers")
+        if snippet_id in seen_ids:
+            raise ValueError(f"duplicate protected expansion id: {snippet_id}")
+        if not isinstance(triggers, list):
+            raise ValueError(f"protected expansion {snippet_id} has invalid triggers")
+        for trigger in triggers:
+            normalized = " ".join(str(trigger).strip().split()).casefold()
+            if normalized in seen_triggers:
+                raise ValueError(f"duplicate protected trigger: {trigger}")
+            seen_triggers.add(normalized)
+        seen_ids.add(snippet_id)
+        snippets.append(item)
+    return snippets
+
+
+def snippet_matcher(
+    snippets: Iterable[Dict[str, object]],
+) -> tuple[re.Pattern[str] | None, Dict[str, Dict[str, object]]]:
     pairs = []
     for snippet in snippets:
         for trigger in snippet["triggers"]:  # type: ignore[index]
@@ -226,26 +260,38 @@ def protect_snippets(text: str, snippets: Iterable[Dict[str, object]]) -> str:
                 (
                     str(trigger),
                     str(snippet["id"]),
+                    str(snippet["text"]),
                     bool(snippet.get("consume_trailing_punctuation", False)),
                 )
             )
     if not pairs:
-        return text
+        return None, {}
 
     # Match all triggers in one left-to-right pass. Repeated per-trigger
     # substitutions can number tokens by configuration order rather than by
     # their actual position in the transcript.
     alternatives = []
-    trigger_metadata: Dict[str, Tuple[str, bool]] = {}
-    for index, (trigger, snippet_id, consume_punctuation) in enumerate(
+    trigger_metadata: Dict[str, Dict[str, object]] = {}
+    for index, (trigger, snippet_id, expansion, consume_punctuation) in enumerate(
         sorted(pairs, key=lambda pair: len(pair[0]), reverse=True)
     ):
         group = f"trigger_{index}"
         spaced_trigger = r"\s+".join(re.escape(part) for part in trigger.split())
         alternatives.append(rf"(?P<{group}>(?<!\w){spaced_trigger}(?!\w))")
-        trigger_metadata[group] = (snippet_id, consume_punctuation)
+        trigger_metadata[group] = {
+            "id": snippet_id,
+            "text": expansion,
+            "consume_trailing_punctuation": consume_punctuation,
+        }
 
-    pattern = re.compile("|".join(alternatives), re.IGNORECASE)
+    return re.compile("|".join(alternatives), re.IGNORECASE), trigger_metadata
+
+
+def protect_snippets(text: str, snippets: Iterable[Dict[str, object]]) -> str:
+    pattern, trigger_metadata = snippet_matcher(snippets)
+    if pattern is None:
+        return text
+
     parts: List[str] = []
     position = 0
     occurrence = 0
@@ -253,7 +299,9 @@ def protect_snippets(text: str, snippets: Iterable[Dict[str, object]]) -> str:
         group = match.lastgroup
         if group is None:
             continue
-        snippet_id, consume_punctuation = trigger_metadata[group]
+        metadata = trigger_metadata[group]
+        snippet_id = str(metadata["id"])
+        consume_punctuation = bool(metadata["consume_trailing_punctuation"])
         end = match.end()
         if consume_punctuation and end < len(text) and text[end] in ".!?":
             end += 1
@@ -264,6 +312,35 @@ def protect_snippets(text: str, snippets: Iterable[Dict[str, object]]) -> str:
         position = end
     parts.append(text[position:])
     return "".join(parts)
+
+
+def expand_snippets_in_source(
+    text: str,
+    snippets: Iterable[Dict[str, object]],
+) -> str:
+    """Expand exact snippet spans without involving the cleanup model."""
+    pattern, trigger_metadata = snippet_matcher(snippets)
+    if pattern is None:
+        return text.rstrip()
+
+    parts: List[str] = []
+    position = 0
+    for match in pattern.finditer(text):
+        group = match.lastgroup
+        if group is None:
+            continue
+        metadata = trigger_metadata[group]
+        end = match.end()
+        if (
+            bool(metadata["consume_trailing_punctuation"])
+            and end < len(text)
+            and text[end] in ".!?"
+        ):
+            end += 1
+        parts.extend((text[position : match.start()], str(metadata["text"])))
+        position = end
+    parts.append(text[position:])
+    return "".join(parts).rstrip()
 
 
 def snippet_checksum(snippet_id: str, position: int) -> str:
@@ -522,27 +599,7 @@ def process(
     snippets_path: Path,
     extra_snippets: Iterable[Dict[str, object]] = (),
 ) -> str:
-    snippets = load_snippets(snippets_path)
-    seen_ids = {str(item["id"]) for item in snippets}
-    seen_triggers = {
-        " ".join(str(trigger).strip().split()).casefold()
-        for item in snippets
-        for trigger in item["triggers"]  # type: ignore[index]
-    }
-    for item in extra_snippets:
-        snippet_id = str(item.get("id", ""))
-        triggers = item.get("triggers")
-        if snippet_id in seen_ids:
-            raise ValueError(f"duplicate protected expansion id: {snippet_id}")
-        if not isinstance(triggers, list):
-            raise ValueError(f"protected expansion {snippet_id} has invalid triggers")
-        for trigger in triggers:
-            normalized = " ".join(str(trigger).strip().split()).casefold()
-            if normalized in seen_triggers:
-                raise ValueError(f"duplicate protected trigger: {trigger}")
-            seen_triggers.add(normalized)
-        seen_ids.add(snippet_id)
-        snippets.append(item)
+    snippets = merge_snippets(snippets_path, extra_snippets)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = protect_snippets(text, snippets)
     text = apply_directives(text)
@@ -556,6 +613,95 @@ def clear_pending_slash_commands(state_path: Path = DEFAULT_SLASH_STATE) -> None
     except OSError:
         # Recovery state is optional; it must never break preprocessing.
         pass
+
+
+def clear_source_recovery_state(
+    state_path: Path = DEFAULT_SOURCE_RECOVERY_STATE,
+) -> None:
+    try:
+        state_path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def record_source_recovery_state(
+    verified_text: str,
+    portable_text: str,
+    file_nonce: str | None,
+    expected_counts: dict[str, int],
+    state_path: Path = DEFAULT_SOURCE_RECOVERY_STATE,
+) -> None:
+    clear_source_recovery_state(state_path)
+    state_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{state_path.name}.",
+        suffix=".tmp",
+        dir=state_path.parent,
+    )
+    temporary = Path(temporary_name)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+            descriptor = -1
+            json.dump(
+                {
+                    "version": 1,
+                    "created_at": time.time(),
+                    "file_nonce": file_nonce,
+                    "expected_counts": expected_counts,
+                    "verified_text": verified_text.rstrip(),
+                    "portable_text": portable_text.rstrip(),
+                },
+                output,
+                ensure_ascii=False,
+            )
+        os.replace(temporary, state_path)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        temporary.unlink(missing_ok=True)
+
+
+def consume_source_recovery_state(
+    state_path: Path = DEFAULT_SOURCE_RECOVERY_STATE,
+    max_age_seconds: float = 120.0,
+) -> dict[str, object] | None:
+    try:
+        info = state_path.lstat()
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != os.getuid()
+            or stat.S_IMODE(info.st_mode) & 0o022
+        ):
+            return None
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, ValueError):
+        return None
+    finally:
+        clear_source_recovery_state(state_path)
+
+    if not isinstance(data, dict) or data.get("version") != 1:
+        return None
+    created_at = data.get("created_at")
+    if not isinstance(created_at, (int, float)):
+        return None
+    age = time.time() - float(created_at)
+    if age < -1 or age > max_age_seconds:
+        return None
+    if not isinstance(data.get("verified_text"), str) or not isinstance(
+        data.get("portable_text"), str
+    ):
+        return None
+    expected_counts = data.get("expected_counts")
+    if not isinstance(expected_counts, dict) or not all(
+        isinstance(key, str) and isinstance(value, int) and value > 0
+        for key, value in expected_counts.items()
+    ):
+        return None
+    file_nonce = data.get("file_nonce")
+    if file_nonce is not None and not isinstance(file_nonce, str):
+        return None
+    return data
 
 
 def record_pending_slash_commands(
@@ -637,7 +783,14 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     original = sys.stdin.read()
+    source_recovery_path = Path(
+        os.environ.get(
+            "SPOKENLY_SOURCE_RECOVERY_STATE",
+            str(DEFAULT_SOURCE_RECOVERY_STATE),
+        )
+    ).expanduser()
     clear_pending_slash_commands()
+    clear_source_recovery_state(source_recovery_path)
     try:
         file_reference_plugin = load_iterm_file_references()
     except Exception as error:
@@ -687,8 +840,40 @@ def main() -> int:
             except Exception as cleanup_error:
                 log_iterm_file_reference_event("pre.cleanup", str(cleanup_error))
         log_iterm_file_reference_event("pre.core_fallback", str(error))
+        try:
+            record_source_recovery_state(
+                original,
+                original,
+                None,
+                {},
+                state_path=source_recovery_path,
+            )
+        except Exception as recovery_error:
+            log_iterm_file_reference_event("pre.source_recovery", str(recovery_error))
         sys.stdout.write(original)
         return 0
+    try:
+        portable_snippets = load_snippets(args.snippets)
+        verified_snippets = merge_snippets(args.snippets, extra_snippets)
+        file_nonce = (
+            prepared_references.pending.nonce
+            if prepared_references is not None
+            and prepared_references.pending is not None
+            else None
+        )
+        expected_counts: dict[str, int] = {}
+        for match in SNIPPET_TOKEN.finditer(processed):
+            snippet_id = match.group(1)
+            expected_counts[snippet_id] = expected_counts.get(snippet_id, 0) + 1
+        record_source_recovery_state(
+            expand_snippets_in_source(original, verified_snippets),
+            expand_snippets_in_source(original, portable_snippets),
+            file_nonce,
+            expected_counts,
+            state_path=source_recovery_path,
+        )
+    except Exception as error:
+        log_iterm_file_reference_event("pre.source_recovery", str(error))
     # Optional recovery-state I/O must not discard successful preprocessing.
     try:
         record_pending_slash_commands(processed, args.snippets)

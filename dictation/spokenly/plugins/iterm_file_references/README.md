@@ -40,6 +40,13 @@ Restart iTerm2, or launch `spokenly_iterm_context.py` once from the **Scripts**
 menu. If iTerm2 asks to install or update its Python runtime, allow it. Check
 **Scripts → Manage → Console** if the daemon reports an error.
 
+If the repository was moved after installation, repair the managed absolute
+symlink from the new checkout:
+
+```bash
+dictation/spokenly/plugins/iterm_file_references/install.sh --repair
+```
+
 The daemon monitors only iTerm2 focus and session metadata. It writes the
 focused window, tab, pane/session ID, TTY, foreground PID, process title,
 working directory, hostname, and SSH integration level to a mode-`0600` file
@@ -78,6 +85,7 @@ The parser intentionally requires an explicit file-reference phrase:
 | Dictation | Example result |
 | --- | --- |
 | `at file readme dot markdown` | `@README.md` |
+| `add file readme dot markdown` | `@README.md` |
 | `mention file pre AI dot pie` | `@scripts/pre_ai.py` |
 | `at file server slash config dot pie` | `@server/config.py` |
 | `at file button dot tee ess ex` | `@../../src/Button.tsx` from a nested CWD |
@@ -86,7 +94,8 @@ The parser intentionally requires an explicit file-reference phrase:
 | `at file diagram dot draw dot eye oh` | `@diagram.drawio` |
 | literal `@README.md` from transcription | `@README.md` |
 
-Bare conversational uses of “at” are not commands. A basename prefers matching
+`add file` is accepted as an ASR substitution for `at file`. Bare conversational
+uses of “at” or “add” are not commands. A basename prefers matching
 candidates beneath the active harness CWD, then selects the first path returned
 by Git's project-file enumeration. Speak one or more parent directories to
 select a later match explicitly. Individually ignored files are referenceable;
@@ -96,6 +105,9 @@ digits (for example, `pee aitch pee` or `double you oh eff eff two`), and common
 format names such as `PowerShell`, `Terraform`, `markdown`, or `comma separated
 values`. The same vocabulary applies to compound suffixes such as `.d.ts`,
 `.pkr.hcl`, and `.xml.dist`.
+Underscores and dashes may be omitted in normal speech. When normalized names
+collide, explicitly saying `underscore`, `dash`, or `hyphen` selects the matching
+separator.
 
 ## Resolution and safety
 
@@ -122,9 +134,11 @@ file verification fails, the plugin restores the original spoken file phrase
 from a separate recovery manifest and lets the portable dictation pipeline
 continue. If Qwen damages the structural frames after the pane and paths pass
 verification, Post-AI ignores the model output and applies the recorded paths to
-their exact spans in the original source transcript. Plugin enrichment failures
-therefore do not block or discard a dictation, and Qwen cannot determine a
-recovered path's content or placement.
+their exact spans in an authoritative source transcript that also contains all
+other deterministic snippet expansions. A separate portable source form omits
+unverified dynamic paths. Plugin enrichment failures therefore do not block or
+discard a dictation, and Qwen cannot determine a recovered path's content or
+placement.
 
 When several files match, the first deterministic Git-enumerated candidate is
 selected; a spoken parent directory selects another candidate explicitly.
@@ -134,11 +148,15 @@ for unrelated applications and otherwise fails open to the unchanged portable
 dictation pipeline.
 
 The parser also tolerates a missing transcription boundary after “file,” such
-as `at filesnippets.json`. For speed, normal Git files are searched first;
-individually ignored files are queried only when the first pass has an
-unresolved explicit reference. Alias construction is restricted to prefixes
-that occur in the current transcript, and each process ancestor is inspected
-with one bounded `ps` call.
+as `at filesnippets.json` or `add filesnippets.json`, while trying a real
+filename beginning with `file` before removing the conjoined command prefix.
+For speed, normal Git files are searched first; individually ignored files are
+queried only when the first pass has an unresolved explicit reference.
+Filesystem and symlink validation is deferred to
+the small matched candidate set, repeated filename variants are cached, alias
+construction is restricted to prefixes that occur in the current transcript,
+and each process ancestor is inspected with one bounded `ps` call. Interrupted
+run state is pruned opportunistically.
 
 ## Diagnostics
 
@@ -158,3 +176,8 @@ tail -f "$HOME/Library/Logs/Spokenly/iterm-file-references.log"
 
 Set `SPOKENLY_ITERM_FILE_REFERENCE_LOG` in both script wrappers to override the
 location. Logging is best-effort and can never block dictation.
+
+The iTerm daemon writes changed focus/session state immediately and an unchanged
+freshness heartbeat every three seconds instead of rewriting once per second.
+Throttled daemon failures are recorded separately at
+`~/Library/Logs/Spokenly/iterm-context-daemon.log`.

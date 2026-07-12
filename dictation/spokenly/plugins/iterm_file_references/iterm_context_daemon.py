@@ -9,6 +9,8 @@ state file. Transcript text and project file contents are never read.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
+from datetime import datetime, timezone
 import json
 import os
 import secrets
@@ -27,6 +29,9 @@ CONTEXT_STATE = Path(
     os.environ.get("SPOKENLY_ITERM_CONTEXT_STATE", str(DEFAULT_CONTEXT_STATE))
 ).expanduser()
 POLL_SECONDS = 1.0
+HEARTBEAT_SECONDS = 3.0
+ERROR_LOG_INTERVAL_SECONDS = 60.0
+DAEMON_LOG = Path.home() / "Library" / "Logs" / "Spokenly" / "iterm-context-daemon.log"
 VARIABLES = (
     "tty",
     "jobPid",
@@ -35,6 +40,70 @@ VARIABLES = (
     "hostname",
     "sshIntegrationLevel",
 )
+
+
+@dataclass
+class PublicationState:
+    payload_key: str | None = None
+    written_at: float = 0.0
+
+
+_last_error_message: str | None = None
+_last_error_at = 0.0
+
+
+def log_daemon_error(error: Exception, now: float | None = None) -> None:
+    """Log changed or periodic daemon failures without flooding the disk."""
+    global _last_error_at, _last_error_message
+    monotonic_now = time.monotonic() if now is None else now
+    message = f"{type(error).__name__}: {error}"
+    if (
+        message == _last_error_message
+        and monotonic_now - _last_error_at < ERROR_LOG_INTERVAL_SECONDS
+    ):
+        return
+    _last_error_message = message
+    _last_error_at = monotonic_now
+    try:
+        DAEMON_LOG.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        descriptor = os.open(
+            DAEMON_LOG,
+            os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_CLOEXEC", 0),
+            0o600,
+        )
+        try:
+            os.fchmod(descriptor, 0o600)
+            record = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "pid": os.getpid(),
+                "message": message[:2000],
+            }
+            os.write(
+                descriptor,
+                (json.dumps(record, ensure_ascii=False) + "\n").encode("utf-8"),
+            )
+        finally:
+            os.close(descriptor)
+    except Exception:
+        return
+
+
+def snapshot_key(value: dict[str, object]) -> str:
+    return json.dumps(
+        {key: item for key, item in value.items() if key != "observed_at"},
+        sort_keys=True,
+    )
+
+
+def should_publish(
+    value: dict[str, object],
+    state: PublicationState,
+    now: float,
+) -> bool:
+    return (
+        snapshot_key(value) != state.payload_key
+        or now - state.written_at >= HEARTBEAT_SECONDS
+    )
 
 
 def atomic_write(value: dict[str, object]) -> None:
@@ -118,36 +187,56 @@ async def snapshot(connection: iterm2.Connection) -> dict[str, object]:
     }
 
 
-async def publish(connection: iterm2.Connection, lock: asyncio.Lock) -> None:
+async def publish(
+    connection: iterm2.Connection,
+    lock: asyncio.Lock,
+    state: PublicationState,
+) -> None:
     async with lock:
         try:
-            atomic_write(await snapshot(connection))
-        except Exception:
+            value = await snapshot(connection)
+            now = time.monotonic()
+            if should_publish(value, state, now):
+                value["observed_at"] = time.time()
+                atomic_write(value)
+                state.payload_key = snapshot_key(value)
+                state.written_at = now
+        except Exception as error:
             # Never unlink the shared state here: a newly started daemon may
             # have replaced it already. Any prior snapshot expires within the
             # resolver's short freshness window and is then rejected.
-            pass
+            log_daemon_error(error)
 
 
-async def monitor_focus(connection: iterm2.Connection, lock: asyncio.Lock) -> None:
+async def monitor_focus(
+    connection: iterm2.Connection,
+    lock: asyncio.Lock,
+    state: PublicationState,
+) -> None:
     async with iterm2.FocusMonitor(connection) as monitor:
         while True:
             await monitor.async_get_next_update()
-            await publish(connection, lock)
+            await publish(connection, lock, state)
 
 
-async def poll_context(connection: iterm2.Connection, lock: asyncio.Lock) -> None:
+async def poll_context(
+    connection: iterm2.Connection,
+    lock: asyncio.Lock,
+    state: PublicationState,
+) -> None:
     while True:
-        await publish(connection, lock)
+        await publish(connection, lock, state)
         await asyncio.sleep(POLL_SECONDS)
 
 
 async def main(connection: iterm2.Connection) -> None:
     lock = asyncio.Lock()
+    state = PublicationState()
     await asyncio.gather(
-        monitor_focus(connection, lock),
-        poll_context(connection, lock),
+        monitor_focus(connection, lock, state),
+        poll_context(connection, lock, state),
     )
 
 
-iterm2.run_forever(main)
+if __name__ == "__main__":
+    iterm2.run_forever(main)

@@ -36,8 +36,8 @@ DEFAULT_PENDING_DIR = (
 REFERENCE_TRIGGER = re.compile(
     r"(?<!\w)(?:"
     r"@\s*(?:file\s+)?|"
-    r"at\s+file(?=[^\s]+(?:\.|\s+dot\b))|"
-    r"at\s+(?:file|reference|path)\s+|"
+    r"(?P<conjoined>(?:at|add)\s+file)(?=[^\s]+(?:\.|\s+dot\b))|"
+    r"(?:at\s+(?:file|reference|path)|add\s+file)\s+|"
     r"(?:mention|reference|tag)\s+(?:the\s+)?file\s+"
     r")",
     re.IGNORECASE,
@@ -305,7 +305,7 @@ class ProjectContext:
 @dataclass(frozen=True)
 class ProjectFile:
     relative_path: Path
-    canonical_path: Path
+    canonical_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -658,7 +658,6 @@ def list_project_files(
             raise ValueError("unable to enumerate files in the active worktree")
         outputs.append(completed.stdout)
 
-    root = project_root.resolve()
     result: list[ProjectFile] = []
     seen: set[str] = set()
     for encoded in b"\0".join(outputs).split(b"\0"):
@@ -684,17 +683,8 @@ def list_project_files(
         relative = Path(relative_text)
         if relative.is_absolute() or ".." in relative.parts:
             continue
-        absolute = root / relative
-        if not absolute.is_file():
-            continue
-        canonical = absolute.resolve()
-        try:
-            canonical.relative_to(root)
-        except ValueError:
-            # Do not let an in-project symlink attach a file outside the worktree.
-            continue
         seen.add(relative_text)
-        result.append(ProjectFile(relative, canonical))
+        result.append(ProjectFile(relative))
         if len(result) > max_files:
             raise ValueError(
                 "the active worktree contains too many referenceable files"
@@ -709,6 +699,20 @@ def _identifier_words(value: str) -> tuple[str, ...]:
         match.group(0).casefold()
         for match in re.finditer(r"[^\W_]+", value, re.UNICODE)
     )
+
+
+def _identifier_variants(value: str) -> tuple[tuple[str, ...], ...]:
+    natural = _identifier_words(value)
+    explicit: list[str] = []
+    for component in re.split(r"([_-])", value):
+        if component == "_":
+            explicit.append("underscore")
+        elif component == "-":
+            explicit.append("dash")
+        elif component:
+            explicit.extend(_identifier_words(component))
+    variants = tuple(dict.fromkeys((natural, tuple(explicit))))
+    return tuple(variant for variant in variants if variant)
 
 
 def _spelled_extension_variants(
@@ -739,23 +743,27 @@ def _extension_variants(extension: str) -> tuple[tuple[str, ...], ...]:
     return tuple(dict.fromkeys(defaults + spelled + configured))
 
 
+@lru_cache(maxsize=8192)
 def _filename_variants(
     name: str, include_stem: bool
-) -> list[tuple[tuple[str, ...], bool]]:
+) -> tuple[tuple[tuple[str, ...], bool], ...]:
     leading_dot = name.startswith(".")
     working_name = name[1:] if leading_dot else name
     prefix = ("dot",) if leading_dot else ()
     if "." not in working_name or working_name.endswith("."):
-        words = prefix + _identifier_words(working_name)
-        return [(words, False)] if words else []
+        return tuple(
+            (prefix + words, False)
+            for words in _identifier_variants(working_name)
+            if prefix + words
+        )
 
     components = working_name.split(".")
     extension = components[-1]
     component_variants: list[tuple[tuple[str, ...], ...]] = []
     for index, component in enumerate(components[:-1]):
-        identifier = _identifier_words(component)
-        if not identifier:
-            return []
+        identifiers = _identifier_variants(component)
+        if not identifiers:
+            return ()
         if index == 0 or (
             len(component) > 1 and component.casefold() not in EXTENSION_ALIASES
         ):
@@ -763,13 +771,13 @@ def _filename_variants(
             # the `d` in `.d.ts`) as extensions. Spelling every ordinary
             # internal word makes names like `.complete.min.js.map` expand
             # combinatorially without improving realistic speech matching.
-            component_variants.append((identifier,))
+            component_variants.append(identifiers)
         else:
             component_variants.append(
-                tuple(dict.fromkeys((identifier,) + _extension_variants(component)))
+                tuple(dict.fromkeys(identifiers + _extension_variants(component)))
             )
     if not component_variants:
-        return []
+        return ()
 
     stem_variants: set[tuple[str, ...]] = set()
     for selected_components in itertools.product(*component_variants):
@@ -790,7 +798,7 @@ def _filename_variants(
         )
     if include_stem:
         variants.extend((stem_words, True) for stem_words in stem_variants)
-    return list(dict.fromkeys(variants))
+    return tuple(dict.fromkeys(variants))
 
 
 def _path_component_words(component: str) -> tuple[str, ...]:
@@ -860,8 +868,10 @@ def speech_tokens(text: str, start: int) -> list[SpeechToken]:
     raw: list[SpeechToken] = []
     for match in LEXICAL_TOKEN.finditer(text, start):
         value = match.group(0).casefold()
-        if value in {"_", "-", "underscore", "dash", "hyphen"}:
-            continue
+        if value == "_" or value == "underscore":
+            value = "underscore"
+        elif value in {"-", "dash", "hyphen"}:
+            value = "dash"
         if value == "." or value == "period":
             value = "dot"
         elif value == "/":
@@ -885,6 +895,26 @@ def speech_tokens(text: str, start: int) -> list[SpeechToken]:
         result.append(token)
         index += 1
     return result[:MAX_REFERENCE_WORDS]
+
+
+def _trigger_token_variants(
+    text: str,
+    trigger: re.Match[str],
+) -> tuple[list[SpeechToken], ...]:
+    fallback = speech_tokens(text, trigger.end())
+    if trigger.groupdict().get("conjoined") is None or not fallback:
+        return (fallback,)
+
+    first = fallback[0]
+    primary = [
+        SpeechToken(
+            "file" + first.value,
+            trigger.end() - len("file"),
+            first.end,
+        ),
+        *fallback[1:],
+    ]
+    return primary, fallback
 
 
 def _candidate_under_cwd(candidate: ProjectFile, cwd_relative: Path) -> bool:
@@ -915,7 +945,25 @@ def _select_alias(entries: list[AliasEntry], cwd_relative: Path) -> ProjectFile:
     return next(iter(candidates.values()))
 
 
+def _validate_project_file(
+    candidate: ProjectFile,
+    project_root: Path,
+) -> ProjectFile | None:
+    absolute = project_root / candidate.relative_path
+    if not absolute.is_file():
+        return None
+    canonical = absolute.resolve()
+    try:
+        canonical.relative_to(project_root)
+    except ValueError:
+        # Do not let an in-project symlink attach a file outside the worktree.
+        return None
+    return ProjectFile(candidate.relative_path, canonical)
+
+
 def _render_reference(candidate: ProjectFile, context: ProjectContext) -> str:
+    if candidate.canonical_path is None:
+        raise ValueError("a resolved file reference was not canonicalized")
     absolute = context.project_root / candidate.relative_path
     relative = Path(os.path.relpath(absolute, context.cwd))
     round_trip = (context.cwd / relative).resolve()
@@ -936,12 +984,13 @@ def resolve_references(
     files: Iterable[ProjectFile],
 ) -> tuple[list[ResolvedReference], list[str]]:
     trigger_tokens = [
-        (trigger, speech_tokens(text, trigger.end()))
+        (trigger, _trigger_token_variants(text, trigger))
         for trigger in REFERENCE_TRIGGER.finditer(text)
     ]
     wanted_aliases = {
         tuple(token.value for token in tokens[:length])
-        for _trigger, tokens in trigger_tokens
+        for _trigger, variants in trigger_tokens
+        for tokens in variants
         for length in range(1, len(tokens) + 1)
     }
     aliases = build_alias_index(files, wanted_aliases)
@@ -949,17 +998,23 @@ def resolve_references(
     resolved: list[ResolvedReference] = []
     warnings: list[str] = []
     consumed_until = 0
+    validated_candidates: dict[str, ProjectFile | None] = {}
 
-    for trigger, tokens in trigger_tokens:
+    for trigger, token_variants in trigger_tokens:
         if trigger.start() < consumed_until:
             continue
         match_entries: list[AliasEntry] | None = None
         matched_length = 0
-        for length in range(len(tokens), 0, -1):
-            entries = aliases.get(tuple(token.value for token in tokens[:length]))
-            if entries:
-                match_entries = entries
-                matched_length = length
+        matched_tokens: list[SpeechToken] | None = None
+        for tokens in token_variants:
+            for length in range(len(tokens), 0, -1):
+                entries = aliases.get(tuple(token.value for token in tokens[:length]))
+                if entries:
+                    match_entries = entries
+                    matched_length = length
+                    matched_tokens = tokens
+                    break
+            if match_entries:
                 break
         if not match_entries:
             warnings.append(
@@ -969,8 +1024,29 @@ def resolve_references(
             )
             continue
 
-        candidate = _select_alias(match_entries, cwd_relative)
-        phrase_end = tokens[matched_length - 1].end
+        valid_entries: list[AliasEntry] = []
+        for entry in match_entries:
+            key = entry.candidate.relative_path.as_posix()
+            if key not in validated_candidates:
+                validated_candidates[key] = _validate_project_file(
+                    entry.candidate,
+                    context.project_root,
+                )
+            validated = validated_candidates[key]
+            if validated is not None:
+                valid_entries.append(AliasEntry(validated, entry.kind))
+        if not valid_entries:
+            warnings.append(
+                "spoken file reference matched only missing or unsafe files near: "
+                f"{text[trigger.start():trigger.end()].strip()} "
+                f"(cwd={context.cwd}, worktree={context.project_root})"
+            )
+            continue
+
+        candidate = _select_alias(valid_entries, cwd_relative)
+        if matched_tokens is None:
+            raise ValueError("file-reference token selection lost its source tokens")
+        phrase_end = matched_tokens[matched_length - 1].end
         phrase = text[trigger.start() : phrase_end]
 
         expansion = _render_reference(candidate, context)
@@ -1076,6 +1152,46 @@ def clear_pending_for_session(
     clear_pending(pointer)
 
 
+def prune_stale_pending_state(
+    pending_dir: Path = DEFAULT_PENDING_DIR,
+    max_age_seconds: float = MAX_PENDING_AGE_SECONDS,
+    max_entries: int = 512,
+) -> None:
+    """Best-effort bounded cleanup for interrupted or abandoned runs."""
+    runs, sessions = _ensure_pending_directories(pending_dir)
+    now = time.time()
+    scanned = 0
+
+    if runs.is_dir():
+        for path in runs.iterdir():
+            if scanned >= max_entries:
+                break
+            scanned += 1
+            try:
+                info = path.lstat()
+                if not stat.S_ISREG(info.st_mode):
+                    continue
+                if now - info.st_mtime <= max_age_seconds:
+                    continue
+                path.unlink(missing_ok=True)
+                if path.suffix == ".json":
+                    path.with_suffix(".fallback").unlink(missing_ok=True)
+            except OSError:
+                continue
+
+    if sessions.is_dir():
+        for path in sessions.glob("*.json"):
+            if scanned >= max_entries:
+                break
+            scanned += 1
+            try:
+                info = path.lstat()
+                if stat.S_ISREG(info.st_mode) and now - info.st_mtime > max_age_seconds:
+                    path.unlink(missing_ok=True)
+            except OSError:
+                continue
+
+
 def _replace_reference_occurrences(
     text: str,
     occurrences: object,
@@ -1095,8 +1211,10 @@ def _replace_reference_occurrences(
         end = occurrence.get("end")
         reference_id = occurrence.get("reference_id")
         if (
-            type(start) is not int
-            or type(end) is not int
+            not isinstance(start, int)
+            or isinstance(start, bool)
+            or not isinstance(end, int)
+            or isinstance(end, bool)
             or not isinstance(reference_id, str)
             or reference_id not in expansions
             or reference_id not in original_texts
@@ -1147,6 +1265,7 @@ def prepare_file_references(
         verify_process=verify_process,
         max_age_seconds=max_context_age_seconds,
     )
+    prune_stale_pending_state(pending_dir)
     clear_pending_for_session(context.session.session_id, pending_dir)
     files = list_project_files(context.project_root, include_ignored=False)
     references, warnings = resolve_references(text, context, files)

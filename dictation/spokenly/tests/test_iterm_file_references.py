@@ -29,10 +29,17 @@ class ItermFileReferenceTests(unittest.TestCase):
         self.context_state = self.base / "iterm-context.json"
         self.pending_dir = self.base / "pending"
         self.log_path = self.base / "iterm-file-references.log"
+        self.source_recovery_state = self.base / "source-recovery.json"
+        self.environment_patcher = mock.patch.dict(
+            os.environ,
+            {"SPOKENLY_SOURCE_RECOVERY_STATE": str(self.source_recovery_state)},
+        )
+        self.environment_patcher.start()
         self.snippets = self.base / "snippets.json"
         self.snippets.write_text("[]", encoding="utf-8")
 
     def tearDown(self):
+        self.environment_patcher.stop()
         self.tempdir.cleanup()
 
     def git(self, cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -364,6 +371,43 @@ class ItermFileReferenceTests(unittest.TestCase):
             "Inspect @server/config.py first.",
         )
 
+    def test_conjoined_trigger_prefers_complete_filename(self):
+        root = self.make_repo()
+        (root / "filesystem.json").write_text("full", encoding="utf-8")
+        (root / "system.json").write_text("suffix", encoding="utf-8")
+        self.write_context(root)
+        self.assertEqual(
+            self.round_trip("Read at filesystem.json."),
+            "Read @filesystem.json.",
+        )
+
+    def test_add_file_is_treated_as_at_file_transcription(self):
+        root = self.make_repo()
+        (root / "snippets.json").write_text("{}", encoding="utf-8")
+        self.write_context(root)
+        self.assertEqual(
+            self.round_trip("Read add file snippets dot json."),
+            "Read @snippets.json.",
+        )
+        self.assertEqual(
+            self.round_trip("Read add filesnippets.json."),
+            "Read @snippets.json.",
+        )
+
+    def test_explicit_separator_disambiguates_normalized_filenames(self):
+        root = self.make_repo()
+        (root / "foo-bar.py").write_text("dash", encoding="utf-8")
+        (root / "foo_bar.py").write_text("underscore", encoding="utf-8")
+        self.write_context(root)
+        self.assertEqual(
+            self.round_trip("Read at file foo dash bar dot py."),
+            "Read @foo-bar.py.",
+        )
+        self.assertEqual(
+            self.round_trip("Read at file foo underscore bar dot py."),
+            "Read @foo_bar.py.",
+        )
+
     def test_duplicate_basename_selects_first_project_file(self):
         root = self.make_repo()
         for directory in ("client", "server"):
@@ -448,6 +492,38 @@ class ItermFileReferenceTests(unittest.TestCase):
             {str(item["text"]) for item in prepared.snippets}, {"@secret.py"}
         )
 
+    def test_file_enumeration_defers_filesystem_validation(self):
+        root = self.make_repo()
+        (root / "main.py").write_text("main", encoding="utf-8")
+        with mock.patch.object(
+            Path,
+            "is_file",
+            side_effect=AssertionError("enumeration must not stat every file"),
+        ):
+            files = plugin.list_project_files(root, include_ignored=False)
+        self.assertIn("main.py", {item.relative_path.as_posix() for item in files})
+        self.assertTrue(all(item.canonical_path is None for item in files))
+
+    def test_prepare_prunes_abandoned_state_from_other_pane(self):
+        repo_a = self.make_repo("repo-a")
+        repo_b = self.make_repo("repo-b")
+        (repo_a / "alpha.py").write_text("a", encoding="utf-8")
+        (repo_b / "beta.py").write_text("b", encoding="utf-8")
+        self.write_context(repo_a, session_id="pane-a")
+        abandoned = self.prepare("Read at file alpha dot py.")
+        old_time = time.time() - plugin.MAX_PENDING_AGE_SECONDS - 10
+        os.utime(abandoned.pending.manifest_path, (old_time, old_time))
+        os.utime(
+            abandoned.pending.manifest_path.with_suffix(".fallback"),
+            (old_time, old_time),
+        )
+        os.utime(abandoned.pending.pointer_path, (old_time, old_time))
+
+        self.write_context(repo_b, session_id="pane-b", tab_id="tab-b")
+        self.prepare("Read at file beta dot py.")
+        self.assertFalse(abandoned.pending.manifest_path.exists())
+        self.assertFalse(abandoned.pending.pointer_path.exists())
+
     def test_symlink_outside_worktree_is_not_referenceable(self):
         root = self.make_repo()
         outside = self.base / "outside.txt"
@@ -455,10 +531,20 @@ class ItermFileReferenceTests(unittest.TestCase):
         (root / "outside-link.txt").symlink_to(outside)
         self.write_context(root)
         files = plugin.list_project_files(root)
-        self.assertNotIn(
-            "outside-link.txt",
-            {item.relative_path.as_posix() for item in files},
+        self.assertIn(
+            "outside-link.txt", {item.relative_path.as_posix() for item in files}
         )
+        context = plugin.resolve_project_context(
+            "iTerm2",
+            self.context_state,
+            verify_process=False,
+            max_age_seconds=60,
+        )
+        resolved, warnings = plugin.resolve_references(
+            "Review at file outside link dot text.", context, files
+        )
+        self.assertEqual(resolved, [])
+        self.assertTrue(any("unsafe" in warning for warning in warnings))
 
     def test_regular_branch_uses_current_checkout(self):
         root = self.make_repo()
@@ -702,6 +788,19 @@ class ItermFileReferenceTests(unittest.TestCase):
     def test_post_ai_damaged_structure_uses_verified_source_expansion(self):
         root = self.make_repo()
         (root / "main.py").write_text("main", encoding="utf-8")
+        self.snippets.write_text(
+            json.dumps(
+                [
+                    {
+                        "id": "EMAIL_SIGNATURE",
+                        "triggers": ["insert my email signature"],
+                        "text": "Best,\nExample Person",
+                        "consume_trailing_punctuation": True,
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
         foreground = subprocess.Popen(
             ["codex", "30"],
             executable="/bin/sleep",
@@ -711,9 +810,26 @@ class ItermFileReferenceTests(unittest.TestCase):
         )
         self.addCleanup(foreground.wait)
         self.addCleanup(foreground.terminate)
-        source = "Review at file main dot pie carefully."
+        source = "Review at file main dot pie carefully and insert my email signature."
         self.write_context(root, job_pid=foreground.pid)
-        self.prepare(source)
+        prepared = self.prepare(source)
+        processed = pre_ai.process(source, self.snippets, prepared.snippets)
+        expected_counts: dict[str, int] = {}
+        for match in pre_ai.SNIPPET_TOKEN.finditer(processed):
+            expected_counts[match.group(1)] = expected_counts.get(match.group(1), 0) + 1
+        pre_ai.record_source_recovery_state(
+            pre_ai.expand_snippets_in_source(
+                source,
+                pre_ai.merge_snippets(self.snippets, prepared.snippets),
+            ),
+            pre_ai.expand_snippets_in_source(
+                source,
+                pre_ai.load_snippets(self.snippets),
+            ),
+            prepared.pending.nonce,
+            expected_counts,
+            state_path=self.source_recovery_state,
+        )
         environment = os.environ.copy()
         environment.update(
             {
@@ -739,7 +855,10 @@ class ItermFileReferenceTests(unittest.TestCase):
             env=environment,
         )
         self.assertEqual(post.returncode, 0, post.stderr)
-        self.assertEqual(post.stdout, "Review @main.py carefully.")
+        self.assertEqual(
+            post.stdout,
+            "Review @main.py carefully and Best,\nExample Person",
+        )
         self.assertEqual(post.stderr, "")
         self.assertIn(
             "post.deterministic_recovery",
@@ -1042,9 +1161,16 @@ class ItermFileReferenceTests(unittest.TestCase):
         self.write_context(root)
         real_pending = self.base / "real-pending"
         real_pending.mkdir()
+        runs = real_pending / "runs"
+        runs.mkdir()
+        sentinel = runs / "sentinel.json"
+        sentinel.write_text("{}", encoding="utf-8")
+        old = time.time() - plugin.MAX_PENDING_AGE_SECONDS - 10
+        os.utime(sentinel, (old, old))
         self.pending_dir.symlink_to(real_pending, target_is_directory=True)
         with self.assertRaisesRegex(ValueError, "not a directory"):
             self.prepare("Review at file main dot py.")
+        self.assertTrue(sentinel.exists())
 
     def test_ssh_context_is_rejected(self):
         root = self.make_repo()

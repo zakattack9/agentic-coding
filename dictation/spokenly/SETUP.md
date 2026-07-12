@@ -192,6 +192,7 @@ and Claude Code CLI users can explicitly enable the
 detects the exact focused iTerm2 window, tab, and split pane; scopes discovery to
 that harness's Git worktree; and converts phrases such as `at file pre AI dot
 pie` into a verified CWD-relative reference such as `@../../scripts/pre_ai.py`.
+It also accepts `add file` when speech recognition substitutes “add” for “at.”
 
 The plugin is disabled unless all of the following are true:
 
