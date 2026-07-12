@@ -1,8 +1,9 @@
-# iTerm2 file-reference plugin
+# ParaQwen Dictation iTerm2 file-reference plugin
 
-This optional plugin expands explicitly spoken file references for local Codex
-and Claude Code CLI sessions running in iTerm2 on macOS. The portable Spokenly
-processors do not load it unless `SPOKENLY_ITERM_FILE_REFERENCES=1` is set.
+This optional ParaQwen Dictation plugin expands explicitly spoken file
+references for local Codex and Claude Code CLI sessions running in iTerm2 on
+macOS. The portable Spokenly processors do not load it unless
+`SPOKENLY_ITERM_FILE_REFERENCES=1` is set.
 
 ## Supported environment
 

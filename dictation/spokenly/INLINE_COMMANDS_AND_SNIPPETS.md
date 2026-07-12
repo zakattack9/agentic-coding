@@ -1,4 +1,4 @@
-# Inline commands and snippets
+# ParaQwen Dictation: inline commands and snippets
 
 The mode uses a three-stage pipeline:
 

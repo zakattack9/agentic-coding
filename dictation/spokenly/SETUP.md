@@ -1,8 +1,8 @@
-# Fully local Spokenly setup for macOS
+# ParaQwen Dictation setup for macOS
 
-This guide configures Spokenly with Parakeet for transcription, a safe Pre-AI
-processor for inline commands, Qwen through Ollama for cleanup, and a Post-AI
-processor for exact snippets.
+This guide configures ParaQwen Dictation in Spokenly with Parakeet for
+transcription, a safe Pre-AI processor for inline commands, Qwen through Ollama
+for cleanup, and a Post-AI processor for exact snippets.
 
 Spokenly documents this order as Pre-AI Script → AI Instructions → Post-AI
 Script. Each script reads stdin, writes stdout, and must finish within 30
@@ -106,7 +106,7 @@ Leave the `snippets` array empty if snippets are not needed yet.
 
 ## 6. Configure the Spokenly mode
 
-Create a mode named `Clean Local`:
+Create a mode named `ParaQwen Dictation`:
 
 | Setting | Value |
 | --- | --- |
@@ -128,8 +128,8 @@ Create a mode named `Clean Local`:
 Smart Paragraphs remains off because Qwen and explicit paragraph directives
 already control paragraph structure.
 
-Paste the code block from [prompts/clean-local.md](prompts/clean-local.md) into
-the mode's **AI Instructions** field.
+Paste the complete contents of [prompts/qwen-prompt.md](prompts/qwen-prompt.md)
+into the mode's **AI Instructions** field.
 
 ## 7. Configure the Pre-AI script
 
