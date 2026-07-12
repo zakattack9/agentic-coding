@@ -314,8 +314,9 @@ Common failure boundaries:
 - Correct Pre-AI output but wrong final prose: Qwen prompt/model behavior.
 - Missing or altered snippet/segment token: confirm the protected-structure section is in the AI prompt.
 - Token remains after final output: confirm the Post-AI script and snippet ID are configured.
-- File-reference phrase is unchanged: confirm the plugin opt-in, Focused App Context, iTerm2 daemon, foreground harness, and uniqueness of the spoken filename.
-- File-reference postprocessor fails after changing panes: expected fail-closed behavior; dictate again in the intended pane.
+- File-reference phrase is unchanged: confirm the plugin opt-in, Focused App Context, iTerm2 daemon, foreground harness, and that the spoken filename matches a project file.
+- File-reference validation changes panes, loses context, or detects a missing file: the optional path expansion is skipped and the original spoken file phrase is restored without blocking dictation.
+- File-reference diagnostics: inspect `~/Library/Logs/Spokenly/iterm-file-references.log`; plugin warnings are logged privately instead of being displayed by Spokenly.
 - First request is slow: expected Qwen cold load; later requests within keep-alive should be faster.
 - High memory while loaded: expected model weights plus the 32K context cache; unload with `ollama stop`.
 

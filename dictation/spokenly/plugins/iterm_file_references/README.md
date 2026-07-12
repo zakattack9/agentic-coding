@@ -34,7 +34,8 @@ Run:
 dictation/spokenly/plugins/iterm_file_references/install.sh
 ```
 
-The installer creates a symlink in iTerm2's `Scripts/AutoLaunch` directory.
+The installer creates missing parent directories and a symlink at
+`~/Library/Application Support/iTerm2/Scripts/AutoLaunch/spokenly_iterm_context.py`.
 Restart iTerm2, or launch `spokenly_iterm_context.py` once from the **Scripts**
 menu. If iTerm2 asks to install or update its Python runtime, allow it. Check
 **Scripts → Manage → Console** if the daemon reports an error.
@@ -77,23 +78,35 @@ The parser intentionally requires an explicit file-reference phrase:
 | Dictation | Example result |
 | --- | --- |
 | `at file readme dot markdown` | `@README.md` |
-| `mention file pre AI dot pie` | `@scripts/pre_ai.py` when unique |
+| `mention file pre AI dot pie` | `@scripts/pre_ai.py` |
 | `at file server slash config dot pie` | `@server/config.py` |
 | `at file button dot tee ess ex` | `@../../src/Button.tsx` from a nested CWD |
+| `at file preload dot pee aitch pee` | `@preload.php` |
+| `at file variables dot terraform variables` | `@variables.tfvars` |
+| `at file diagram dot draw dot eye oh` | `@diagram.drawio` |
 | literal `@README.md` from transcription | `@README.md` |
 
-Bare conversational uses of “at” are not commands. A basename is expanded only
-when it is unique in the project or exactly one matching candidate is beneath
-the active harness CWD. Speak one or more parent directories to disambiguate.
+Bare conversational uses of “at” are not commands. A basename prefers matching
+candidates beneath the active harness CWD, then selects the first path returned
+by Git's project-file enumeration. Speak one or more parent directories to
+select a later match explicitly. Individually ignored files are referenceable;
+ignored directories are not recursively indexed.
+Extensions accept their literal spelling, separately transcribed letters and
+digits (for example, `pee aitch pee` or `double you oh eff eff two`), and common
+format names such as `PowerShell`, `Terraform`, `markdown`, or `comma separated
+values`. The same vocabulary applies to compound suffixes such as `.d.ts`,
+`.pkr.hcl`, and `.xml.dist`.
 
 ## Resolution and safety
 
 The plugin obtains the exact focused iTerm2 session rather than using titles or
-recency. It verifies that the foreground job is Codex or Claude Code, discovers
-the actual Git worktree with `git rev-parse --show-toplevel`, and indexes tracked
-plus untracked, non-ignored files. Missing sparse-checkout files and symlinks
-whose targets leave the worktree are excluded. Paths containing terminal
-control characters are also excluded.
+recency. If iTerm reports a foreground child such as an MCP or language server,
+the resolver walks same-TTY process ancestors to bind to the owning Codex or
+Claude Code process. It then discovers the actual Git worktree with `git
+rev-parse --show-toplevel` and indexes tracked, untracked non-ignored, and
+individually ignored files. Ignored directories, missing sparse-checkout files,
+and symlinks whose targets leave the worktree are excluded. Paths containing
+terminal control characters are also excluded.
 
 The absolute canonical file is retained internally. The inserted `@` path is
 rendered relative to the foreground process's OS CWD and verified by resolving
@@ -104,10 +117,44 @@ multiple tabs, and multiple split panes.
 Pre-AI stores exact resolved references in private state keyed by both a random
 run nonce and the globally unique iTerm2 session ID. Qwen receives only protected
 tokens. Post-AI rechecks the pane ID, foreground PID, harness, process CWD,
-worktree, and file before restoring each path. Changing panes, restarting the
-harness, deleting the file, corrupting structural tokens, or losing state fails
-closed.
+worktree, and file before restoring each path. If focus, pane, harness, CWD, or
+file verification fails, the plugin restores the original spoken file phrase
+from a separate recovery manifest and lets the portable dictation pipeline
+continue. If Qwen damages the structural frames after the pane and paths pass
+verification, Post-AI ignores the model output and applies the recorded paths to
+their exact spans in the original source transcript. Plugin enrichment failures
+therefore do not block or discard a dictation, and Qwen cannot determine a
+recovered path's content or placement.
 
-Ambiguous or unrecognized spoken file names are left as ordinary transcript
-text and never guessed. A plugin prerequisite failure before a protected
-reference is created fails open to the unchanged portable dictation pipeline.
+When several files match, the first deterministic Git-enumerated candidate is
+selected; a spoken parent directory selects another candidate explicitly.
+Unrecognized spoken file names are left as ordinary transcript text. A plugin
+prerequisite failure before a protected reference is created is a silent no-op
+for unrelated applications and otherwise fails open to the unchanged portable
+dictation pipeline.
+
+The parser also tolerates a missing transcription boundary after “file,” such
+as `at filesnippets.json`. For speed, normal Git files are searched first;
+individually ignored files are queried only when the first pass has an
+unresolved explicit reference. Alias construction is restricted to prefixes
+that occur in the current transcript, and each process ancestor is inspected
+with one bounded `ps` call.
+
+## Diagnostics
+
+Optional-plugin failures and recovery events never print to Spokenly's stderr
+or change the script exit status. They are appended as JSON Lines to a private
+mode-`0600` log:
+
+```text
+~/Library/Logs/Spokenly/iterm-file-references.log
+```
+
+The log rotates at 512 KiB and retains one `.1` backup. Follow it while testing:
+
+```bash
+tail -f "$HOME/Library/Logs/Spokenly/iterm-file-references.log"
+```
+
+Set `SPOKENLY_ITERM_FILE_REFERENCE_LOG` in both script wrappers to override the
+location. Logging is best-effort and can never block dictation.

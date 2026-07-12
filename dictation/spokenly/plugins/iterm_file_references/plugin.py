@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import os
 import re
@@ -14,6 +15,7 @@ import subprocess
 import tempfile
 import time
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Iterable
 
@@ -34,6 +36,7 @@ DEFAULT_PENDING_DIR = (
 REFERENCE_TRIGGER = re.compile(
     r"(?<!\w)(?:"
     r"@\s*(?:file\s+)?|"
+    r"at\s+file(?=[^\s]+(?:\.|\s+dot\b))|"
     r"at\s+(?:file|reference|path)\s+|"
     r"(?:mention|reference|tag)\s+(?:the\s+)?file\s+"
     r")",
@@ -44,21 +47,235 @@ ANY_FILE_REFERENCE_ID = re.compile(r"FILE_REF_([A-F0-9]{16})_([1-9][0-9]*)")
 LEXICAL_TOKEN = re.compile(r"[^\W_]+|[./_-]", re.UNICODE)
 
 EXTENSION_ALIASES: dict[str, tuple[tuple[str, ...], ...]] = {
-    "py": (("py",), ("pie",), ("p", "y")),
-    "js": (("js",), ("j", "s"), ("jay", "ess")),
-    "jsx": (("jsx",), ("j", "s", "x"), ("jay", "ess", "ex")),
-    "ts": (("ts",), ("t", "s"), ("tee", "ess")),
-    "tsx": (("tsx",), ("t", "s", "x"), ("tee", "ess", "ex")),
-    "md": (("md",), ("m", "d"), ("markdown",)),
-    "sh": (("sh",), ("s", "h"), ("shell",)),
-    "zsh": (("zsh",), ("z", "s", "h"), ("z", "shell")),
-    "rs": (("rs",), ("r", "s"), ("rust",)),
-    "yml": (("yml",), ("y", "m", "l"), ("yaml",)),
-    "yaml": (("yaml",), ("y", "a", "m", "l")),
-    "json": (("json",), ("j", "s", "o", "n")),
-    "toml": (("toml",), ("t", "o", "m", "l")),
-    "html": (("html",), ("h", "t", "m", "l")),
-    "css": (("css",), ("c", "s", "s")),
+    # Programming languages and web formats.
+    "py": (("pie",), ("python",), ("python", "script")),
+    "php": (("php", "script"), ("hypertext", "preprocessor")),
+    "js": (("javascript",), ("java", "script"), ("ecmascript",)),
+    "jsx": (("javascript", "xml"), ("react", "javascript")),
+    "mjs": (("module", "javascript"), ("javascript", "module")),
+    "cjs": (("common", "js"), ("common", "javascript")),
+    "ts": (("typescript",), ("type", "script")),
+    "tsx": (("typescript", "xml"), ("react", "typescript")),
+    "rb": (("ruby",),),
+    "rs": (("rust",),),
+    "go": (("golang",), ("go", "language")),
+    "java": (("java",),),
+    "kt": (("kotlin",),),
+    "kts": (("kotlin", "script"),),
+    "swift": (("swift",),),
+    "cs": (("c", "sharp"), ("see", "sharp")),
+    "fs": (("f", "sharp"), ("eff", "sharp")),
+    "fsx": (("f", "sharp", "script"), ("eff", "sharp", "script")),
+    "c": (("c", "source"), ("see", "source")),
+    "h": (("header",), ("c", "header"), ("see", "header")),
+    "cc": (("c", "plus", "plus"), ("see", "plus", "plus")),
+    "cpp": (("c", "plus", "plus"), ("see", "plus", "plus")),
+    "cxx": (("c", "plus", "plus"), ("see", "plus", "plus")),
+    "hpp": (("c", "plus", "plus", "header"),),
+    "hxx": (("c", "plus", "plus", "header"),),
+    "m": (("objective", "c"), ("objective", "see"), ("matlab",)),
+    "mm": (("objective", "c", "plus", "plus"),),
+    "scala": (("scala",),),
+    "lua": (("lua",),),
+    "dart": (("dart",),),
+    "r": (("r", "language"), ("are", "language")),
+    "ex": (("elixir",),),
+    "exs": (("elixir", "script"),),
+    "erl": (("erlang",),),
+    "hrl": (("erlang", "header"),),
+    "clj": (("clojure",),),
+    "cljs": (("clojure", "script"),),
+    "hs": (("haskell",),),
+    "pl": (("perl",), ("prolog",)),
+    "pm": (("perl", "module"),),
+    "sol": (("solidity",),),
+    "zig": (("zig",),),
+    "asm": (("assembly",),),
+    "s": (("assembly",),),
+    "wasm": (("web", "assembly"),),
+    "vue": (("vue",), ("view",)),
+    "svelte": (("svelte",),),
+    "css": (("cascading", "style", "sheet"), ("style", "sheet")),
+    "scss": (("sass",), ("sassy", "css")),
+    "sass": (("sass",),),
+    "less": (("less",),),
+    "html": (("hypertext", "markup", "language"),),
+    "htm": (("html",), ("hypertext", "markup")),
+    "svg": (
+        ("scalable", "vector", "graphic"),
+        ("scalable", "vector", "graphics"),
+    ),
+    "graphql": (("graph", "q", "l"), ("graph", "cue", "el")),
+    "gql": (("graph", "q", "l"), ("graph", "cue", "el")),
+    "sql": (("sequel",), ("structured", "query", "language")),
+    "proto": (("protobuf",), ("protocol", "buffer")),
+    "ipynb": (("jupyter", "notebook"), ("python", "notebook")),
+    # Shells, configuration, infrastructure, and build files.
+    "sh": (("shell",), ("shell", "script"), ("bash", "script")),
+    "bash": (("bash",), ("bash", "script")),
+    "zsh": (("z", "shell"), ("zed", "shell"), ("zsh", "script")),
+    "fish": (("fish", "shell"),),
+    "ps1": (("powershell",), ("power", "shell"), ("powershell", "script")),
+    "tf": (("terraform",),),
+    "tftest": (("terraform", "test"), ("tee", "eff", "test")),
+    "tfvars": (
+        ("terraform", "vars"),
+        ("terraform", "variables"),
+        ("tee", "eff", "vars"),
+        ("tee", "eff", "variables"),
+    ),
+    "hcl": (
+        ("hashicorp", "configuration", "language"),
+        ("hashi", "corp", "configuration", "language"),
+    ),
+    "pkr": (("packer",),),
+    "nix": (("nix",),),
+    "gradle": (("gradle",),),
+    "groovy": (("groovy",),),
+    "mk": (("make",), ("makefile",)),
+    "cmake": (("c", "make"), ("see", "make")),
+    "conf": (("config",), ("configuration",)),
+    "cfg": (("config",), ("configuration",)),
+    "ini": (("initialization",), ("config",)),
+    "env": (("environment",), ("environment", "file")),
+    "properties": (("properties",), ("property", "file")),
+    "service": (
+        ("systemd", "service"),
+        ("system", "d", "service"),
+        ("service", "unit"),
+    ),
+    "path": (("systemd", "path"), ("system", "d", "path"), ("path", "unit")),
+    "socket": (("systemd", "socket"), ("socket", "unit")),
+    "timer": (("systemd", "timer"), ("timer", "unit")),
+    "lock": (("lockfile",), ("lock", "file")),
+    "dist": (("distribution",),),
+    "tpl": (("template",),),
+    "tmpl": (("template",),),
+    "neon": (("neon",),),
+    # Structured data and text.
+    "md": (("markdown",), ("markdown", "file")),
+    "mdx": (("markdown", "x"), ("markdown", "ex")),
+    "txt": (("text",), ("text", "file"), ("plain", "text")),
+    "log": (("log",), ("log", "file")),
+    "json": (
+        ("jason",),
+        ("jay", "son"),
+        ("javascript", "object", "notation"),
+    ),
+    "jsonl": (("json", "lines"), ("jason", "lines")),
+    "ndjson": (("newline", "delimited", "json"),),
+    "xml": (("extensible", "markup", "language"),),
+    "yaml": (("yam", "ul"), ("why", "a", "em", "el")),
+    "yml": (("yaml",), ("yam", "ul"), ("why", "em", "el")),
+    "toml": (("tom", "el"), ("toms", "obvious", "minimal", "language")),
+    "csv": (("comma", "separated", "values"), ("comma", "separated", "value")),
+    "tsv": (("tab", "separated", "values"), ("tab", "separated", "value")),
+    "map": (("source", "map"),),
+    "avro": (("avro",),),
+    "parquet": (("parquet",),),
+    # Images, design assets, and fonts.
+    "jpg": (("jpeg",), ("jay", "peg"), ("j", "peg")),
+    "jpeg": (("jpg",), ("jay", "peg"), ("j", "peg")),
+    "png": (("ping",), ("portable", "network", "graphic")),
+    "gif": (("jif",), ("graphics", "interchange", "format")),
+    "webp": (("web", "p"), ("web", "pee"), ("web", "picture")),
+    "avif": (("a", "v", "image", "format"),),
+    "bmp": (("bitmap",),),
+    "tif": (("tiff",), ("tagged", "image", "file")),
+    "tiff": (("tiff",), ("tagged", "image", "file")),
+    "heic": (("high", "efficiency", "image"),),
+    "ico": (("icon",), ("windows", "icon")),
+    "drawio": (
+        ("draw", "io"),
+        ("draw", "eye", "oh"),
+        ("draw", "dot", "io"),
+        ("draw", "dot", "eye", "oh"),
+        ("diagrams", "net"),
+    ),
+    "fla": (("flash", "authoring"), ("flash",)),
+    "swf": (("shockwave", "flash"), ("flash",)),
+    "woff": (("web", "open", "font", "format"),),
+    "woff2": (
+        ("woff", "two"),
+        ("web", "open", "font", "format", "two"),
+    ),
+    "ttf": (("true", "type", "font"), ("truetype", "font")),
+    "otf": (("open", "type", "font"), ("opentype", "font")),
+    "eot": (("embedded", "open", "type"), ("embedded", "opentype")),
+    # Documents and office files.
+    "pdf": (("portable", "document", "format"),),
+    "rtf": (("rich", "text", "format"),),
+    "doc": (("word", "document"),),
+    "docx": (("word", "document"), ("word", "doc")),
+    "xls": (("excel",), ("excel", "spreadsheet")),
+    "xlsx": (("excel",), ("excel", "spreadsheet")),
+    "ppt": (("powerpoint",), ("power", "point")),
+    "pptx": (("powerpoint",), ("power", "point")),
+    "odt": (("open", "document", "text"),),
+    "ods": (("open", "document", "spreadsheet"),),
+    # Archives, databases, certificates, audio, and video.
+    "zip": (("zip", "archive"),),
+    "tar": (("tar", "archive"),),
+    "gz": (("gzip",), ("g", "zip")),
+    "tgz": (("tar", "gzip"), ("tar", "g", "zip")),
+    "bz2": (("bzip", "two"), ("b", "zip", "two")),
+    "xz": (("x", "z"), ("ex", "zee"), ("ex", "zed")),
+    "7z": (("seven", "zip"),),
+    "db": (("database",),),
+    "sqlite": (("sqlite",), ("s", "q", "lite")),
+    "sqlite3": (("sqlite", "three"), ("s", "q", "lite", "three")),
+    "pem": (("pem",), ("certificate",)),
+    "crt": (("certificate",),),
+    "cer": (("certificate",),),
+    "key": (("key", "file"), ("private", "key")),
+    "mp3": (("m", "p", "three"), ("audio",)),
+    "mp4": (("m", "p", "four"), ("video",)),
+    "m4a": (("m", "four", "a"), ("audio",)),
+    "wav": (("wave",), ("waveform", "audio")),
+    "flac": (("flack",), ("lossless", "audio")),
+    "mov": (("quicktime",), ("movie",)),
+    "avi": (("audio", "video", "interleave"),),
+    "mkv": (("matroska",),),
+    "webm": (("web", "m"), ("web", "video")),
+}
+
+SPOKEN_CHARACTERS: dict[str, tuple[tuple[str, ...], ...]] = {
+    "a": (("a",),),
+    "b": (("bee",),),
+    "c": (("see",), ("sea",)),
+    "d": (("dee",),),
+    "e": (("ee",),),
+    "f": (("eff",),),
+    "g": (("gee",),),
+    "h": (("aitch",),),
+    "i": (("eye",),),
+    "j": (("jay",),),
+    "k": (("kay",),),
+    "l": (("el",),),
+    "m": (("em",),),
+    "n": (("en",),),
+    "o": (("oh",),),
+    "p": (("pee",),),
+    "q": (("cue",), ("queue",)),
+    "r": (("are",),),
+    "s": (("ess",),),
+    "t": (("tee",),),
+    "u": (("you",),),
+    "v": (("vee",),),
+    "w": (("double", "you"), ("double", "u")),
+    "x": (("ex",),),
+    "y": (("why",),),
+    "z": (("zee",), ("zed",)),
+    "0": (("zero",),),
+    "1": (("one",),),
+    "2": (("two",), ("too",)),
+    "3": (("three",),),
+    "4": (("four",), ("for",)),
+    "5": (("five",),),
+    "6": (("six",),),
+    "7": (("seven",),),
+    "8": (("eight",),),
+    "9": (("nine",),),
 }
 
 
@@ -80,6 +297,7 @@ class ItermContext:
 class ProjectContext:
     session: ItermContext
     harness: str
+    harness_pid: int
     cwd: Path
     project_root: Path
 
@@ -115,11 +333,13 @@ class ResolvedReference:
 @dataclass
 class PendingReferences:
     nonce: str
-    pointer_path: Path
+    pointer_path: Path | None
     manifest_path: Path
     expansions: dict[str, str]
     expected_counts: dict[str, int]
-    context: ProjectContext
+    context: ProjectContext | None
+    original_transcript: str
+    resolved_transcript: str | None
 
 
 @dataclass
@@ -134,6 +354,7 @@ def is_iterm_app(active_app: str) -> bool:
     return (
         normalized in {"iterm", "iterm2", "comgooglecodeiterm2"}
         or normalized.startswith("iterm2")
+        or normalized.endswith("itermapp")
         or "comgooglecodeiterm2" in normalized
     )
 
@@ -206,10 +427,21 @@ def read_iterm_context(
     )
 
 
-def _process_field(pid: int, field: str) -> str:
+def _process_record(pid: int) -> tuple[int, str, str] | None:
+    """Read parent, TTY, and arguments in one bounded `ps` invocation."""
     try:
         completed = subprocess.run(
-            ["/bin/ps", "-p", str(pid), "-o", f"{field}="],
+            [
+                "/bin/ps",
+                "-p",
+                str(pid),
+                "-o",
+                "ppid=",
+                "-o",
+                "tty=",
+                "-o",
+                "args=",
+            ],
             check=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -217,11 +449,38 @@ def _process_field(pid: int, field: str) -> str:
             timeout=1.0,
         )
     except (OSError, subprocess.SubprocessError):
-        return ""
-    return completed.stdout.strip() if completed.returncode == 0 else ""
+        return None
+    if completed.returncode != 0:
+        return None
+    fields = completed.stdout.strip().split(maxsplit=2)
+    if len(fields) < 2:
+        return None
+    try:
+        parent = int(fields[0])
+    except ValueError:
+        return None
+    arguments = fields[2] if len(fields) == 3 else ""
+    return parent, fields[1], arguments
 
 
-def detect_harness(context: ItermContext, verify_process: bool = True) -> str:
+def _harness_name(*identifiers: str) -> str | None:
+    normalized = tuple(value.casefold() for value in identifiers if value)
+    if any(re.search(r"(?:^|\b)claude(?:\b|$)", value) for value in normalized):
+        return "claude"
+    if any(
+        re.search(r"(?:^|\b)codex(?:[-a-z0-9]*)(?:\b|$)", value) for value in normalized
+    ):
+        return "codex"
+    return None
+
+
+def _normalized_tty(value: str) -> str:
+    return Path(value).name if value.startswith("/dev/") else value.strip()
+
+
+def detect_harness(
+    context: ItermContext, verify_process: bool = True
+) -> tuple[str, int]:
     try:
         os.kill(context.job_pid, 0)
     except OSError as error:
@@ -230,23 +489,42 @@ def detect_harness(context: ItermContext, verify_process: bool = True) -> str:
                 "the focused iTerm process is no longer running"
             ) from error
 
-    title = context.process_title.casefold()
-    command_name = ""
-    argument_name = ""
-    if verify_process:
-        command_name = Path(_process_field(context.job_pid, "comm")).name.casefold()
-        arguments = _process_field(context.job_pid, "args")
-        if arguments:
-            argument_name = Path(arguments.split(maxsplit=1)[0]).name.casefold()
+    if not verify_process:
+        harness = _harness_name(context.process_title)
+        if harness:
+            return harness, context.job_pid
+        raise ValueError("the focused iTerm pane is not running Codex or Claude Code")
 
-    identifiers = (title, command_name, argument_name)
-    if any(re.search(r"(?:^|\b)claude(?:\b|$)", value) for value in identifiers):
-        return "claude"
-    if any(
-        re.search(r"(?:^|\b)codex(?:[-a-z0-9]*)(?:\b|$)", value)
-        for value in identifiers
-    ):
-        return "codex"
+    # iTerm's jobPid may point at a foreground child owned by the harness, such
+    # as an MCP server, language server, or shell command. Walk only ancestors
+    # on the same TTY and bind to the stable Codex/Claude process.
+    expected_tty = _normalized_tty(context.tty)
+    pid = context.job_pid
+    visited: set[int] = set()
+    for depth in range(16):
+        if pid <= 1 or pid in visited:
+            break
+        visited.add(pid)
+        record = _process_record(pid)
+        if record is None:
+            harness = _harness_name(context.process_title if depth == 0 else "")
+            if harness:
+                return harness, pid
+            break
+        parent, process_tty, arguments = record
+        process_tty = _normalized_tty(process_tty)
+        if (
+            process_tty
+            and process_tty not in {"?", "??"}
+            and process_tty != expected_tty
+        ):
+            break
+        argument_name = Path(arguments.split(maxsplit=1)[0]).name if arguments else ""
+        title = context.process_title if depth == 0 else ""
+        harness = _harness_name(title, argument_name)
+        if harness:
+            return harness, pid
+        pid = parent
     raise ValueError("the focused iTerm pane is not running Codex or Claude Code")
 
 
@@ -304,12 +582,12 @@ def resolve_project_context(
     if not is_iterm_app(active_app):
         raise ValueError("the focused application is not iTerm2")
     session = read_iterm_context(state_path, max_age_seconds=max_age_seconds)
-    harness = detect_harness(session, verify_process=verify_process)
+    harness, harness_pid = detect_harness(session, verify_process=verify_process)
 
     session_cwd = session.path.resolve()
     if not session_cwd.is_dir():
         raise ValueError("the focused iTerm working directory no longer exists")
-    process_cwd = _process_cwd(session.job_pid) if verify_process else None
+    process_cwd = _process_cwd(harness_pid) if verify_process else None
     cwd = process_cwd or session_cwd
     root = _git_toplevel(cwd)
     try:
@@ -322,6 +600,7 @@ def resolve_project_context(
     return ProjectContext(
         session=session,
         harness=harness,
+        harness_pid=harness_pid,
         cwd=cwd,
         project_root=root,
     )
@@ -330,9 +609,12 @@ def resolve_project_context(
 def list_project_files(
     project_root: Path,
     max_files: int = MAX_PROJECT_FILES,
+    include_ignored: bool = True,
+    include_standard: bool = True,
 ) -> list[ProjectFile]:
-    try:
-        completed = subprocess.run(
+    commands: list[list[str]] = []
+    if include_standard:
+        commands.append(
             [
                 "git",
                 "-C",
@@ -342,24 +624,52 @@ def list_project_files(
                 "--cached",
                 "--others",
                 "--exclude-standard",
-            ],
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            timeout=8.0,
+            ]
         )
-    except (OSError, subprocess.SubprocessError) as error:
-        raise ValueError("unable to enumerate files in the active worktree") from error
-    if completed.returncode != 0:
-        raise ValueError("unable to enumerate files in the active worktree")
+    if include_ignored:
+        commands.append(
+            [
+                "git",
+                "-C",
+                str(project_root),
+                "ls-files",
+                "-z",
+                "--others",
+                "--ignored",
+                "--exclude-standard",
+                "--directory",
+            ]
+        )
+    outputs: list[bytes] = []
+    for command in commands:
+        try:
+            completed = subprocess.run(
+                command,
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                timeout=8.0,
+            )
+        except (OSError, subprocess.SubprocessError) as error:
+            raise ValueError(
+                "unable to enumerate files in the active worktree"
+            ) from error
+        if completed.returncode != 0:
+            raise ValueError("unable to enumerate files in the active worktree")
+        outputs.append(completed.stdout)
 
     root = project_root.resolve()
     result: list[ProjectFile] = []
     seen: set[str] = set()
-    for encoded in completed.stdout.split(b"\0"):
+    for encoded in b"\0".join(outputs).split(b"\0"):
         if not encoded:
             continue
         relative_text = os.fsdecode(encoded)
+        if relative_text.endswith("/"):
+            # `--directory` collapses ignored directories so caches and
+            # dependency trees are not recursively indexed. Individually
+            # ignored files remain referenceable.
+            continue
         if relative_text in seen:
             continue
         if any(
@@ -401,13 +711,32 @@ def _identifier_words(value: str) -> tuple[str, ...]:
     )
 
 
+def _spelled_extension_variants(
+    extension: str,
+) -> tuple[tuple[str, ...], ...]:
+    if (
+        not 1 <= len(extension) <= 8
+        or not extension.isascii()
+        or not extension.isalnum()
+    ):
+        return ()
+
+    spoken_by_character = [SPOKEN_CHARACTERS[character] for character in extension]
+    spoken: list[tuple[str, ...]] = []
+    for selected in itertools.product(*spoken_by_character):
+        spoken.append(
+            tuple(word for character_words in selected for word in character_words)
+        )
+    return (tuple(extension), *spoken)
+
+
+@lru_cache(maxsize=None)
 def _extension_variants(extension: str) -> tuple[tuple[str, ...], ...]:
     normalized = extension.casefold()
     configured = EXTENSION_ALIASES.get(normalized, ())
     defaults = ((normalized,),)
-    if 1 < len(normalized) <= 4 and normalized.isascii():
-        defaults += (tuple(normalized),)
-    return tuple(dict.fromkeys(defaults + configured))
+    spelled = _spelled_extension_variants(normalized)
+    return tuple(dict.fromkeys(defaults + spelled + configured))
 
 
 def _filename_variants(
@@ -422,18 +751,37 @@ def _filename_variants(
 
     components = working_name.split(".")
     extension = components[-1]
-    stem_components = [_identifier_words(component) for component in components[:-1]]
-    if any(not words for words in stem_components):
+    component_variants: list[tuple[tuple[str, ...], ...]] = []
+    for index, component in enumerate(components[:-1]):
+        identifier = _identifier_words(component)
+        if not identifier:
+            return []
+        if index == 0 or (
+            len(component) > 1 and component.casefold() not in EXTENSION_ALIASES
+        ):
+            # Treat only known suffixes (plus single-letter suffixes such as
+            # the `d` in `.d.ts`) as extensions. Spelling every ordinary
+            # internal word makes names like `.complete.min.js.map` expand
+            # combinatorially without improving realistic speech matching.
+            component_variants.append((identifier,))
+        else:
+            component_variants.append(
+                tuple(dict.fromkeys((identifier,) + _extension_variants(component)))
+            )
+    if not component_variants:
         return []
-    stem_with_dots: list[str] = list(prefix)
-    stem_without_dots: list[str] = list(prefix)
-    for words in stem_components:
-        if len(stem_with_dots) > len(prefix):
-            stem_with_dots.append("dot")
-        stem_with_dots.extend(words)
-        stem_without_dots.extend(words)
 
-    stem_variants = {tuple(stem_with_dots), tuple(stem_without_dots)}
+    stem_variants: set[tuple[str, ...]] = set()
+    for selected_components in itertools.product(*component_variants):
+        stem_with_dots: list[str] = list(prefix)
+        stem_without_dots: list[str] = list(prefix)
+        for index, words in enumerate(selected_components):
+            if index:
+                stem_with_dots.append("dot")
+            stem_with_dots.extend(words)
+            stem_without_dots.extend(words)
+        stem_variants.add(tuple(stem_with_dots))
+        stem_variants.add(tuple(stem_without_dots))
     variants = []
     for stem_words in stem_variants:
         variants.extend(
@@ -453,11 +801,16 @@ def _path_component_words(component: str) -> tuple[str, ...]:
 
 def build_alias_index(
     files: Iterable[ProjectFile],
+    wanted_aliases: set[tuple[str, ...]] | None = None,
 ) -> dict[tuple[str, ...], list[AliasEntry]]:
     aliases: dict[tuple[str, ...], list[AliasEntry]] = {}
 
     def add(tokens: tuple[str, ...], entry: AliasEntry) -> None:
-        if tokens and len(tokens) <= MAX_REFERENCE_WORDS:
+        if (
+            tokens
+            and len(tokens) <= MAX_REFERENCE_WORDS
+            and (wanted_aliases is None or tokens in wanted_aliases)
+        ):
             aliases.setdefault(tokens, []).append(entry)
 
     for candidate in files:
@@ -542,9 +895,7 @@ def _candidate_under_cwd(candidate: ProjectFile, cwd_relative: Path) -> bool:
         return False
 
 
-def _select_alias(
-    entries: list[AliasEntry], cwd_relative: Path
-) -> tuple[ProjectFile | None, bool]:
+def _select_alias(entries: list[AliasEntry], cwd_relative: Path) -> ProjectFile:
     best_kind = max(entry.kind for entry in entries)
     candidates = {
         entry.candidate.relative_path.as_posix(): entry.candidate
@@ -552,16 +903,16 @@ def _select_alias(
         if entry.kind == best_kind
     }
     if len(candidates) == 1:
-        return next(iter(candidates.values())), False
+        return next(iter(candidates.values()))
 
     under_cwd = {
         path: candidate
         for path, candidate in candidates.items()
         if _candidate_under_cwd(candidate, cwd_relative)
     }
-    if len(under_cwd) == 1:
-        return next(iter(under_cwd.values())), False
-    return None, True
+    if under_cwd:
+        return next(iter(under_cwd.values()))
+    return next(iter(candidates.values()))
 
 
 def _render_reference(candidate: ProjectFile, context: ProjectContext) -> str:
@@ -584,16 +935,24 @@ def resolve_references(
     context: ProjectContext,
     files: Iterable[ProjectFile],
 ) -> tuple[list[ResolvedReference], list[str]]:
-    aliases = build_alias_index(files)
+    trigger_tokens = [
+        (trigger, speech_tokens(text, trigger.end()))
+        for trigger in REFERENCE_TRIGGER.finditer(text)
+    ]
+    wanted_aliases = {
+        tuple(token.value for token in tokens[:length])
+        for _trigger, tokens in trigger_tokens
+        for length in range(1, len(tokens) + 1)
+    }
+    aliases = build_alias_index(files, wanted_aliases)
     cwd_relative = context.cwd.relative_to(context.project_root)
     resolved: list[ResolvedReference] = []
     warnings: list[str] = []
     consumed_until = 0
 
-    for trigger in REFERENCE_TRIGGER.finditer(text):
+    for trigger, tokens in trigger_tokens:
         if trigger.start() < consumed_until:
             continue
-        tokens = speech_tokens(text, trigger.end())
         match_entries: list[AliasEntry] | None = None
         matched_length = 0
         for length in range(len(tokens), 0, -1):
@@ -604,16 +963,15 @@ def resolve_references(
                 break
         if not match_entries:
             warnings.append(
-                f"unresolved spoken file reference near: {text[trigger.start():trigger.end()].strip()}"
+                "unresolved spoken file reference near: "
+                f"{text[trigger.start():trigger.end()].strip()} "
+                f"(cwd={context.cwd}, worktree={context.project_root})"
             )
             continue
 
-        candidate, ambiguous = _select_alias(match_entries, cwd_relative)
+        candidate = _select_alias(match_entries, cwd_relative)
         phrase_end = tokens[matched_length - 1].end
         phrase = text[trigger.start() : phrase_end]
-        if ambiguous or candidate is None:
-            warnings.append(f"ambiguous spoken file reference: {phrase}")
-            continue
 
         expansion = _render_reference(candidate, context)
         resolved.append(
@@ -674,7 +1032,7 @@ def _context_record(context: ProjectContext) -> dict[str, object]:
         "tab_id": context.session.tab_id,
         "session_id": context.session.session_id,
         "tty": context.session.tty,
-        "job_pid": context.session.job_pid,
+        "harness_pid": context.harness_pid,
         "harness": context.harness,
         "cwd": str(context.cwd),
         "project_root": str(context.project_root),
@@ -707,6 +1065,7 @@ def clear_pending(
         pointer_path.unlink(missing_ok=True)
     if manifest_path is not None:
         manifest_path.unlink(missing_ok=True)
+        manifest_path.with_suffix(".fallback").unlink(missing_ok=True)
 
 
 def clear_pending_for_session(
@@ -717,6 +1076,44 @@ def clear_pending_for_session(
     clear_pending(pointer)
 
 
+def _replace_reference_occurrences(
+    text: str,
+    occurrences: object,
+    expansions: dict[str, str],
+    original_texts: dict[str, str],
+) -> tuple[str, dict[str, int]]:
+    if not isinstance(occurrences, list) or not occurrences:
+        raise ValueError("file-reference manifest has invalid occurrences")
+
+    pieces: list[str] = []
+    counts: dict[str, int] = {}
+    cursor = 0
+    for occurrence in occurrences:
+        if not isinstance(occurrence, dict):
+            raise ValueError("file-reference manifest has an invalid occurrence")
+        start = occurrence.get("start")
+        end = occurrence.get("end")
+        reference_id = occurrence.get("reference_id")
+        if (
+            type(start) is not int
+            or type(end) is not int
+            or not isinstance(reference_id, str)
+            or reference_id not in expansions
+            or reference_id not in original_texts
+            or start < cursor
+            or end <= start
+            or end > len(text)
+        ):
+            raise ValueError("file-reference manifest has an invalid occurrence")
+        if text[start:end] != original_texts[reference_id]:
+            raise ValueError("file-reference occurrence does not match its source")
+        pieces.extend((text[cursor:start], expansions[reference_id]))
+        counts[reference_id] = counts.get(reference_id, 0) + 1
+        cursor = end
+    pieces.append(text[cursor:])
+    return "".join(pieces), counts
+
+
 def prepare_file_references(
     text: str,
     active_app: str,
@@ -725,6 +1122,12 @@ def prepare_file_references(
     verify_process: bool = True,
     max_context_age_seconds: float = MAX_CONTEXT_AGE_SECONDS,
 ) -> PreparedReferences:
+    if not is_iterm_app(active_app):
+        # Focus can legitimately move before Spokenly invokes the processor,
+        # so an explicitly unrelated app makes this optional enrichment a
+        # silent no-op rather than an error.
+        return PreparedReferences([], None, [])
+
     if not REFERENCE_TRIGGER.search(text):
         # Clear a prior interrupted invocation without paying for project
         # discovery when this transcript has no file-reference directive.
@@ -745,8 +1148,24 @@ def prepare_file_references(
         max_age_seconds=max_context_age_seconds,
     )
     clear_pending_for_session(context.session.session_id, pending_dir)
-    files = list_project_files(context.project_root)
+    files = list_project_files(context.project_root, include_ignored=False)
     references, warnings = resolve_references(text, context, files)
+    if warnings:
+        # Ignored directories may contain enormous dependency/cache trees, so
+        # pay for Git's ignored-file query only when the normal project index
+        # did not resolve every explicit reference. `--directory` still keeps
+        # ignored directories collapsed.
+        ignored_files = list_project_files(
+            context.project_root,
+            include_ignored=True,
+            include_standard=False,
+        )
+        files.extend(ignored_files)
+        if len(files) > MAX_PROJECT_FILES:
+            raise ValueError(
+                "the active worktree contains too many referenceable files"
+            )
+        references, warnings = resolve_references(text, context, files)
     if not references:
         return PreparedReferences([], None, warnings)
 
@@ -754,6 +1173,7 @@ def prepare_file_references(
     snippets: list[dict[str, object]] = []
     expansion_records: dict[str, dict[str, object]] = {}
     expected_counts: dict[str, int] = {}
+    occurrences: list[dict[str, object]] = []
     by_phrase: dict[tuple[str, str], str] = {}
 
     for reference in references:
@@ -773,8 +1193,31 @@ def prepare_file_references(
             expansion_records[reference_id] = {
                 "text": reference.expansion,
                 "canonical_path": str(reference.canonical_path),
+                "original_text": reference.phrase,
             }
         expected_counts[reference_id] = expected_counts.get(reference_id, 0) + 1
+        occurrences.append(
+            {
+                "start": reference.start,
+                "end": reference.end,
+                "reference_id": reference_id,
+            }
+        )
+
+    resolved_transcript, occurrence_counts = _replace_reference_occurrences(
+        text,
+        occurrences,
+        {
+            reference_id: str(record["text"])
+            for reference_id, record in expansion_records.items()
+        },
+        {
+            reference_id: str(record["original_text"])
+            for reference_id, record in expansion_records.items()
+        },
+    )
+    if occurrence_counts != expected_counts:
+        raise ValueError("file-reference occurrence counts do not match expansions")
 
     runs, sessions = _ensure_pending_directories(pending_dir)
     manifest_path = runs / f"{nonce}.json"
@@ -787,6 +1230,19 @@ def prepare_file_references(
         "context": _context_record(context),
         "expansions": expansion_records,
         "expected_counts": expected_counts,
+        "occurrences": occurrences,
+        "original_transcript": text,
+    }
+    fallback_manifest = {
+        "version": STATE_VERSION,
+        "nonce": nonce,
+        "created_at": created_at,
+        "original_transcript": text,
+        "expansions": {
+            reference_id: str(record["original_text"])
+            for reference_id, record in expansion_records.items()
+        },
+        "expected_counts": expected_counts,
     }
     pointer = {
         "version": STATE_VERSION,
@@ -795,6 +1251,7 @@ def prepare_file_references(
         "created_at": created_at,
     }
     try:
+        _atomic_json_write(manifest_path.with_suffix(".fallback"), fallback_manifest)
         _atomic_json_write(manifest_path, manifest)
         _atomic_json_write(pointer_path, pointer)
     except Exception:
@@ -811,6 +1268,8 @@ def prepare_file_references(
         },
         expected_counts=expected_counts,
         context=context,
+        original_transcript=text,
+        resolved_transcript=resolved_transcript,
     )
     return PreparedReferences(snippets, pending, warnings)
 
@@ -863,6 +1322,7 @@ def _recent_manifest_nonces(pending_dir: Path, max_age_seconds: float) -> set[st
                 result.add(nonce)
         except (OSError, ValueError):
             path.unlink(missing_ok=True)
+            path.with_suffix(".fallback").unlink(missing_ok=True)
     return result
 
 
@@ -876,14 +1336,14 @@ def load_pending_file_references(
     max_pending_age_seconds: float = MAX_PENDING_AGE_SECONDS,
 ) -> PendingReferences | None:
     output_nonce = _nonce_from_model_output(model_output)
+    if output_nonce is None and not is_iterm_app(active_app):
+        return None
     try:
         session = read_iterm_context(
             context_path, max_age_seconds=max_context_age_seconds
         )
     except (OSError, ValueError):
-        if output_nonce or _recent_manifest_nonces(
-            pending_dir, max_pending_age_seconds
-        ):
+        if output_nonce:
             raise ValueError(
                 "cannot verify the iTerm pane for a protected file reference"
             )
@@ -906,13 +1366,9 @@ def load_pending_file_references(
     except FileNotFoundError:
         pointer = None
 
-    if output_nonce is None:
+    recent: set[str] = set()
+    if output_nonce is None and pointer_nonce is None:
         recent = _recent_manifest_nonces(pending_dir, max_pending_age_seconds)
-        if len(recent) > 1:
-            # A pane pointer identifies the focused pane, not the model run
-            # that produced tokenless output. Never consume another pane's (or
-            # a newer same-pane run's) state merely because it is focused now.
-            raise ValueError("cannot identify the pending file-reference run")
 
     nonce = pointer_nonce or output_nonce
     if nonce is None:
@@ -925,10 +1381,6 @@ def load_pending_file_references(
         else:
             return None
     if pointer_nonce and output_nonce and pointer_nonce != output_nonce:
-        clear_pending(
-            pointer_path,
-            pending_dir / "runs" / f"{output_nonce}.json",
-        )
         raise ValueError("protected file reference does not belong to the focused pane")
 
     manifest_path: Path | None = None
@@ -950,10 +1402,15 @@ def load_pending_file_references(
 
         expansion_data = manifest.get("expansions")
         counts_data = manifest.get("expected_counts")
+        occurrences = manifest.get("occurrences")
+        original_transcript = manifest.get("original_transcript")
         if not isinstance(expansion_data, dict) or not isinstance(counts_data, dict):
             raise ValueError("file-reference manifest has invalid expansions")
+        if not isinstance(original_transcript, str):
+            raise ValueError("file-reference manifest has no original transcript")
         expansions: dict[str, str] = {}
         counts: dict[str, int] = {}
+        original_texts: dict[str, str] = {}
         for reference_id, record in expansion_data.items():
             id_match = (
                 FILE_REFERENCE_ID.fullmatch(reference_id)
@@ -966,11 +1423,14 @@ def load_pending_file_references(
                 raise ValueError("file-reference manifest has an invalid record")
             expansion = record.get("text")
             canonical_value = record.get("canonical_path")
+            original_text = record.get("original_text")
             count = counts_data.get(reference_id)
             if not isinstance(expansion, str) or not expansion.startswith("@"):
                 raise ValueError("file-reference manifest has an invalid expansion")
             if (
                 not isinstance(canonical_value, str)
+                or not isinstance(original_text, str)
+                or not original_text
                 or not isinstance(count, int)
                 or count < 1
             ):
@@ -991,10 +1451,21 @@ def load_pending_file_references(
                 )
             expansions[reference_id] = expansion
             counts[reference_id] = count
+            original_texts[reference_id] = original_text
 
         if set(counts_data) != set(expansion_data):
             raise ValueError(
                 "file-reference manifest counts do not match its expansions"
+            )
+        resolved_transcript, occurrence_counts = _replace_reference_occurrences(
+            original_transcript,
+            occurrences,
+            expansions,
+            original_texts,
+        )
+        if occurrence_counts != counts:
+            raise ValueError(
+                "file-reference occurrence counts do not match its expansions"
             )
         return PendingReferences(
             nonce=nonce,
@@ -1003,12 +1474,120 @@ def load_pending_file_references(
             expansions=expansions,
             expected_counts=counts,
             context=current,
+            original_transcript=original_transcript,
+            resolved_transcript=resolved_transcript,
         )
     except Exception:
-        clear_pending(pointer_path, manifest_path)
+        # Post-AI may still need the manifest to restore the original spoken
+        # phrase. Cleanup happens after the verified or fallback expansion.
         raise
+
+
+def _pointer_for_nonce(pending_dir: Path, nonce: str) -> Path | None:
+    sessions = pending_dir / "sessions"
+    if not sessions.is_dir():
+        return None
+    for path in sessions.glob("*.json"):
+        try:
+            pointer = _read_private_json(path)
+            if isinstance(pointer, dict) and pointer.get("nonce") == nonce:
+                return path
+        except (OSError, ValueError):
+            continue
+    return None
+
+
+def load_fallback_file_references(
+    model_output: str,
+    pending_dir: Path = DEFAULT_PENDING_DIR,
+    max_pending_age_seconds: float = MAX_PENDING_AGE_SECONDS,
+    nonce_hint: str | None = None,
+) -> PendingReferences | None:
+    """Load original spoken phrases without trusting pane or path state."""
+    nonce = nonce_hint or _nonce_from_model_output(model_output)
+    if nonce is None:
+        recent = _recent_manifest_nonces(pending_dir, max_pending_age_seconds)
+        if len(recent) != 1:
+            return None
+        nonce = next(iter(recent))
+    if not re.fullmatch(r"[A-F0-9]{16}", nonce):
+        raise ValueError("file-reference fallback has an invalid nonce")
+
+    manifest_path = pending_dir / "runs" / f"{nonce}.json"
+    fallback_path = manifest_path.with_suffix(".fallback")
+    try:
+        data = _read_private_json(fallback_path)
+    except (OSError, ValueError):
+        # The main manifest redundantly carries recovery data so losing either
+        # one state file does not make this optional plugin block dictation.
+        main_data = _read_private_json(manifest_path)
+        if not isinstance(main_data, dict):
+            raise ValueError("invalid file-reference manifest")
+        main_expansions = main_data.get("expansions")
+        if not isinstance(main_expansions, dict):
+            raise ValueError("file-reference manifest has invalid expansions")
+        data = {
+            "version": main_data.get("version"),
+            "nonce": main_data.get("nonce"),
+            "created_at": main_data.get("created_at"),
+            "original_transcript": main_data.get("original_transcript"),
+            "expansions": {
+                reference_id: record.get("original_text")
+                for reference_id, record in main_expansions.items()
+                if isinstance(record, dict)
+            },
+            "expected_counts": main_data.get("expected_counts"),
+        }
+    if not isinstance(data, dict) or data.get("version") != STATE_VERSION:
+        raise ValueError("invalid file-reference fallback manifest")
+    if data.get("nonce") != nonce:
+        raise ValueError("file-reference fallback nonce mismatch")
+    _validate_pending_age(data.get("created_at"), max_pending_age_seconds)
+
+    original_transcript = data.get("original_transcript")
+    expansion_data = data.get("expansions")
+    counts_data = data.get("expected_counts")
+    if not isinstance(original_transcript, str):
+        raise ValueError("file-reference fallback has no original transcript")
+    if not isinstance(expansion_data, dict) or not isinstance(counts_data, dict):
+        raise ValueError("file-reference fallback has invalid expansions")
+
+    expansions: dict[str, str] = {}
+    counts: dict[str, int] = {}
+    for reference_id, original_text in expansion_data.items():
+        id_match = (
+            FILE_REFERENCE_ID.fullmatch(reference_id)
+            if isinstance(reference_id, str)
+            else None
+        )
+        count = counts_data.get(reference_id)
+        if id_match is None or id_match.group(1) != nonce:
+            raise ValueError("file-reference fallback has an invalid identifier")
+        if not isinstance(original_text, str) or not original_text:
+            raise ValueError("file-reference fallback has invalid original text")
+        if not isinstance(count, int) or count < 1:
+            raise ValueError("file-reference fallback has invalid counts")
+        expansions[reference_id] = original_text
+        counts[reference_id] = count
+    if set(counts_data) != set(expansion_data):
+        raise ValueError("file-reference fallback counts do not match expansions")
+
+    return PendingReferences(
+        nonce=nonce,
+        pointer_path=_pointer_for_nonce(pending_dir, nonce),
+        manifest_path=manifest_path,
+        expansions=expansions,
+        expected_counts=counts,
+        context=None,
+        original_transcript=original_transcript,
+        resolved_transcript=None,
+    )
 
 
 def finish_pending_file_references(pending: PendingReferences | None) -> None:
     if pending is not None:
-        clear_pending(pending.pointer_path, pending.manifest_path)
+        if pending.pointer_path is not None:
+            clear_pending(pending.pointer_path, pending.manifest_path)
+        else:
+            pending.manifest_path.unlink(missing_ok=True)
+            pending.manifest_path.with_suffix(".fallback").unlink(missing_ok=True)

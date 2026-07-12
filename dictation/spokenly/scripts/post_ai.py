@@ -24,7 +24,7 @@ from pre_ai import (
     load_snippets,
     snippet_checksum,
 )
-from plugins import load_iterm_file_references
+from plugins import load_iterm_file_references, log_iterm_file_reference_event
 
 
 TOKEN = re.compile(
@@ -103,7 +103,9 @@ def expand(
             if snippet_id not in expansions:
                 raise ValueError(f"unknown snippet token: {snippet_id}")
             if checksum != snippet_checksum(snippet_id, index):
-                raise ValueError(f"invalid snippet metadata checksum at position {index}")
+                raise ValueError(
+                    f"invalid snippet metadata checksum at position {index}"
+                )
             snippet_by_position[index] = snippet_id
 
         token_by_position = {}
@@ -116,7 +118,9 @@ def expand(
             if snippet_id not in expansions:
                 raise ValueError(f"unknown snippet token: {snippet_id}")
             if checksum != snippet_checksum(snippet_id, position):
-                raise ValueError(f"invalid snippet token checksum at position {position}")
+                raise ValueError(
+                    f"invalid snippet token checksum at position {position}"
+                )
             token_by_position[position] = snippet_id
         for position, snippet_id in token_by_position.items():
             if snippet_by_position.get(position) != snippet_id:
@@ -142,9 +146,7 @@ def expand(
             # model is harmless. Remove tokens that were moved into a segment.
             snippet_id, _checksum, content = by_index[index]
             if index > 0:
-                result = join_at_protected_boundary(
-                    result, expansions[str(snippet_id)]
-                )
+                result = join_at_protected_boundary(result, expansions[str(snippet_id)])
                 if consume_punctuation[str(snippet_id)]:
                     content = consume_boundary_punctuation(content)
             result = join_at_protected_boundary(result, TOKEN.sub("", content))
@@ -171,6 +173,21 @@ def expand(
 
 def process(text: str, snippets_path: Path) -> str:
     return expand(text, snippets_path)
+
+
+def fail_forward_text(text: str, references=None) -> str:
+    """Return safe usable text when the main post-processing path fails."""
+    if references is not None:
+        if references.resolved_transcript is not None:
+            return references.resolved_transcript.rstrip()
+        if references.original_transcript:
+            return references.original_transcript.rstrip()
+    # No source manifest survived. Never leak internal control syntax into the
+    # terminal; retain only the model's visible prose as a last resort.
+    result = ANY_SEGMENT_TOKEN.sub("", text)
+    result = ANY_SNIPPET_TOKEN.sub("", result)
+    result = INTERNAL_TOKEN.sub("", result)
+    return result.rstrip()
 
 
 def consume_pending_slash_commands(
@@ -233,12 +250,8 @@ def consume_pending_slash_commands(
     return validated
 
 
-SLASH_LIKE = re.compile(
-    r"(?<!\S)/(?:[A-Za-z][A-Za-z0-9_:\-]*)?(?=\s|[.,!?;:]|$)"
-)
-SLASH_ALIAS = re.compile(
-    r"/(?:[A-Za-z][A-Za-z0-9_:\-]*)?(?=\s|[.,!?;:]|$)"
-)
+SLASH_LIKE = re.compile(r"(?<!\S)/(?:[A-Za-z][A-Za-z0-9_:\-]*)?(?=\s|[.,!?;:]|$)")
+SLASH_ALIAS = re.compile(r"/(?:[A-Za-z][A-Za-z0-9_:\-]*)?(?=\s|[.,!?;:]|$)")
 
 
 def slash_command_key(command: str) -> str:
@@ -254,9 +267,7 @@ def find_recoverable_slash(
     return None
 
 
-def remove_leftover_slash_aliases(
-    text: str, canonical_by_key: dict[str, str]
-) -> str:
+def remove_leftover_slash_aliases(text: str, canonical_by_key: dict[str, str]) -> str:
     """Remove model-rendered aliases left after all expected commands."""
     matches = [
         match
@@ -316,17 +327,14 @@ def insert_after_anchor(
     return join_at_protected_boundary(result, right), command_end
 
 
-def restore_pending_slash_commands(
-    text: str, commands: list[dict[str, object]]
-) -> str:
+def restore_pending_slash_commands(text: str, commands: list[dict[str, object]]) -> str:
     """Restore ordered slash commands that Qwen reduced to bare slashes."""
     if not commands:
         return text
     result = text
     cursor = 0
     canonical_by_key = {
-        slash_command_key(str(item["text"])): str(item["text"])
-        for item in commands
+        slash_command_key(str(item["text"])): str(item["text"]) for item in commands
     }
     known_keys = set(canonical_by_key)
     for item in commands:
@@ -386,8 +394,25 @@ def main() -> int:
     args = parse_args()
     original = sys.stdin.read()
     pending_commands = consume_pending_slash_commands()
-    file_reference_plugin = load_iterm_file_references()
+    try:
+        file_reference_plugin = load_iterm_file_references()
+    except Exception as error:
+        file_reference_plugin = None
+        log_iterm_file_reference_event("post.load", str(error))
     pending_references = None
+    fallback_references = None
+    pending_dir = None
+
+    def expand_with(references):
+        return expand(
+            original,
+            args.snippets,
+            extra_expansions=(references.expansions if references else None),
+            expected_expansion_counts=(
+                references.expected_counts if references else None
+            ),
+        )
+
     try:
         if file_reference_plugin is not None:
             context_path = Path(
@@ -402,33 +427,102 @@ def main() -> int:
                     str(file_reference_plugin.DEFAULT_PENDING_DIR),
                 )
             ).expanduser()
-            pending_references = (
-                file_reference_plugin.load_pending_file_references(
+            try:
+                pending_references = file_reference_plugin.load_pending_file_references(
                     original,
                     os.environ.get("SPOKENLY_ACTIVE_APP", ""),
                     context_path=context_path,
                     pending_dir=pending_dir,
                 )
+            except Exception as error:
+                # Path enrichment is optional. If pane, focus, process, CWD, or
+                # file validation fails, restore the exact spoken phrase from
+                # a separate recovery manifest and continue the core pipeline.
+                try:
+                    fallback_references = (
+                        file_reference_plugin.load_fallback_file_references(
+                            original,
+                            pending_dir=pending_dir,
+                        )
+                    )
+                except Exception as fallback_error:
+                    log_iterm_file_reference_event(
+                        "post.recovery", str(fallback_error), source_error=error
+                    )
+                if fallback_references is not None:
+                    pending_references = fallback_references
+                    log_iterm_file_reference_event(
+                        "post.fallback_phrase",
+                        str(error),
+                    )
+
+        try:
+            expanded = expand_with(pending_references)
+        except Exception as expansion_error:
+            if file_reference_plugin is None or pending_references is None:
+                raise
+            if pending_references.resolved_transcript is not None:
+                # The pane, CWD, worktree, and exact paths were verified above,
+                # but the model damaged the protected frames. Ignore its output
+                # and apply the recorded references to their original source
+                # spans so neither path content nor placement depends on Qwen.
+                expanded = pending_references.resolved_transcript.rstrip()
+                log_iterm_file_reference_event(
+                    "post.deterministic_recovery",
+                    str(expansion_error),
+                )
+                sys.stdout.write(
+                    restore_pending_slash_commands(expanded, pending_commands)
+                )
+                return 0
+            if fallback_references is None and pending_dir is not None:
+                try:
+                    fallback_references = (
+                        file_reference_plugin.load_fallback_file_references(
+                            original,
+                            pending_dir=pending_dir,
+                            nonce_hint=pending_references.nonce,
+                        )
+                    )
+                except Exception as fallback_error:
+                    log_iterm_file_reference_event(
+                        "post.recovery",
+                        str(fallback_error),
+                        source_error=expansion_error,
+                    )
+            if fallback_references is None:
+                raise
+            try:
+                expanded = expand_with(fallback_references)
+            except Exception:
+                # If Qwen damaged all structural framing, the safest
+                # non-blocking result is the untouched source transcript.
+                expanded = fallback_references.original_transcript.rstrip()
+            log_iterm_file_reference_event(
+                "post.fallback_transcript",
+                str(expansion_error),
             )
-        expanded = expand(
-            original,
-            args.snippets,
-            extra_expansions=(
-                pending_references.expansions if pending_references else None
-            ),
-            expected_expansion_counts=(
-                pending_references.expected_counts if pending_references else None
-            ),
-        )
+
         sys.stdout.write(restore_pending_slash_commands(expanded, pending_commands))
     except Exception as error:
-        print(f"Spokenly postprocessor failed closed: {error}", file=sys.stderr)
-        return 1
+        log_iterm_file_reference_event("post.core_fallback", str(error))
+        recovered = fail_forward_text(
+            original, fallback_references or pending_references
+        )
+        try:
+            recovered = restore_pending_slash_commands(recovered, pending_commands)
+        except Exception as recovery_error:
+            log_iterm_file_reference_event("post.slash_recovery", str(recovery_error))
+        sys.stdout.write(recovered.rstrip())
+        return 0
     finally:
         if file_reference_plugin is not None:
-            file_reference_plugin.finish_pending_file_references(
-                pending_references
-            )
+            try:
+                file_reference_plugin.finish_pending_file_references(
+                    fallback_references or pending_references
+                )
+            except Exception as cleanup_error:
+                log_iterm_file_reference_event("post.cleanup", str(cleanup_error))
     return 0
 
 

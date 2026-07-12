@@ -28,7 +28,10 @@ SPOKENLY_DIR = SCRIPT_DIR.parent
 if str(SPOKENLY_DIR) not in sys.path:
     sys.path.insert(0, str(SPOKENLY_DIR))
 
-from plugins import load_iterm_file_references  # noqa: E402
+from plugins import (  # noqa: E402
+    load_iterm_file_references,
+    log_iterm_file_reference_event,
+)
 
 DEFAULT_SNIPPETS = SCRIPT_DIR.parent / "config" / "snippets.json"
 DEFAULT_SLASH_STATE = (
@@ -52,9 +55,7 @@ LEADING_SNIPPET = re.compile(
     r"^\[\[SPK_SEGMENT_0_START\]\]\[\[SPK_SEGMENT_0_END\]\]"
     r"\[\[SPK_SNIPPET_([A-Z][A-Z0-9_]*)__1__[A-F0-9]{8}\]\]"
 )
-SLASH_COMMAND = re.compile(
-    r"/[A-Za-z][A-Za-z0-9_-]*(?::[A-Za-z][A-Za-z0-9_-]*)?"
-)
+SLASH_COMMAND = re.compile(r"/[A-Za-z][A-Za-z0-9_-]*(?::[A-Za-z][A-Za-z0-9_-]*)?")
 FRAMED_SEGMENT = re.compile(
     r"\[\[SPK_SEGMENT_([0-9]+)_START(?:_AFTER_[^\]]+)?\]\](.*?)"
     r"\[\[SPK_SEGMENT_\1_END\]\]",
@@ -186,7 +187,11 @@ def load_snippets(path: Path) -> List[Dict[str, object]]:
             raise ValueError(f"snippet {index} has an invalid id")
         if snippet_id in seen_ids:
             raise ValueError(f"duplicate snippet id: {snippet_id}")
-        if not isinstance(triggers, list) or not triggers or not all(isinstance(t, str) and t.strip() for t in triggers):
+        if (
+            not isinstance(triggers, list)
+            or not triggers
+            or not all(isinstance(t, str) and t.strip() for t in triggers)
+        ):
             raise ValueError(f"snippet {snippet_id} needs non-empty triggers")
         if not isinstance(text, str):
             raise ValueError(f"snippet {snippet_id} text must be a string")
@@ -301,8 +306,7 @@ def frame_snippet_segments(text: str) -> str:
 
 def discussed_as_text(prefix: str) -> bool:
     return bool(
-        REPORTING_CONTEXT.search(prefix[-160:])
-        or REPORTING_SPAN.search(prefix[-160:])
+        REPORTING_CONTEXT.search(prefix[-160:]) or REPORTING_SPAN.search(prefix[-160:])
     )
 
 
@@ -333,7 +337,9 @@ def delete_last_sentence(value: str) -> Tuple[bool, str]:
 
 def delete_last_phrase(value: str) -> Tuple[bool, str]:
     value = value.rstrip()
-    sentence_boundary = max(value.rfind("."), value.rfind("?"), value.rfind("!"), value.rfind("\n"))
+    sentence_boundary = max(
+        value.rfind("."), value.rfind("?"), value.rfind("!"), value.rfind("\n")
+    )
     phrase_boundaries = [
         index
         for index, character in enumerate(value)
@@ -343,7 +349,11 @@ def delete_last_phrase(value: str) -> Tuple[bool, str]:
         # When the transcript already ends with a delimiter, that delimiter
         # closes the target phrase. Delete back to the preceding delimiter.
         if value[-1] in ",;:":
-            cutoff = phrase_boundaries[-2] if len(phrase_boundaries) >= 2 else sentence_boundary
+            cutoff = (
+                phrase_boundaries[-2]
+                if len(phrase_boundaries) >= 2
+                else sentence_boundary
+            )
         else:
             cutoff = phrase_boundaries[-1]
         retained = value[: max(cutoff, 0)].rstrip(" ,;:")
@@ -353,7 +363,9 @@ def delete_last_phrase(value: str) -> Tuple[bool, str]:
 
 def delete_last_word(value: str) -> Tuple[bool, str]:
     value = value.rstrip()
-    changed = re.sub(r"(?:\s+|^)[^\W_]+(?:[-'][^\W_]+)*[.,;:!?]*$", "", value, flags=re.UNICODE).rstrip()
+    changed = re.sub(
+        r"(?:\s+|^)[^\W_]+(?:[-'][^\W_]+)*[.,;:!?]*$", "", value, flags=re.UNICODE
+    ).rstrip()
     return changed != value, changed
 
 
@@ -398,7 +410,11 @@ def apply_directives(text: str) -> str:
             new_output = add_token(candidate, TOKENS["numbers"])
 
         output = new_output
-        if kind in {"delete_sentence", "delete_phrase", "delete_word", "discard"} and output and not output.endswith((" ", "\n")):
+        if (
+            kind in {"delete_sentence", "delete_phrase", "delete_word", "discard"}
+            and output
+            and not output.endswith((" ", "\n"))
+        ):
             output += " "
         position = match.end()
         trailing = re.match(r"\s*[,.!?;:]?\s*", text[position:])
@@ -411,9 +427,7 @@ def apply_directives(text: str) -> str:
 def correction_suffix(text: str, match: Match[str]) -> Tuple[str, List[str]]:
     suffix = text[match.end() :].lstrip(" ,:;-.!?")
     local_suffix = re.split(r"[.!?\n]", suffix, maxsplit=1)[0].strip()
-    words = re.findall(
-        r"[^\W_]+(?:[-'][^\W_]+)*", local_suffix, flags=re.UNICODE
-    )
+    words = re.findall(r"[^\W_]+(?:[-'][^\W_]+)*", local_suffix, flags=re.UNICODE)
     return local_suffix, words
 
 
@@ -470,9 +484,7 @@ def add_correction_hints(text: str) -> str:
             or inside_quoted_text(text, match.start())
         ):
             continue
-        append_correction_hint(
-            explicit_parts, text[explicit_position : match.start()]
-        )
+        append_correction_hint(explicit_parts, text[explicit_position : match.start()])
         explicit_position = match.end()
     explicit_parts.append(text[explicit_position:])
     text = "".join(explicit_parts)
@@ -481,9 +493,7 @@ def add_correction_hints(text: str) -> str:
     repair_position = 0
     for match in DELIMITED_REPAIR.finditer(text):
         if should_mark_delimited_repair(text, match):
-            append_correction_hint(
-                repair_parts, text[repair_position : match.start()]
-            )
+            append_correction_hint(repair_parts, text[repair_position : match.start()])
             repair_position = match.end()
     repair_parts.append(text[repair_position:])
     text = "".join(repair_parts)
@@ -556,10 +566,7 @@ def record_pending_slash_commands(
     """Record ordered slash snippets for one-shot post-AI recovery."""
     clear_pending_slash_commands(state_path)
     snippets = load_snippets(snippets_path)
-    settings = {
-        str(item["id"]): item
-        for item in snippets
-    }
+    settings = {str(item["id"]): item for item in snippets}
     segments = {
         int(match.group(1)): match.group(2)
         for match in FRAMED_SEGMENT.finditer(processed)
@@ -631,7 +638,11 @@ def main() -> int:
     args = parse_args()
     original = sys.stdin.read()
     clear_pending_slash_commands()
-    file_reference_plugin = load_iterm_file_references()
+    try:
+        file_reference_plugin = load_iterm_file_references()
+    except Exception as error:
+        file_reference_plugin = None
+        log_iterm_file_reference_event("pre.load", str(error))
     prepared_references = None
     extra_snippets: Iterable[Dict[str, object]] = ()
     if file_reference_plugin is not None:
@@ -656,26 +667,33 @@ def main() -> int:
             )
             extra_snippets = prepared_references.snippets
             for warning in prepared_references.warnings:
-                print(f"Spokenly file reference: {warning}", file=sys.stderr)
+                log_iterm_file_reference_event(
+                    "pre.resolve",
+                    warning,
+                    active_app=os.environ.get("SPOKENLY_ACTIVE_APP", ""),
+                )
         except Exception as error:
             # The plugin is opt-in enrichment. Before it creates a protected
             # reference, any missing prerequisite leaves portable dictation intact.
-            print(f"Spokenly file references unavailable: {error}", file=sys.stderr)
+            log_iterm_file_reference_event("pre.prepare", str(error))
     try:
         processed = process(original, args.snippets, extra_snippets)
     except Exception as error:
         if prepared_references is not None:
-            file_reference_plugin.finish_pending_file_references(
-                prepared_references.pending
-            )
-        print(f"Spokenly preprocessor failed open: {error}", file=sys.stderr)
+            try:
+                file_reference_plugin.finish_pending_file_references(
+                    prepared_references.pending
+                )
+            except Exception as cleanup_error:
+                log_iterm_file_reference_event("pre.cleanup", str(cleanup_error))
+        log_iterm_file_reference_event("pre.core_fallback", str(error))
         sys.stdout.write(original)
         return 0
     # Optional recovery-state I/O must not discard successful preprocessing.
     try:
         record_pending_slash_commands(processed, args.snippets)
     except Exception as error:
-        print(f"Spokenly slash recovery unavailable: {error}", file=sys.stderr)
+        log_iterm_file_reference_event("pre.slash_recovery", str(error))
     sys.stdout.write(processed)
     return 0
 

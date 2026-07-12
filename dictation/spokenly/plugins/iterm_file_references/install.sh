@@ -3,7 +3,7 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
 source_script="$script_dir/iterm_context_daemon.py"
-target_dir="$HOME/Library/ApplicationSupport/iTerm2/Scripts/AutoLaunch"
+target_dir="$HOME/Library/Application Support/iTerm2/Scripts/AutoLaunch"
 target_script="$target_dir/spokenly_iterm_context.py"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then

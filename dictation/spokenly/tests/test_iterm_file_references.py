@@ -15,7 +15,10 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import post_ai  # noqa: E402
 import pre_ai  # noqa: E402
-from plugins import iterm_file_references_enabled  # noqa: E402
+from plugins import (  # noqa: E402
+    iterm_file_references_enabled,
+    log_iterm_file_reference_event,
+)
 from plugins.iterm_file_references import plugin  # noqa: E402
 
 
@@ -25,6 +28,7 @@ class ItermFileReferenceTests(unittest.TestCase):
         self.base = Path(self.tempdir.name)
         self.context_state = self.base / "iterm-context.json"
         self.pending_dir = self.base / "pending"
+        self.log_path = self.base / "iterm-file-references.log"
         self.snippets = self.base / "snippets.json"
         self.snippets.write_text("[]", encoding="utf-8")
 
@@ -123,6 +127,100 @@ class ItermFileReferenceTests(unittest.TestCase):
             with mock.patch.object(sys, "platform", "darwin"):
                 self.assertTrue(iterm_file_references_enabled())
 
+    def test_diagnostic_log_is_private_and_structured(self):
+        with mock.patch.dict(
+            os.environ,
+            {"SPOKENLY_ITERM_FILE_REFERENCE_LOG": str(self.log_path)},
+            clear=False,
+        ):
+            log_iterm_file_reference_event(
+                "test.stage", "diagnostic message", detail="context"
+            )
+        record = json.loads(self.log_path.read_text(encoding="utf-8"))
+        self.assertEqual(record["stage"], "test.stage")
+        self.assertEqual(record["message"], "diagnostic message")
+        self.assertEqual(record["detail"], "context")
+        self.assertEqual(self.log_path.stat().st_mode & 0o777, 0o600)
+
+    def test_postprocessor_main_fails_forward_without_internal_tokens(self):
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "SPOKENLY_ITERM_FILE_REFERENCES": "0",
+                "SPOKENLY_ITERM_FILE_REFERENCE_LOG": str(self.log_path),
+            }
+        )
+        post = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts" / "post_ai.py"),
+                "--snippets",
+                str(self.snippets),
+            ],
+            input="Text [[SPK_CMD_BULLET_LIST]]",
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=environment,
+        )
+        self.assertEqual(post.returncode, 0, post.stderr)
+        self.assertEqual(post.stdout, "Text")
+        self.assertEqual(post.stderr, "")
+        self.assertIn("post.core_fallback", self.log_path.read_text(encoding="utf-8"))
+
+    def test_iterm_application_name_variants_are_accepted(self):
+        for application_name in (
+            "iTerm",
+            "iTerm2",
+            "iTerm.app",
+            "iTerm2.app",
+            "com.googlecode.iterm2",
+            "/Applications/iTerm.app",
+        ):
+            with self.subTest(application_name=application_name):
+                self.assertTrue(plugin.is_iterm_app(application_name))
+
+    def test_non_iterm_focus_is_a_silent_noop(self):
+        prepared = plugin.prepare_file_references(
+            "Review at file main dot py.",
+            "Spokenly",
+            context_path=self.base / "missing.json",
+            pending_dir=self.pending_dir,
+        )
+        self.assertEqual(prepared.snippets, [])
+        self.assertIsNone(prepared.pending)
+        self.assertEqual(prepared.warnings, [])
+
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "SPOKENLY_ITERM_FILE_REFERENCES": "1",
+                "SPOKENLY_ACTIVE_APP": "Spokenly",
+                "SPOKENLY_ITERM_CONTEXT_STATE": str(self.base / "missing.json"),
+                "SPOKENLY_ITERM_FILE_REFERENCE_STATE_DIR": str(self.pending_dir),
+                "SPOKENLY_ITERM_FILE_REFERENCE_LOG": str(self.log_path),
+            }
+        )
+        source = "Review at file main dot py."
+        pre = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts" / "pre_ai.py"),
+                "--snippets",
+                str(self.snippets),
+            ],
+            input=source,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=environment,
+        )
+        self.assertEqual(pre.returncode, 0, pre.stderr)
+        self.assertEqual(pre.stdout, source)
+        self.assertNotIn("file references unavailable", pre.stderr)
+
     def test_enabled_but_unconfigured_plugin_leaves_portable_pipeline_available(self):
         environment = os.environ.copy()
         environment.update(
@@ -131,6 +229,7 @@ class ItermFileReferenceTests(unittest.TestCase):
                 "SPOKENLY_ACTIVE_APP": "iTerm2",
                 "SPOKENLY_ITERM_CONTEXT_STATE": str(self.base / "missing.json"),
                 "SPOKENLY_ITERM_FILE_REFERENCE_STATE_DIR": str(self.pending_dir),
+                "SPOKENLY_ITERM_FILE_REFERENCE_LOG": str(self.log_path),
             }
         )
         source = "Review at file missing dot py."
@@ -150,7 +249,8 @@ class ItermFileReferenceTests(unittest.TestCase):
         )
         self.assertEqual(pre.returncode, 0)
         self.assertEqual(pre.stdout, source)
-        self.assertIn("unavailable", pre.stderr)
+        self.assertEqual(pre.stderr, "")
+        self.assertIn("pre.prepare", self.log_path.read_text(encoding="utf-8"))
 
         post = subprocess.run(
             [
@@ -190,6 +290,7 @@ class ItermFileReferenceTests(unittest.TestCase):
                 "SPOKENLY_ACTIVE_APP": "iTerm2",
                 "SPOKENLY_ITERM_CONTEXT_STATE": str(self.context_state),
                 "SPOKENLY_ITERM_FILE_REFERENCE_STATE_DIR": str(self.pending_dir),
+                "SPOKENLY_ITERM_FILE_REFERENCE_LOG": str(self.log_path),
             }
         )
         source = "Review at file main dot py now."
@@ -263,27 +364,29 @@ class ItermFileReferenceTests(unittest.TestCase):
             "Inspect @server/config.py first.",
         )
 
-    def test_ambiguous_duplicate_basename_is_not_guessed(self):
+    def test_duplicate_basename_selects_first_project_file(self):
         root = self.make_repo()
         for directory in ("client", "server"):
             path = root / directory / "config.py"
             path.parent.mkdir()
             path.write_text(directory, encoding="utf-8")
         self.write_context(root)
-        prepared = self.prepare("Inspect at file config dot py first.")
-        self.assertEqual(prepared.snippets, [])
-        self.assertTrue(any("ambiguous" in warning for warning in prepared.warnings))
+        self.assertEqual(
+            self.round_trip("Inspect at file config dot py first."),
+            "Inspect @client/config.py first.",
+        )
 
-    def test_root_file_does_not_outrank_duplicate_basename(self):
+    def test_root_file_is_first_duplicate_basename(self):
         root = self.make_repo()
         (root / "config.py").write_text("root", encoding="utf-8")
         nested = root / "server" / "config.py"
         nested.parent.mkdir()
         nested.write_text("server", encoding="utf-8")
         self.write_context(root)
-        prepared = self.prepare("Inspect at file config dot py first.")
-        self.assertEqual(prepared.snippets, [])
-        self.assertTrue(any("ambiguous" in warning for warning in prepared.warnings))
+        self.assertEqual(
+            self.round_trip("Inspect at file config dot py first."),
+            "Inspect @config.py first.",
+        )
 
     def test_unique_candidate_under_cwd_breaks_project_wide_tie(self):
         root = self.make_repo()
@@ -297,16 +400,53 @@ class ItermFileReferenceTests(unittest.TestCase):
             "Inspect @config.py first.",
         )
 
-    def test_untracked_nonignored_files_are_indexed_and_ignored_files_are_not(self):
+    def test_untracked_and_individually_ignored_files_are_indexed(self):
         root = self.make_repo()
-        (root / ".gitignore").write_text("secret.py\n", encoding="utf-8")
+        (root / ".gitignore").write_text(
+            "secret.py\nignored-cache/\n", encoding="utf-8"
+        )
         (root / "draft.py").write_text("draft", encoding="utf-8")
         (root / "secret.py").write_text("secret", encoding="utf-8")
+        ignored_cache = root / "ignored-cache"
+        ignored_cache.mkdir()
+        (ignored_cache / "generated.py").write_text("generated", encoding="utf-8")
         self.write_context(root)
         files = plugin.list_project_files(root)
         paths = {item.relative_path.as_posix() for item in files}
         self.assertIn("draft.py", paths)
-        self.assertNotIn("secret.py", paths)
+        self.assertIn("secret.py", paths)
+        self.assertNotIn("ignored-cache/generated.py", paths)
+        self.assertEqual(
+            self.round_trip("Read at file secret dot py."),
+            "Read @secret.py.",
+        )
+        self.assertEqual(
+            self.round_trip("Read at filesecret dot py."),
+            "Read @secret.py.",
+        )
+        self.assertEqual(
+            self.round_trip("Read at filesecret.py."),
+            "Read @secret.py.",
+        )
+
+    def test_ignored_file_query_is_lazy_and_does_not_repeat_standard_index(self):
+        root = self.make_repo()
+        (root / ".gitignore").write_text("secret.py\n", encoding="utf-8")
+        (root / "secret.py").write_text("secret", encoding="utf-8")
+        self.write_context(root)
+        real_run = subprocess.run
+        with mock.patch.object(plugin.subprocess, "run", wraps=real_run) as run:
+            prepared = self.prepare("Read at file secret dot py.")
+        ls_files_calls = [
+            call for call in run.call_args_list if "ls-files" in call.args[0]
+        ]
+        self.assertEqual(len(ls_files_calls), 2)
+        self.assertIn("--exclude-standard", ls_files_calls[0].args[0])
+        self.assertNotIn("--ignored", ls_files_calls[0].args[0])
+        self.assertIn("--ignored", ls_files_calls[1].args[0])
+        self.assertEqual(
+            {str(item["text"]) for item in prepared.snippets}, {"@secret.py"}
+        )
 
     def test_symlink_outside_worktree_is_not_referenceable(self):
         root = self.make_repo()
@@ -444,16 +584,169 @@ class ItermFileReferenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "pane|workspace"):
             self.load("Review the file.")
 
-    def test_missing_context_fails_closed_when_model_drops_all_tokens(self):
+    def test_missing_context_with_tokenless_output_does_not_block_dictation(self):
         root = self.make_repo()
         (root / "main.py").write_text("main", encoding="utf-8")
         self.write_context(root)
         self.prepare("Review at file main dot py.")
         self.context_state.unlink()
-        with self.assertRaisesRegex(ValueError, "cannot verify"):
-            self.load("Review the file.")
+        self.assertIsNone(self.load("Review the file."))
 
-    def test_tokenless_old_run_cannot_consume_newer_pane_state(self):
+    def test_fallback_manifest_restores_original_spoken_reference(self):
+        root = self.make_repo()
+        (root / "main.py").write_text("main", encoding="utf-8")
+        source = "Review at file main dot pie carefully."
+        self.write_context(root)
+        prepared = self.prepare(source)
+        protected = pre_ai.process(source, self.snippets, prepared.snippets)
+        self.context_state.unlink()
+
+        with self.assertRaisesRegex(ValueError, "cannot verify"):
+            self.load(protected)
+        fallback = plugin.load_fallback_file_references(
+            protected,
+            pending_dir=self.pending_dir,
+        )
+        try:
+            self.assertEqual(
+                post_ai.expand(
+                    protected,
+                    self.snippets,
+                    extra_expansions=fallback.expansions,
+                    expected_expansion_counts=fallback.expected_counts,
+                ),
+                source,
+            )
+        finally:
+            plugin.finish_pending_file_references(fallback)
+
+    def test_tokenless_fallback_uses_only_recent_manifest(self):
+        root = self.make_repo()
+        (root / "main.py").write_text("main", encoding="utf-8")
+        source = "Review at file main dot pie carefully."
+        self.write_context(root)
+        self.prepare(source)
+        fallback = plugin.load_fallback_file_references(
+            "Review the file.",
+            pending_dir=self.pending_dir,
+        )
+        try:
+            self.assertIsNotNone(fallback)
+            self.assertEqual(fallback.original_transcript, source)
+            self.assertEqual(
+                set(fallback.expansions.values()), {"at file main dot pie"}
+            )
+        finally:
+            plugin.finish_pending_file_references(fallback)
+
+    def test_main_manifest_recovers_when_fallback_file_is_missing(self):
+        root = self.make_repo()
+        (root / "main.py").write_text("main", encoding="utf-8")
+        source = "Review at file main dot pie carefully."
+        self.write_context(root)
+        prepared = self.prepare(source)
+        protected = pre_ai.process(source, self.snippets, prepared.snippets)
+        prepared.pending.manifest_path.with_suffix(".fallback").unlink()
+        fallback = plugin.load_fallback_file_references(
+            protected,
+            pending_dir=self.pending_dir,
+        )
+        try:
+            self.assertEqual(
+                set(fallback.expansions.values()), {"at file main dot pie"}
+            )
+            self.assertEqual(fallback.original_transcript, source)
+        finally:
+            plugin.finish_pending_file_references(fallback)
+
+    def test_post_ai_focus_change_restores_original_phrase_and_succeeds(self):
+        root = self.make_repo()
+        (root / "main.py").write_text("main", encoding="utf-8")
+        source = "Review at file main dot pie carefully."
+        self.write_context(root)
+        prepared = self.prepare(source)
+        protected = pre_ai.process(source, self.snippets, prepared.snippets)
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "SPOKENLY_ITERM_FILE_REFERENCES": "1",
+                "SPOKENLY_ACTIVE_APP": "Spokenly",
+                "SPOKENLY_ITERM_CONTEXT_STATE": str(self.context_state),
+                "SPOKENLY_ITERM_FILE_REFERENCE_STATE_DIR": str(self.pending_dir),
+                "SPOKENLY_ITERM_FILE_REFERENCE_LOG": str(self.log_path),
+            }
+        )
+        post = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts" / "post_ai.py"),
+                "--snippets",
+                str(self.snippets),
+            ],
+            input=protected,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=environment,
+        )
+        self.assertEqual(post.returncode, 0, post.stderr)
+        self.assertEqual(post.stdout, source)
+        self.assertEqual(post.stderr, "")
+        self.assertIn("post.fallback_phrase", self.log_path.read_text(encoding="utf-8"))
+        self.assertFalse(prepared.pending.manifest_path.exists())
+        self.assertFalse(
+            prepared.pending.manifest_path.with_suffix(".fallback").exists()
+        )
+
+    def test_post_ai_damaged_structure_uses_verified_source_expansion(self):
+        root = self.make_repo()
+        (root / "main.py").write_text("main", encoding="utf-8")
+        foreground = subprocess.Popen(
+            ["codex", "30"],
+            executable="/bin/sleep",
+            cwd=root,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        self.addCleanup(foreground.wait)
+        self.addCleanup(foreground.terminate)
+        source = "Review at file main dot pie carefully."
+        self.write_context(root, job_pid=foreground.pid)
+        self.prepare(source)
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "SPOKENLY_ITERM_FILE_REFERENCES": "1",
+                "SPOKENLY_ACTIVE_APP": "iTerm2",
+                "SPOKENLY_ITERM_CONTEXT_STATE": str(self.context_state),
+                "SPOKENLY_ITERM_FILE_REFERENCE_STATE_DIR": str(self.pending_dir),
+                "SPOKENLY_ITERM_FILE_REFERENCE_LOG": str(self.log_path),
+            }
+        )
+        post = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts" / "post_ai.py"),
+                "--snippets",
+                str(self.snippets),
+            ],
+            input="Review the file.",
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=environment,
+        )
+        self.assertEqual(post.returncode, 0, post.stderr)
+        self.assertEqual(post.stdout, "Review @main.py carefully.")
+        self.assertEqual(post.stderr, "")
+        self.assertIn(
+            "post.deterministic_recovery",
+            self.log_path.read_text(encoding="utf-8"),
+        )
+
+    def test_tokenless_output_uses_focused_pane_pointer(self):
         repo_a = self.make_repo("repo-a")
         repo_b = self.make_repo("repo-b")
         (repo_a / "alpha.py").write_text("a", encoding="utf-8")
@@ -463,9 +756,12 @@ class ItermFileReferenceTests(unittest.TestCase):
         self.write_context(repo_b, session_id="pane-b", tab_id="tab-b")
         prepared_b = self.prepare("Review at file beta dot py.")
 
-        with self.assertRaisesRegex(ValueError, "cannot identify"):
-            self.load("Review the file.")
+        pending_b = self.load("Review the file.")
+        self.assertEqual(set(pending_b.expansions.values()), {"@beta.py"})
+        plugin.finish_pending_file_references(pending_b)
 
+        self.write_context(repo_b, session_id="pane-b", tab_id="tab-b")
+        prepared_b = self.prepare("Review at file beta dot py.")
         protected_b = pre_ai.process(
             "Review at file beta dot py.", self.snippets, prepared_b.snippets
         )
@@ -611,6 +907,117 @@ class ItermFileReferenceTests(unittest.TestCase):
             "Review @button.test.ts.",
         )
 
+    def test_internal_multi_dot_suffixes_accept_spoken_extension_aliases(self):
+        root = self.make_repo()
+        (root / "types.d.ts").write_text("types", encoding="utf-8")
+        (root / "phpunit.xml.dist").write_text("xml", encoding="utf-8")
+        (root / "image.pkr.hcl").write_text("packer", encoding="utf-8")
+        (root / "module.tftest.hcl").write_text("terraform", encoding="utf-8")
+        self.write_context(root)
+        self.assertEqual(
+            self.round_trip("Review at file types dot dee dot type script."),
+            "Review @types.d.ts.",
+        )
+        self.assertEqual(
+            self.round_trip("Review at file phpunit dot ex em el dot distribution."),
+            "Review @phpunit.xml.dist.",
+        )
+        self.assertEqual(
+            self.round_trip(
+                "Review at file image dot packer dot hashicorp configuration language."
+            ),
+            "Review @image.pkr.hcl.",
+        )
+        self.assertEqual(
+            self.round_trip(
+                "Review at file module dot terraform test dot aitch see el."
+            ),
+            "Review @module.tftest.hcl.",
+        )
+
+    def test_cars_bdv_extension_families_have_natural_spoken_aliases(self):
+        expected = {
+            "php": ("hypertext", "preprocessor"),
+            "svg": ("scalable", "vector", "graphic"),
+            "js": ("javascript",),
+            "jpg": ("jay", "peg"),
+            "css": ("cascading", "style", "sheet"),
+            "html": ("hypertext", "markup", "language"),
+            "map": ("source", "map"),
+            "md": ("markdown",),
+            "png": ("portable", "network", "graphic"),
+            "tf": ("terraform",),
+            "tftest": ("terraform", "test"),
+            "json": ("jason",),
+            "webp": ("web", "pee"),
+            "gif": ("jif",),
+            "sh": ("shell",),
+            "mjs": ("module", "javascript"),
+            "hcl": ("hashicorp", "configuration", "language"),
+            "pkr": ("packer",),
+            "csv": ("comma", "separated", "values"),
+            "ts": ("typescript",),
+            "txt": ("plain", "text"),
+            "tpl": ("template",),
+            "service": ("systemd", "service"),
+            "py": ("python",),
+            "drawio": ("draw", "eye", "oh"),
+            "woff2": ("woff", "two"),
+            "woff": ("web", "open", "font", "format"),
+            "ttf": ("true", "type", "font"),
+            "eot": ("embedded", "open", "type"),
+            "conf": ("configuration",),
+            "path": ("systemd", "path"),
+            "ico": ("icon",),
+            "tfvars": ("terraform", "variables"),
+            "pdf": ("portable", "document", "format"),
+            "neon": ("neon",),
+            "swf": ("shockwave", "flash"),
+            "ps1": ("power", "shell"),
+            "lock": ("lock", "file"),
+            "fla": ("flash", "authoring"),
+            "dist": ("distribution",),
+        }
+        for extension, spoken_alias in expected.items():
+            with self.subTest(extension=extension):
+                self.assertIn(spoken_alias, plugin._extension_variants(extension))
+
+    def test_spelled_extensions_accept_transcribed_letter_names_and_digits(self):
+        expected = {
+            "php": ("pee", "aitch", "pee"),
+            "svg": ("ess", "vee", "gee"),
+            "json": ("jay", "ess", "oh", "en"),
+            "woff2": ("double", "you", "oh", "eff", "eff", "two"),
+            "7z": ("seven", "zee"),
+        }
+        for extension, spoken_alias in expected.items():
+            with self.subTest(extension=extension):
+                self.assertIn(spoken_alias, plugin._extension_variants(extension))
+
+    def test_representative_verbose_extension_aliases_expand_end_to_end(self):
+        root = self.make_repo()
+        cases = {
+            "Controller.php": "controller dot pee aitch pee",
+            "logo.svg": "logo dot ess vee gee",
+            "main.tf": "main dot terraform",
+            "variables.tfvars": "variables dot terraform variables",
+            "worker.service": "worker dot system d service",
+            "font.woff2": "font dot woff two",
+            "diagram.drawio": "diagram dot draw eye oh",
+            "setup.ps1": "setup dot power shell",
+            "inventory.csv": "inventory dot comma separated values",
+            "photo.jpg": "photo dot jay peg",
+        }
+        for filename in cases:
+            (root / filename).write_text(filename, encoding="utf-8")
+        self.write_context(root)
+        for filename, spoken_name in cases.items():
+            with self.subTest(filename=filename):
+                self.assertEqual(
+                    self.round_trip(f"Review at file {spoken_name}."),
+                    f"Review @{filename}.",
+                )
+
     def test_non_git_directory_is_not_treated_as_a_project(self):
         directory = self.base / "not-git"
         directory.mkdir()
@@ -652,6 +1059,52 @@ class ItermFileReferenceTests(unittest.TestCase):
         self.write_context(root, process_title="vim")
         with self.assertRaisesRegex(ValueError, "Codex or Claude"):
             self.prepare("Review at file main dot py.")
+
+    def test_mcp_child_process_resolves_to_claude_ancestor(self):
+        context = plugin.ItermContext(
+            window_id="window-a",
+            tab_id="tab-a",
+            session_id="session-a",
+            tty="/dev/ttys023",
+            job_pid=300,
+            process_title="node",
+            path=self.base,
+            hostname="local.test",
+            ssh_integration_level=0,
+            observed_at=time.time(),
+        )
+        snapshot = {
+            300: (200, "ttys023", "node mcp-server-postgres"),
+            200: (100, "ttys023", "npm exec @modelcontextprotocol/server-postgres"),
+            100: (1, "ttys023", "claude"),
+        }
+        with mock.patch("os.kill"), mock.patch.object(
+            plugin, "_process_record", side_effect=lambda pid: snapshot.get(pid)
+        ):
+            self.assertEqual(plugin.detect_harness(context), ("claude", 100))
+
+    def test_process_ancestry_cannot_cross_to_another_tty(self):
+        context = plugin.ItermContext(
+            window_id="window-a",
+            tab_id="tab-a",
+            session_id="session-a",
+            tty="/dev/ttys023",
+            job_pid=300,
+            process_title="node",
+            path=self.base,
+            hostname="local.test",
+            ssh_integration_level=0,
+            observed_at=time.time(),
+        )
+        snapshot = {
+            300: (100, "ttys023", "node mcp-server"),
+            100: (1, "ttys999", "claude"),
+        }
+        with mock.patch("os.kill"), mock.patch.object(
+            plugin, "_process_record", side_effect=lambda pid: snapshot.get(pid)
+        ):
+            with self.assertRaisesRegex(ValueError, "Codex or Claude"):
+                plugin.detect_harness(context)
 
 
 def re_search_file_token(text: str) -> str:
