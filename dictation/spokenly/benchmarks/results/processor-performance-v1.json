@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "created_at": 1783925873.772506,
+  "iterations": 40,
+  "representative_max_words": 2000,
+  "machine": "macOS-26.5.1-arm64-arm-64bit",
+  "python": "3.11.5",
+  "pre_ai_digest": "b9c79d4b4f0f335f960a684a94025dd4aa50e2528bc39e850d8bdb218cb6dca5",
+  "post_ai_digest": "3a142361301ef9ecabadd9365e17a3a90d1a2ee9d3eada24f88108bd82542efc",
+  "repair_protocol_digest": "8c57b10775be6d19666c9fb20e9ce954b1d47e5ec354ecdf653ff383bc5f4e7d",
+  "baseline_digest": "63a1e089942c1ab09b8ae12dd701e854d527d276e0d1c99e74f7dbc8d30ae0f5",
+  "benchmark_digest": "a7036408cfb394cad1f605506c925e224feebe06fd0db6e1dcafc4bc92e73e7d",
+  "results": {
+    "short": {
+      "median_ms": 95.40866647148505,
+      "p95_ms": 102.04270901158452
+    },
+    "thirty_sentence": {
+      "median_ms": 95.68860399303958,
+      "p95_ms": 103.59570803120732
+    },
+    "two_thousand_word": {
+      "median_ms": 104.31654151761904,
+      "p95_ms": 111.6796659771353
+    }
+  },
+  "worst_p95_ms": 111.6796659771353,
+  "max_baseline_ratio": 1.2123830637487985,
+  "gates": {
+    "p95_under_150_ms": true,
+    "regression_under_25_percent": true
+  }
+}

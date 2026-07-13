@@ -1,0 +1,38 @@
+[
+  {
+    "id": "SLASH_GOAL",
+    "triggers": ["slash goal"],
+    "text": "/goal",
+    "consume_trailing_punctuation": true
+  },
+  {
+    "id": "SPEC_OPS_LAUNCH_SPEC",
+    "triggers": ["slash launch spec"],
+    "text": "/spec-ops:launch-spec",
+    "consume_trailing_punctuation": true
+  },
+  {
+    "id": "SPEC_OPS_REFINE_SPEC",
+    "triggers": ["slash refine spec"],
+    "text": "/spec-ops:refine-spec",
+    "consume_trailing_punctuation": true
+  },
+  {
+    "id": "BRIEFING_LABEL",
+    "triggers": ["insert briefing label"],
+    "text": "[BRIEFING]",
+    "consume_trailing_punctuation": true
+  },
+  {
+    "id": "FILE_REF_BENCHMARK_1",
+    "triggers": ["at file first dot pie"],
+    "text": "@first.py",
+    "consume_trailing_punctuation": false
+  },
+  {
+    "id": "FILE_REF_BENCHMARK_2",
+    "triggers": ["at file second dot pie"],
+    "text": "@second.py",
+    "consume_trailing_punctuation": false
+  }
+]

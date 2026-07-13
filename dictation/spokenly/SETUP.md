@@ -159,12 +159,16 @@ It deterministically handles high-confidence operations:
 - `scratch that`, `never mind`, and similar immediate discards
 - new lines and new paragraphs
 - detecting list requests and passing authoritative tokens to Qwen
-- detecting likely self-corrections and passing conservative tokens to Qwen
+- discovering snippet/file-reference occurrences before repair planning
+- framing clear self-corrections as typed, numbered, bounded repair regions
+- preserving additive, literal, targetless, and ambiguous correction-like text
 - protecting snippet triggers from Qwen
 
-Ambiguous deletions are not performed destructively. They are delegated to Qwen
-with a bounded control token. On any script/configuration error, the processor
-fails open and returns the original transcript.
+Ambiguous deletions are not performed destructively. Model-assisted repair
+regions are emitted only after an owner-only, one-shot source manifest is
+atomically committed. If state persistence fails, the new framing is removed,
+the safe source form continues through the ordinary cleanup pass, and dictation
+does not block.
 
 ## 8. Configure the Post-AI script
 
@@ -178,11 +182,29 @@ exec "/absolute/path/to/agentic-coding/dictation/spokenly/scripts/post_ai.sh"
 This performs exact expansion after Qwen. It does not rewrite any other text.
 It reconstructs snippets between protected numbered transcript segments. Each
 following segment redundantly records the preceding snippet, so a standalone
-snippet token moved or dropped by Qwen is restored to its original position. It
-fails closed on missing segment metadata, conflicting, duplicated, unknown, or
-malformed structural tokens, text outside the protected segments, or leaked
-command tokens. Finally, it strips trailing whitespace so an inferred Return
-cannot submit or execute the inserted text.
+snippet token moved or dropped by Qwen is restored to its original position.
+It also validates repair identifiers, nonce-bound boundaries, cue consumption,
+protected atoms, repair grounding, prose alignment, segment metadata, and exact
+expansions. A failed validation falls forward to deterministic source recovery
+or, if that is unavailable, the raw transcript. It never reruns Qwen, reports a
+blocking recovery alert, or puts diagnostics on stdout. Finally, it strips all
+trailing whitespace in every branch so an inferred Return cannot submit or
+execute inserted text.
+
+### Optional repair diagnostics
+
+Diagnostics are off by default. To capture a bounded private trace while
+debugging, export these variables from both Spokenly wrappers:
+
+```bash
+export PARAQWEN_DIAGNOSTICS=1
+export PARAQWEN_DIAGNOSTIC_DIR="$HOME/.local/state/paraqwen-dictation/diagnostics"
+```
+
+The directory is mode `0700`, records are mode `0600`, and rotation retains at
+most 20 records or seven days. Exact configured expansion values, private home
+prefixes, and credential-like values are redacted; audio is never stored. Turn
+the option off after reproducing the issue.
 
 ## Optional: iTerm2 file references for Codex and Claude Code
 
@@ -216,7 +238,22 @@ From the repository root:
 
 ```bash
 python3 -m unittest discover -s dictation/spokenly/tests -v
+python3 dictation/spokenly/benchmarks/run_backtracking_benchmark.py
+python3 dictation/spokenly/benchmarks/benchmark_processors.py
+python3 dictation/spokenly/benchmarks/verify_results.py
 ```
+
+The first benchmark command validates all 126 reviewed corpus records and its
+deterministic Pre-AI expectations without a model. The release-quality model
+gate is explicit and is not counted as passing when skipped:
+
+```bash
+python3 dictation/spokenly/benchmarks/run_backtracking_benchmark.py --live --runs 3
+```
+
+It calls only the configured local Ollama model, sends `think=false`, pins
+temperature zero, and writes a versioned report with model, prompt, machine,
+quality, safety, and latency metadata.
 
 Test preprocessing directly:
 
@@ -326,6 +363,10 @@ Common failure boundaries:
 - There is no true Parakeet dictionary biasing in this package.
 - Natural-language command parsing cannot safely cover every possible phrase.
 - The finite command allowlist favors preserving text over risky deletion.
+- Repair recognition sees transcript text only. Spokenly does not provide the
+  scripts with acoustic pause or word-timestamp data.
+- Backtracking applies only to the current dictation and cannot modify text
+  already present in the target application.
 - Qwen is probabilistic and may not match a purpose-built dictation service on every input.
 - Snippet triggers are exact case-insensitive phrases; use distinctive wording to prevent accidental expansion.
 - The optional iTerm2 file-reference plugin is local-only and deliberately rejects SSH, regular tmux, unverified containers, and non-Git directories.

@@ -12,8 +12,9 @@ fees, subscriptions, word limits, or transcription quotas.
 
 - Clean up capitalization, punctuation, grammar, filler words, repetitions,
   and clear false starts without turning the transcript into a rewritten answer.
-- Resolve common spoken self-corrections such as “I mean,” “no, actually,”
-  “sorry, I meant,” and “or rather.”
+- Resolve bounded replacements, restarts, correction chains, explicit discards,
+  and conservative cue-free restatements while preserving additive or
+  ambiguous language.
 - Apply bounded inline editing commands such as deleting the last word,
   sentence, phrase, or abandoned thought.
 - Insert new lines and paragraphs deterministically, or format dictated items
@@ -40,10 +41,15 @@ different punctuation when more than one rendering is valid.
 | `um tomorrow i want to send the onboarding guide to the sales team i mean the support team` | `Tomorrow, I want to send the onboarding guide to the support team.` |
 | `are you available friday at three no actually four` | `Are you available Friday at four?` |
 | `we should ship friday i mean we should ship monday after the release review` | `We should ship Monday after the release review.` |
+| `we should ship friday let me start over we need one more review` | `We need one more review.` |
+| `send it to Alex no Sam no Priya` | `Send it to Priya.` |
+| `I wanted to buy a record as a gift as a present` | `I wanted to buy a record as a present.` |
 
 Clear replacements keep only the speaker's final intent. If a correction is
 ambiguous or the repair phrase is being quoted or discussed, the source is
-preserved instead of being destructively guessed.
+preserved instead of being destructively guessed. Additive continuations such
+as “actually, also include the notes” keep both ideas. ParaQwen sees the entire
+current dictation, but it never edits text inserted by an earlier dictation.
 
 ### Inline editing and formatting
 
@@ -134,32 +140,42 @@ Spokenly
   -> NVIDIA Parakeet Unified EN 0.6B
   -> scripts/pre_ai.py
        - applies safe inline editing commands
+       - discovers protected expansion spans before repair planning
+       - frames typed, numbered, bounded repair regions
        - protects snippet triggers with tokens
        - optionally loads explicitly enabled platform plugins
   -> Qwen 3.5 9B through Ollama
        - cleans and formats the transcript
   -> scripts/post_ai.py
+       - validates repair structure, grounding, atoms, and prose alignment
        - restores snippet placement and expands snippets exactly
+       - falls forward to deterministic source text on model damage
        - strips trailing whitespace before insertion
   -> active application
 ```
 
 The deterministic processors handle operations that should not depend on a
-language model. Qwen handles grammar, capitalization, number formatting, email
-layout, recognition repair, list segmentation, and contextual decisions about
-self-corrections. Protected segment boundaries prevent it from relocating
-snippet slots or adding text outside the transcript structure.
+language model. Repairs that need language understanding receive unique
+nonce-bound regions; overlapping cues become one ordered chain and independent
+repairs remain separate. Qwen runs once with Reasoning set to **None** and
+temperature zero. Post-AI accepts that result only if every structural,
+protected-atom, grounding, alignment, expansion, and output-safety check passes.
+There is no retry or background model run.
 
 ## Safety and portability
 
 - The processors have no network access and never execute transcript text as
   shell code.
 - Snippet expansions are JSON data, not executable commands.
-- Unknown, malformed, duplicated, conflicting, or unframed protected tokens
-  are rejected instead of being guessed.
+- Unknown, malformed, duplicated, conflicting, moved repair boundaries, forged
+  nonces, and unframed protected tokens are rejected instead of being guessed.
 - Model-generated text outside protected transcript segments is rejected.
 - Any unresolved internal command token causes post-processing to fail rather
   than paste control syntax into the active application.
+- A rejected model result silently returns safe deterministic source text with
+  exact expansions; if that reconstruction is unavailable, it returns the raw
+  current-dictation transcript. Recoverable failures exit successfully, do not
+  display a blocking alert, and never paste diagnostics.
 - A missing snippet file disables snippets. Invalid snippet JSON preserves the
   original transcript instead of inserting a partially transformed result.
 - The core scripts remain portable and load no platform integration by default.
@@ -168,6 +184,17 @@ snippet slots or adding text outside the transcript structure.
 
 Dictionary biasing is intentionally out of scope for now. Parakeet remains the
 speech model, and no list of speculative misrecognition variants is maintained.
+The script interface does not provide acoustic pauses or word timestamps, so
+natural restatement decisions use transcript structure rather than pause-aware
+utterance boundaries.
+
+Optional repair diagnostics are disabled by default. Set
+`PARAQWEN_DIAGNOSTICS=1` in both wrappers to record at most 20 owner-only traces
+for at most seven days under `~/.local/state/paraqwen-dictation/diagnostics`.
+Traces include redacted raw/Pre-AI/model/Post-AI stages and validator reasons,
+store no audio, redact exact configured expansion values and home prefixes, and
+never become a recovery dependency. Override the directory with
+`PARAQWEN_DIAGNOSTIC_DIR` when testing.
 
 ## Setup and verification
 
@@ -192,6 +219,11 @@ python3 -m unittest discover -s dictation/spokenly/tests -v
 - [scripts/post_ai.sh](scripts/post_ai.sh) — portable Bash Post-AI entry point
 - [plugins/iterm_file_references](plugins/iterm_file_references/README.md) — optional macOS/iTerm2 file references for local Codex and Claude Code panes
 - [tests/test_processors.py](tests/test_processors.py) — regression tests for both processors
+- [BACKTRACKING_IMPLEMENTATION.md](BACKTRACKING_IMPLEMENTATION.md) — acceptance-criterion implementation and evidence map
+- [benchmarks/backtracking-corpus-v1.json](benchmarks/backtracking-corpus-v1.json) — versioned 126-case repair corpus
+- [benchmarks/run_backtracking_benchmark.py](benchmarks/run_backtracking_benchmark.py) — deterministic corpus preflight and explicit three-run local-Qwen quality gate
+- [benchmarks/benchmark_processors.py](benchmarks/benchmark_processors.py) — processor latency and baseline-regression gate
+- [benchmarks/verify_results.py](benchmarks/verify_results.py) — outcome-level verification for pinned quality, baseline, comparison, and performance evidence
 
 ## Upstream references
 

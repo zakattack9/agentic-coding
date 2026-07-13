@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "corpus_version": "1.0.0",
+  "baseline_commit": "f0f9120",
+  "baseline_runs": 1,
+  "implementation_runs": 3,
+  "baseline_positive_rate": 65.15151515151516,
+  "implementation_positive_rate": 95.95959595959596,
+  "positive_improvement_points": 30.808080808080803,
+  "baseline_negative_preservation_rate": 76.66666666666667,
+  "implementation_negative_preservation_rate": 100.0,
+  "negative_improvement_points": 23.33333333333333,
+  "baseline_safety_failures": 9,
+  "implementation_safety_failures": 0,
+  "worst_category_regression_points": 0.0,
+  "improved_categories": {
+    "adversarial": 100.0,
+    "chain": 16.66666666666667,
+    "expansion_intersection": 95.23809523809524,
+    "file_reference_intersection": 100.0,
+    "long_dictation": 57.142857142857146,
+    "missing_repair": 100.0,
+    "reported_speech": 33.33333333333333,
+    "restart": 16.66666666666667,
+    "restatement": 100.0,
+    "snippet_intersection": 66.66666666666667
+  },
+  "gates": {
+    "positive_improvement_at_least_five_points": true,
+    "no_category_regression_over_two_points": true,
+    "hard_safety_not_regressed": true
+  }
+}

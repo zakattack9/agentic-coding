@@ -25,9 +25,14 @@ The preprocessor deliberately recognizes a finite set of nearby, reversible tran
 | New line / new paragraph | Inserts the requested break deterministically |
 | Make/format those as a list | Gives Qwen an explicit protected list-formatting command |
 | Number those items | Gives Qwen an explicit numbered-list command |
-| I mean / sorry, I meant / no, actually / no, wait / or rather / what I meant was / correct that | Gives Qwen a conservative self-correction hint |
+| I mean / I meant / sorry, I meant / no, actually / no, wait / or rather / make that / I should say / what I meant was / let me rephrase / let me start over | Creates a typed, numbered, bounded repair region when the local relationship is clear |
 
-The script avoids acting when a command is quoted or obviously being discussed, as in “write the phrase delete the last sentence.” Ambiguous standalone words such as “actually,” “no,” and “sorry” require a preceding dictation boundary and a short, correction-like continuation. Ambiguous language is preserved or handed to Qwen rather than destructively guessed.
+The script avoids acting when a command is quoted, dictated literally, reported,
+or obviously being discussed. Overlapping correction cues become one ordered
+chain region; unrelated regions keep distinct source positions. Conservative
+cue-free parallel restatements may also be framed. Additive clarification,
+targetless cues, weak similarity, and other ambiguity are explicitly preserved
+rather than destructively guessed.
 
 ## Configure snippets
 
@@ -109,11 +114,22 @@ printf '%s' 'Message body. Insert my email signature.' \
 
 Use Spokenly's **Test Script** button to confirm the actual app environment can access the repository scripts and configuration.
 
-## Responsibility boundary
+## Repair validation and responsibility boundary
 
 Qwen still handles grammar, capitalization, number formatting, email layout,
-recognition repair, list item segmentation, and deciding whether a hinted
-self-correction is truly a replacement. The framing protocol protects snippet
-position and rejects text outside the transcript, but it cannot prove that
-Qwen preserved the meaning of ordinary prose inside a segment. Keeping semantic
-decisions out of the regex parser avoids dangerously broad deletion behavior.
+list item segmentation, and the precise reparandum inside a bounded
+model-assisted region. It receives each region's cues in order and may retain
+only later source wording for a confirmed repair; it may not invent a
+replacement or move content across boundaries.
+
+Post-AI validates region identity/order/checksums, cue consumption, literal
+shields, snippet/file-reference structure, protected URLs, emails, commands,
+references, paths, filenames, identifiers, hashes, versions, dates, times and
+numbers, later-source grounding, and meaningful prose outside repairs. A
+failure discards the model result and silently reconstructs safe deterministic
+source text with exact expansions. There is one Qwen pass per dictation,
+Reasoning is **None**, and no retry or background correction occurs. All final
+branches remove trailing whitespace.
+
+Backtracking sees only the current transcript. It cannot change earlier text in
+the application and has no acoustic pause or word-timestamp awareness.
