@@ -12,7 +12,7 @@ availability guards are stubbed, and model discovery is fed a fixture. Covered:
   * the exit taxonomy 0/10/11/12, including empty-output -> 12 and every non-zero fail-open;
   * `--probe` line parsing (presence + usable auth);
   * web-search-on and grounding-on for BOTH the read-only and the write argv;
-  * the default model = discovered latest, effort = xhigh, and the `--model`/`--effort`
+  * the default model = discovered latest, effort = high, and the `--model`/`--effort`
     translation to Codex's real flags;
   * on success stdout carries ONLY the raw payload while the session id + diagnostics go to
     stderr;
@@ -223,8 +223,8 @@ def test_resolve_model_prefers_arg_then_discovered_then_fallback():
         assert cb.resolve_model(None, {}) == cb.FALLBACK_MODEL
 
 
-def test_default_effort_is_xhigh():
-    assert cb.DEFAULT_EFFORT == "xhigh"
+def test_default_effort_is_high():
+    assert cb.DEFAULT_EFFORT == "high"
 
 
 def test_effort_and_model_translation():

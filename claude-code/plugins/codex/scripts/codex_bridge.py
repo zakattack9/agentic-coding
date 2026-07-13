@@ -92,11 +92,12 @@ UNRECOVERABLE = 12
 # The real default is DISCOVERED at runtime (resolve_model) — this constant is only the
 # floor so a degraded run still names a model rather than crashing. Version-sensitive:
 # revisit when `codex debug models` advances.
-FALLBACK_MODEL = "gpt-5.5"
+FALLBACK_MODEL = "gpt-5.6-sol"
 
-# Default reasoning effort — overrides each model's own default (medium) with the deepest
-# tier, since a cross-model second opinion is worth the extra reasoning.
-DEFAULT_EFFORT = "xhigh"
+# Default reasoning effort — overrides each model's own default (low for gpt-5.6-sol) with a
+# high tier, since a cross-model second opinion is worth the extra reasoning. `high` (not
+# `xhigh`) per operator preference: gpt-5.6-sol is highly capable at lower efforts.
+DEFAULT_EFFORT = "high"
 
 # Per-call ceiling so a hung turn can never stall the skill's foreground Bash call. Set 30s
 # under 20min: a skill dispatches this bridge as a foreground Bash call the harness hard-

@@ -135,10 +135,13 @@ Order: explicit `--model` arg → the user's `~/.codex/config.toml` (`CODEX_HOME
 `model` key → the documented `DEFAULT_MODEL` constant in the bridge.
 
 > **Model facts (version-sensitive — verify against the installed `codex --version`):**
-> valid models are **`gpt-5.5`** (frontier) and **`gpt-5.4`**; **`gpt-5` and `gpt-5-codex`
+> the current frontier model is **`gpt-5.6-sol`** (the `DEFAULT_MODEL` constant); older
+> `gpt-5.x` slugs remain selectable via `--model`, while **`gpt-5` and `gpt-5-codex`
 > are retired** (blocked for new requests) and `latest` is not a valid identifier. The
 > default constant is therefore revisitable, not load-bearing — prefer a plain `gpt-5.x`
-> (non-`-codex`) slug, since `--output-schema` is dropped on `-codex` slugs.
+> (non-`-codex`) slug, since `--output-schema` is dropped on `-codex` slugs (this is why
+> the bridge does NOT auto-discover the raw frontier: a `-codex` frontier would break the
+> judge's structured output).
 
 ## Output-schema authoring note
 

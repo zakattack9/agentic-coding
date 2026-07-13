@@ -93,7 +93,7 @@ UNPARSEABLE = 12
 # slugs (gpt-5, gpt-5-codex) are blocked for new requests and `latest` is not valid.
 # Prefer a plain gpt-5.x (non-`-codex`) slug, since `--output-schema` is dropped on
 # `-codex` slugs. Keep this in sync with references/codex-bridge.md (model resolution).
-DEFAULT_MODEL = "gpt-5.5"
+DEFAULT_MODEL = "gpt-5.6-sol"
 
 # Per-call ceiling so a hung turn can never stall the loop the caller is waiting on.
 # Set 30s under 20min: a skill dispatches this bridge as a *foreground* Bash call,

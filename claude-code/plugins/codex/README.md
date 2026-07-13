@@ -46,7 +46,7 @@ appear as `/review-codex`, `/ask-codex`, and `/delegate-codex`, or trigger by in
 ("have Codex review this", "ask Codex how X works", "delegate this to Codex").
 
 Optional per-call overrides: `--model <slug>` and `--effort <low|medium|high|xhigh>`. Absent
-an override the latest model at `xhigh` is used. Each run prints the Codex **session id** so
+an override the latest model at `high` is used. Each run prints the Codex **session id** so
 you can continue the thread with `codex exec resume <id>`.
 
 ### Auto mode: trusting the bridge
