@@ -12,6 +12,7 @@ from collections import Counter
 import json
 import os
 import re
+import stat
 import sys
 import time
 from pathlib import Path
@@ -27,6 +28,17 @@ from pre_ai import (
     snippet_checksum,
 )
 from plugins import load_iterm_file_references, log_iterm_file_reference_event
+from repair_protocol import (
+    INTERNAL_LIKE_TOKEN,
+    INTERNAL_TOKEN_PREFIX,
+    manifest_digest,
+    validate_model_output,
+)
+if os.environ.get("PARAQWEN_DIAGNOSTICS", "").casefold() in {"1", "true", "yes", "on"}:
+    from diagnostics import write_trace
+else:
+    def write_trace(*_args, **_kwargs) -> None:
+        return None
 
 
 TOKEN = re.compile(
@@ -41,6 +53,8 @@ SEGMENT = re.compile(
     re.DOTALL,
 )
 ANY_SEGMENT_TOKEN = re.compile(r"\[\[SPK_SEGMENT_[^\]]+\]\]")
+ANY_REPAIR_TOKEN = re.compile(r"\[\[SPK_REPAIR_[^\]]+\]\]")
+ANY_LITERAL_TOKEN = re.compile(r"\[\[SPK_LITERAL_[^\]]+\]\]")
 
 
 def join_at_protected_boundary(left: str, right: str) -> str:
@@ -217,6 +231,9 @@ def fail_forward_text(text: str, references=None, recovery=None) -> str:
     result = ANY_SEGMENT_TOKEN.sub("", text)
     result = ANY_SNIPPET_TOKEN.sub("", result)
     result = INTERNAL_TOKEN.sub("", result)
+    result = ANY_REPAIR_TOKEN.sub("", result)
+    result = ANY_LITERAL_TOKEN.sub("", result)
+    result = INTERNAL_LIKE_TOKEN.sub("", result)
     return result.rstrip()
 
 
@@ -225,13 +242,27 @@ def consume_pending_slash_commands(
     max_age_seconds: float = 120.0,
 ) -> list[dict[str, object]]:
     """Consume recent one-shot slash snippets, if any exist."""
+    descriptor = -1
     try:
-        data = json.loads(state_path.read_text(encoding="utf-8"))
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(state_path, flags)
+        info = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != os.getuid()
+            or stat.S_IMODE(info.st_mode) != 0o600
+        ):
+            return []
+        with os.fdopen(descriptor, "r", encoding="utf-8") as source:
+            descriptor = -1
+            data = json.load(source)
     except FileNotFoundError:
         return []
     except (OSError, ValueError):
         return []
     finally:
+        if descriptor >= 0:
+            os.close(descriptor)
         # A state record belongs to one Post-AI invocation only.
         clear_pending_slash_commands(state_path)
 
@@ -357,10 +388,20 @@ def insert_after_anchor(
     return join_at_protected_boundary(result, right), command_end
 
 
-def restore_pending_slash_commands(text: str, commands: list[dict[str, object]]) -> str:
+def restore_pending_slash_commands(
+    text: str,
+    commands: list[dict[str, object]],
+    *,
+    structurally_validated: bool = False,
+) -> str:
     """Restore ordered slash commands that Qwen reduced to bare slashes."""
     if not commands:
         return text
+    if structurally_validated:
+        # Version-2 expansion reconstruction and semantic validation already
+        # proved exact command counts and positions. Legacy alias recovery must
+        # not mutate any separately dictated slash-like source content now.
+        return text.rstrip()
     result = text
     cursor = 0
     canonical_by_key = {
@@ -421,9 +462,13 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    started_at = time.perf_counter()
     args = parse_args()
     original = sys.stdin.read()
-    pending_commands = consume_pending_slash_commands()
+    slash_state_path = Path(
+        os.environ.get("SPOKENLY_SLASH_SNIPPET_STATE", str(DEFAULT_SLASH_STATE))
+    ).expanduser()
+    pending_commands = consume_pending_slash_commands(slash_state_path)
     source_recovery_path = Path(
         os.environ.get(
             "SPOKENLY_SOURCE_RECOVERY_STATE",
@@ -431,6 +476,12 @@ def main() -> int:
         )
     ).expanduser()
     source_recovery = consume_source_recovery_state(source_recovery_path)
+    diagnostic_trace_id = (
+        source_recovery.get("diagnostic_trace_id")
+        if source_recovery is not None
+        and isinstance(source_recovery.get("diagnostic_trace_id"), str)
+        else None
+    )
     try:
         file_reference_plugin = load_iterm_file_references()
     except Exception as error:
@@ -439,6 +490,34 @@ def main() -> int:
     pending_references = None
     fallback_references = None
     pending_dir = None
+
+    def diagnostic_expansion_values(references) -> list[str]:
+        try:
+            values = [str(item["text"]) for item in load_snippets(args.snippets)]
+        except Exception:
+            values = []
+        if references is not None:
+            values.extend(references.expansions.values())
+        return values
+
+    def validate_repairs(value: str, references) -> str:
+        if source_recovery is None or source_recovery.get("version") != 2:
+            if INTERNAL_TOKEN_PREFIX.search(value):
+                raise ValueError("unverifiable repair or literal structure")
+            return value.rstrip()
+        prompt_path = DEFAULT_SNIPPETS.parent.parent / "prompts" / "qwen-prompt.md"
+        prompt_text = (
+            prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else ""
+        )
+        snippets_text = (
+            args.snippets.read_text(encoding="utf-8")
+            if args.snippets.exists()
+            else ""
+        )
+        expected_digest = source_recovery.get("prompt_config_digest")
+        if expected_digest != manifest_digest(prompt_text, snippets_text):
+            raise ValueError("repair prompt/config digest mismatch")
+        return validate_model_output(value, source_recovery)
 
     def expand_with(references):
         recovery_counts = (
@@ -522,9 +601,24 @@ def main() -> int:
                     "post.deterministic_recovery",
                     str(expansion_error),
                 )
-                sys.stdout.write(
-                    restore_pending_slash_commands(expanded, pending_commands)
+                final = restore_pending_slash_commands(
+                    expanded, pending_commands, structurally_validated=True
+                ).rstrip()
+                write_trace(
+                    diagnostic_trace_id,
+                    stages={"model": original, "post": final},
+                    metadata={
+                        "post_ms": round(
+                            (time.perf_counter() - started_at) * 1000, 3
+                        )
+                    },
+                    validators={"accepted": False, "deterministic_recovery": True},
+                    failure_reason=str(expansion_error),
+                    expansion_values=diagnostic_expansion_values(
+                        pending_references
+                    ),
                 )
+                sys.stdout.write(final)
                 return 0
             if fallback_references is None and pending_dir is not None:
                 try:
@@ -561,7 +655,20 @@ def main() -> int:
                 str(expansion_error),
             )
 
-        sys.stdout.write(restore_pending_slash_commands(expanded, pending_commands))
+        expanded = validate_repairs(expanded, pending_references)
+        final = restore_pending_slash_commands(
+            expanded, pending_commands, structurally_validated=True
+        ).rstrip()
+        write_trace(
+            diagnostic_trace_id,
+            stages={"model": original, "post": final},
+            metadata={
+                "post_ms": round((time.perf_counter() - started_at) * 1000, 3)
+            },
+            validators={"accepted": True},
+            expansion_values=diagnostic_expansion_values(pending_references),
+        )
+        sys.stdout.write(final)
     except Exception as error:
         log_iterm_file_reference_event("post.core_fallback", str(error))
         recovered = fail_forward_text(
@@ -570,10 +677,30 @@ def main() -> int:
             source_recovery,
         )
         try:
-            recovered = restore_pending_slash_commands(recovered, pending_commands)
+            recovered = restore_pending_slash_commands(
+                recovered,
+                pending_commands,
+                structurally_validated=bool(
+                    source_recovery is not None
+                    and source_recovery.get("version") == 2
+                ),
+            )
         except Exception as recovery_error:
             log_iterm_file_reference_event("post.slash_recovery", str(recovery_error))
-        sys.stdout.write(recovered.rstrip())
+        recovered = recovered.rstrip()
+        write_trace(
+            diagnostic_trace_id,
+            stages={"model": original, "post": recovered},
+            metadata={
+                "post_ms": round((time.perf_counter() - started_at) * 1000, 3)
+            },
+            validators={"accepted": False},
+            failure_reason=str(error),
+            expansion_values=diagnostic_expansion_values(
+                fallback_references or pending_references
+            ),
+        )
+        sys.stdout.write(recovered)
         return 0
     finally:
         if file_reference_plugin is not None:

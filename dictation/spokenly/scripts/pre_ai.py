@@ -33,6 +33,26 @@ from plugins import (  # noqa: E402
     load_iterm_file_references,
     log_iterm_file_reference_event,
 )
+if os.environ.get("PARAQWEN_DIAGNOSTICS", "").casefold() in {"1", "true", "yes", "on"}:
+    from diagnostics import new_trace_id, write_trace  # noqa: E402
+else:
+    def new_trace_id() -> None:
+        return None
+
+    def write_trace(*_args, **_kwargs) -> None:
+        return None
+from repair_protocol import (  # noqa: E402
+    PreparedRepairs,
+    TriggerSpan,
+    build_state,
+    deterministic_protected_repairs,
+    manifest_digest,
+    prepare_repairs,
+    preserve_internal_literals,
+    remove_semantic_commands,
+    resolve_state_sources,
+    strip_repair_framing,
+)
 
 DEFAULT_SNIPPETS = SCRIPT_DIR.parent / "config" / "snippets.json"
 DEFAULT_SLASH_STATE = (
@@ -48,7 +68,6 @@ TOKENS = {
     "discard": "[[SPK_CMD_DISCARD_THOUGHT]]",
     "bullets": "[[SPK_CMD_BULLET_LIST]]",
     "numbers": "[[SPK_CMD_NUMBERED_LIST]]",
-    "correction": "[[SPK_CMD_REPLACE_NEAREST]]",
 }
 
 SNIPPET_ID = re.compile(r"^[A-Z][A-Z0-9_]*$")
@@ -91,7 +110,7 @@ DIRECTIVES = re.compile(
     (?P<discard>
         \b{POLITE}(?:
             scratch\s+(?:that|the\s+last\s+(?:part|thing|thought))
-          | never\s*mind(?:\s+that)?
+          | never\s*mind(?:\s+that)?(?=\s*(?:[,.!?;:]|$))
           | forget\s+(?:that|the\s+last\s+(?:part|thing|thought))
           | ignore\s+(?:that|the\s+last\s+(?:part|thing|thought))
           | undo\s+(?:that|the\s+last\s+(?:part|thing|thought))
@@ -131,23 +150,12 @@ DIRECTIVES = re.compile(
     """,
     re.IGNORECASE | re.VERBOSE,
 )
-
-EXPLICIT_CORRECTIONS = re.compile(
-    r"\b(?:"
-    r"sorry\s*,?\s*i\s+(?:mean|meant)|"
-    r"oops\s*,?\s*i\s+(?:mean|meant)|"
-    r"no\s*,?\s*(?:actually|wait)|"
-    r"correction(?:\s+is)?\s*[:,]|"
-    r"or\s+rather|"
-    r"what\s+i\s+(?:really\s+)?meant\s+(?:was|is)|"
-    r"let\s+me\s+(?:rephrase|correct\s+that)"
-    r")",
+DIRECTIVE_PROBE = re.compile(
+    r"\b(?:delete|remove|erase|drop|take|scratch|never|forget|ignore|undo|"
+    r"cancel|new|paragraph|line|start|next|make|format|turn|bullet|put|number)\b",
     re.IGNORECASE,
 )
-PLAIN_I_MEAN = re.compile(r"\bi\s+(?:mean|meant)\b", re.IGNORECASE)
-DELIMITED_REPAIR = re.compile(
-    r"\b(?:actually|no|sorry|correct\s+that)\b", re.IGNORECASE
-)
+
 REPORTING_CONTEXT = re.compile(
     r"\b(?:say|says|said|tell|tells|told|ask|asks|asked|write|writes|wrote|read|reads|quote|quotes|quoted|call|calls|called|mention|mentions|mentioned)\b(?:\s+(?:the|this|a))?(?:\s+(?:phrase|command|instruction|word|words|example))?\b[\s:\"'“”‘’,-]*$",
     re.IGNORECASE,
@@ -156,14 +164,6 @@ REPORTING_SPAN = re.compile(
     r"\b(?:say|write|type|read|quote|mention)\s+"
     r"(?:(?:the|this|a)\s+)?(?:phrase|command|instruction|words?|example)\b"
     r"[^.!?\n]{0,120}$",
-    re.IGNORECASE,
-)
-NON_CORRECTION_START = re.compile(
-    r"^(?:that|this|what|when|where|why|how|like|for\s+example|in\s+other\s+words)\b",
-    re.IGNORECASE,
-)
-AMBIGUOUS_REPAIR_START = re.compile(
-    r"^(?:that|this|it|what|when|where|why|how|to|we|you|i|there|like|for\s+example|in\s+other\s+words)\b",
     re.IGNORECASE,
 )
 
@@ -450,7 +450,7 @@ def add_token(value: str, token: str) -> str:
     return value.rstrip() + (" " if value.rstrip() else "") + token + " "
 
 
-def apply_directives(text: str) -> str:
+def apply_directives(text: str, *, emit_semantic_tokens: bool = True) -> str:
     output = ""
     position = 0
     for match in DIRECTIVES.finditer(text):
@@ -464,10 +464,14 @@ def apply_directives(text: str) -> str:
         if kind == "delete_sentence":
             success, new_output = delete_last_sentence(candidate)
             if not success:
+                if not emit_semantic_tokens:
+                    continue
                 new_output = add_token(candidate, TOKENS["delete_sentence"])
         elif kind == "delete_phrase":
             success, new_output = delete_last_phrase(candidate)
             if not success:
+                if not emit_semantic_tokens:
+                    continue
                 new_output = add_token(candidate, TOKENS["delete_phrase"])
         elif kind == "delete_word":
             success, new_output = delete_last_word(candidate)
@@ -476,14 +480,20 @@ def apply_directives(text: str) -> str:
         elif kind == "discard":
             success, new_output = delete_last_sentence(candidate)
             if not success:
-                new_output = add_token(candidate, TOKENS["discard"])
+                # Preserve the spoken cue so the typed repair planner can
+                # bound a phrase-level discard. A targetless cue stays literal.
+                continue
         elif kind == "new_paragraph":
             new_output = candidate.rstrip() + "\n\n"
         elif kind == "new_line":
             new_output = candidate.rstrip() + "\n"
         elif kind == "bullet_list":
+            if not emit_semantic_tokens:
+                continue
             new_output = add_token(candidate, TOKENS["bullets"])
         elif kind == "numbered_list":
+            if not emit_semantic_tokens:
+                continue
             new_output = add_token(candidate, TOKENS["numbers"])
 
         output = new_output
@@ -501,90 +511,6 @@ def apply_directives(text: str) -> str:
     return output + text[position:]
 
 
-def correction_suffix(text: str, match: Match[str]) -> Tuple[str, List[str]]:
-    suffix = text[match.end() :].lstrip(" ,:;-.!?")
-    local_suffix = re.split(r"[.!?\n]", suffix, maxsplit=1)[0].strip()
-    words = re.findall(r"[^\W_]+(?:[-'][^\W_]+)*", local_suffix, flags=re.UNICODE)
-    return local_suffix, words
-
-
-def should_mark_plain_i_mean(text: str, match: Match[str]) -> bool:
-    prefix = text[: match.start()].rstrip()
-    if (
-        not prefix
-        or discussed_as_text(prefix)
-        or inside_quoted_text(text, match.start())
-    ):
-        return False
-    local_suffix, words = correction_suffix(text, match)
-    if not local_suffix or NON_CORRECTION_START.match(local_suffix):
-        return False
-    return 1 <= len(words) <= 24
-
-
-def should_mark_delimited_repair(text: str, match: Match[str]) -> bool:
-    prefix = text[: match.start()].rstrip()
-    if (
-        not prefix
-        or prefix[-1] not in ",.;!?-—"
-        or discussed_as_text(prefix)
-        or inside_quoted_text(text, match.start())
-    ):
-        return False
-    local_suffix, words = correction_suffix(text, match)
-    if not local_suffix or AMBIGUOUS_REPAIR_START.match(local_suffix):
-        return False
-    return 1 <= len(words) <= 12
-
-
-def append_correction_hint(parts: List[str], prefix: str) -> None:
-    # ASR commonly inserts a sentence boundary before "I mean" and similar
-    # repairs. A comma makes the replacement relationship local and explicit
-    # to the cleanup model without changing question/exclamation boundaries.
-    prefix = re.sub(r"\.\s*$", ", ", prefix)
-    parts.append(prefix)
-    if prefix and not prefix.endswith((" ", "\n")):
-        parts.append(" ")
-    parts.append(f"{TOKENS['correction']} ")
-
-
-def add_correction_hints(text: str) -> str:
-    explicit_parts: List[str] = []
-    explicit_position = 0
-    for match in EXPLICIT_CORRECTIONS.finditer(text):
-        prefix = text[: match.start()].rstrip()
-        _local_suffix, words = correction_suffix(text, match)
-        if (
-            not prefix
-            or not words
-            or discussed_as_text(prefix)
-            or inside_quoted_text(text, match.start())
-        ):
-            continue
-        append_correction_hint(explicit_parts, text[explicit_position : match.start()])
-        explicit_position = match.end()
-    explicit_parts.append(text[explicit_position:])
-    text = "".join(explicit_parts)
-
-    repair_parts: List[str] = []
-    repair_position = 0
-    for match in DELIMITED_REPAIR.finditer(text):
-        if should_mark_delimited_repair(text, match):
-            append_correction_hint(repair_parts, text[repair_position : match.start()])
-            repair_position = match.end()
-    repair_parts.append(text[repair_position:])
-    text = "".join(repair_parts)
-
-    parts: List[str] = []
-    position = 0
-    for match in PLAIN_I_MEAN.finditer(text):
-        if should_mark_plain_i_mean(text, match):
-            append_correction_hint(parts, text[position : match.start()])
-            position = match.end()
-    parts.append(text[position:])
-    return "".join(parts)
-
-
 def normalize(text: str) -> str:
     text = re.sub(r"[ \t]+\n", "\n", text)
     text = re.sub(r"\n[ \t]+", "\n", text)
@@ -594,17 +520,84 @@ def normalize(text: str) -> str:
     return text.strip()
 
 
+def find_trigger_spans(
+    text: str, snippets: Iterable[Dict[str, object]]
+) -> list[TriggerSpan]:
+    pattern, metadata = snippet_matcher(snippets)
+    if pattern is None:
+        return []
+    spans = []
+    for match in pattern.finditer(text):
+        group = match.lastgroup
+        if group is None:
+            continue
+        item = metadata[group]
+        spans.append(
+            TriggerSpan(
+                match.start(), match.end(), str(item["id"]), match.group(0)
+            )
+        )
+    return spans
+
+
+def prepare_process(
+    text: str,
+    snippets_path: Path,
+    extra_snippets: Iterable[Dict[str, object]] = (),
+) -> tuple[str, PreparedRepairs, list[Dict[str, object]]]:
+    snippets = merge_snippets(snippets_path, extra_snippets)
+    original = text.replace("\r\n", "\n").replace("\r", "\n")
+    trigger_spans = find_trigger_spans(original, snippets)
+    text, protected_edits = deterministic_protected_repairs(
+        original, trigger_spans
+    )
+    text, source_literals = preserve_internal_literals(text)
+    if DIRECTIVE_PROBE.search(text):
+        model_text = apply_directives(text)
+        safe_text = apply_directives(text, emit_semantic_tokens=False)
+    else:
+        model_text = safe_text = text
+    model_trigger_spans = find_trigger_spans(model_text, snippets)
+    prepared = prepare_repairs(
+        model_text,
+        source_literals,
+        [(span.start, span.end) for span in model_trigger_spans],
+    )
+    safe_prepared = (
+        prepared
+        if safe_text == model_text
+        else prepare_repairs(
+            safe_text,
+            source_literals,
+            [
+                (span.start, span.end)
+                for span in find_trigger_spans(safe_text, snippets)
+            ],
+        )
+    )
+    prepared.raw_source = original
+    prepared.validation_source = remove_semantic_commands(prepared.safe_source)
+    prepared.safe_source = safe_prepared.safe_source
+    prepared.deterministic_edits = (
+        protected_edits + safe_prepared.deterministic_edits
+    )
+    if trigger_spans or model_text != text or prepared.deterministic_edits:
+        protected = protect_snippets(prepared.framed_source, snippets)
+        processed = frame_snippet_segments(normalize(protected))
+    else:
+        processed = normalize(prepared.framed_source)
+    return processed, prepared, snippets
+
+
 def process(
     text: str,
     snippets_path: Path,
     extra_snippets: Iterable[Dict[str, object]] = (),
 ) -> str:
-    snippets = merge_snippets(snippets_path, extra_snippets)
-    text = text.replace("\r\n", "\n").replace("\r", "\n")
-    text = protect_snippets(text, snippets)
-    text = apply_directives(text)
-    text = add_correction_hints(text)
-    return frame_snippet_segments(normalize(text))
+    processed, _prepared, _snippets = prepare_process(
+        text, snippets_path, extra_snippets
+    )
+    return processed
 
 
 def clear_pending_slash_commands(state_path: Path = DEFAULT_SLASH_STATE) -> None:
@@ -630,6 +623,7 @@ def record_source_recovery_state(
     file_nonce: str | None,
     expected_counts: dict[str, int],
     state_path: Path = DEFAULT_SOURCE_RECOVERY_STATE,
+    repair_state: dict[str, object] | None = None,
 ) -> None:
     clear_source_recovery_state(state_path)
     state_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -643,18 +637,19 @@ def record_source_recovery_state(
         os.fchmod(descriptor, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as output:
             descriptor = -1
-            json.dump(
-                {
+            payload = {
                     "version": 1,
                     "created_at": time.time(),
                     "file_nonce": file_nonce,
                     "expected_counts": expected_counts,
                     "verified_text": verified_text.rstrip(),
                     "portable_text": portable_text.rstrip(),
-                },
-                output,
-                ensure_ascii=False,
-            )
+                }
+            if repair_state is not None:
+                payload = repair_state
+            json.dump(payload, output, ensure_ascii=False)
+            output.flush()
+            os.fsync(output.fileno())
         os.replace(temporary, state_path)
     finally:
         if descriptor >= 0:
@@ -666,22 +661,34 @@ def consume_source_recovery_state(
     state_path: Path = DEFAULT_SOURCE_RECOVERY_STATE,
     max_age_seconds: float = 120.0,
 ) -> dict[str, object] | None:
+    descriptor = -1
     try:
-        info = state_path.lstat()
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(state_path, flags)
+        info = os.fstat(descriptor)
         if (
             not stat.S_ISREG(info.st_mode)
             or info.st_uid != os.getuid()
-            or stat.S_IMODE(info.st_mode) & 0o022
+            or stat.S_IMODE(info.st_mode) != 0o600
         ):
             return None
-        data = json.loads(state_path.read_text(encoding="utf-8"))
+        with os.fdopen(descriptor, "r", encoding="utf-8") as source:
+            descriptor = -1
+            data = json.load(source)
     except (FileNotFoundError, OSError, ValueError):
         return None
     finally:
+        if descriptor >= 0:
+            os.close(descriptor)
         clear_source_recovery_state(state_path)
 
-    if not isinstance(data, dict) or data.get("version") != 1:
+    if not isinstance(data, dict) or data.get("version") not in {1, 2}:
         return None
+    if data.get("version") == 2:
+        try:
+            data = resolve_state_sources(data)
+        except ValueError:
+            return None
     created_at = data.get("created_at")
     if not isinstance(created_at, (int, float)):
         return None
@@ -701,6 +708,48 @@ def consume_source_recovery_state(
     file_nonce = data.get("file_nonce")
     if file_nonce is not None and not isinstance(file_nonce, str):
         return None
+    if data.get("version") == 2:
+        if data.get("uid") != os.getuid():
+            return None
+        if not all(
+            isinstance(data.get(field), str)
+            for field in (
+                "raw_source",
+                "safe_source",
+                "validation_source",
+                "framed_source",
+                "prompt_config_digest",
+            )
+        ):
+            return None
+        repair_nonce = data.get("repair_nonce")
+        regions = data.get("repair_regions")
+        if data.get("repair_schema") != 2 or not isinstance(regions, list):
+            return None
+        if repair_nonce is None and regions:
+            return None
+        if repair_nonce is not None and (
+            not isinstance(repair_nonce, str)
+            or not re.fullmatch(r"[A-F0-9]{16}", repair_nonce)
+            or not regions
+        ):
+            return None
+        expansion_occurrences = data.get("expansion_occurrences")
+        if not isinstance(expansion_occurrences, list) or not all(
+            isinstance(item, dict)
+            and set(item) == {"id", "count"}
+            and isinstance(item["id"], str)
+            and isinstance(item["count"], int)
+            and item["count"] > 0
+            for item in expansion_occurrences
+        ):
+            return None
+        occurrence_counts = {
+            str(item["id"]): int(item["count"])
+            for item in expansion_occurrences
+        }
+        if occurrence_counts != expected_counts:
+            return None
     return data
 
 
@@ -711,6 +760,8 @@ def record_pending_slash_commands(
 ) -> None:
     """Record ordered slash snippets for one-shot post-AI recovery."""
     clear_pending_slash_commands(state_path)
+    if not SNIPPET_TOKEN.search(processed):
+        return
     snippets = load_snippets(snippets_path)
     settings = {str(item["id"]): item for item in snippets}
     segments = {
@@ -748,22 +799,31 @@ def record_pending_slash_commands(
     if not commands:
         return
 
-    temporary = state_path.with_name(f".{state_path.name}.{os.getpid()}.tmp")
+    descriptor = -1
+    temporary: Path | None = None
     try:
-        state_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary.write_text(
-            json.dumps({"commands": commands, "created_at": time.time()}),
-            encoding="utf-8",
+        state_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{state_path.name}.", suffix=".tmp", dir=state_path.parent
         )
-        temporary.chmod(0o600)
+        temporary = Path(temporary_name)
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+            descriptor = -1
+            json.dump({"commands": commands, "created_at": time.time()}, output)
+            output.flush()
+            os.fsync(output.fileno())
         os.replace(temporary, state_path)
     except OSError:
         # The in-band framing remains authoritative when recovery state cannot
         # be persisted.
         pass
     finally:
+        if descriptor >= 0:
+            os.close(descriptor)
         try:
-            temporary.unlink(missing_ok=True)
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
         except OSError:
             pass
 
@@ -781,15 +841,20 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    started_at = time.perf_counter()
     args = parse_args()
     original = sys.stdin.read()
+    diagnostic_trace_id = new_trace_id()
     source_recovery_path = Path(
         os.environ.get(
             "SPOKENLY_SOURCE_RECOVERY_STATE",
             str(DEFAULT_SOURCE_RECOVERY_STATE),
         )
     ).expanduser()
-    clear_pending_slash_commands()
+    slash_state_path = Path(
+        os.environ.get("SPOKENLY_SLASH_SNIPPET_STATE", str(DEFAULT_SLASH_STATE))
+    ).expanduser()
+    clear_pending_slash_commands(slash_state_path)
     clear_source_recovery_state(source_recovery_path)
     try:
         file_reference_plugin = load_iterm_file_references()
@@ -830,7 +895,9 @@ def main() -> int:
             # reference, any missing prerequisite leaves portable dictation intact.
             log_iterm_file_reference_event("pre.prepare", str(error))
     try:
-        processed = process(original, args.snippets, extra_snippets)
+        processed, prepared_repairs, all_snippets = prepare_process(
+            original, args.snippets, extra_snippets
+        )
     except Exception as error:
         if prepared_references is not None:
             try:
@@ -850,11 +917,10 @@ def main() -> int:
             )
         except Exception as recovery_error:
             log_iterm_file_reference_event("pre.source_recovery", str(recovery_error))
-        sys.stdout.write(original)
+        sys.stdout.write(original.rstrip())
         return 0
     try:
-        portable_snippets = load_snippets(args.snippets)
-        verified_snippets = merge_snippets(args.snippets, extra_snippets)
+        verified_snippets = all_snippets
         file_nonce = (
             prepared_references.pending.nonce
             if prepared_references is not None
@@ -865,21 +931,93 @@ def main() -> int:
         for match in SNIPPET_TOKEN.finditer(processed):
             snippet_id = match.group(1)
             expected_counts[snippet_id] = expected_counts.get(snippet_id, 0) + 1
+        prompt_path = SPOKENLY_DIR / "prompts" / "qwen-prompt.md"
+        prompt_text = (
+            prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else ""
+        )
+        snippets_text = (
+            args.snippets.read_text(encoding="utf-8")
+            if args.snippets.exists()
+            else ""
+        )
+        if expected_counts:
+            portable_snippets = load_snippets(args.snippets)
+            verified_text = expand_snippets_in_source(
+                prepared_repairs.safe_source, verified_snippets
+            )
+            portable_text = expand_snippets_in_source(
+                prepared_repairs.safe_source, portable_snippets
+            )
+            framed_source = remove_semantic_commands(
+                expand_snippets_in_source(
+                    prepared_repairs.framed_source, verified_snippets
+                )
+            )
+            validation_source = expand_snippets_in_source(
+                prepared_repairs.validation_source, verified_snippets
+            )
+        else:
+            verified_text = portable_text = prepared_repairs.safe_source.rstrip()
+            framed_source = remove_semantic_commands(
+                prepared_repairs.framed_source
+            )
+            validation_source = prepared_repairs.validation_source.rstrip()
+        repair_state = build_state(
+            prepared_repairs,
+            framed_source=framed_source,
+            verified_text=verified_text,
+            portable_text=portable_text,
+            file_nonce=file_nonce,
+            expected_counts=expected_counts,
+            prompt_config_digest=manifest_digest(prompt_text, snippets_text),
+            diagnostic_trace_id=diagnostic_trace_id,
+            validation_source=validation_source,
+        )
         record_source_recovery_state(
-            expand_snippets_in_source(original, verified_snippets),
-            expand_snippets_in_source(original, portable_snippets),
+            verified_text,
+            portable_text,
             file_nonce,
             expected_counts,
             state_path=source_recovery_path,
+            repair_state=repair_state,
+        )
+        write_trace(
+            diagnostic_trace_id,
+            stages={"raw": original, "pre": processed},
+            metadata={
+                "pre_ms": round((time.perf_counter() - started_at) * 1000, 3),
+                "repair_nonce": prepared_repairs.nonce,
+                "regions": [
+                    {
+                        "number": item["number"],
+                        "type": item["type"],
+                        "source_start": item["source_start"],
+                        "source_end": item["source_end"],
+                    }
+                    for item in prepared_repairs.regions
+                ],
+                "prompt_config_digest": repair_state["prompt_config_digest"],
+            },
+            expansion_values=[str(item["text"]) for item in verified_snippets],
         )
     except Exception as error:
         log_iterm_file_reference_event("pre.source_recovery", str(error))
+        # Never emit model-assisted regions without a committed manifest.
+        if "prepared_repairs" in locals() and (
+            prepared_repairs.has_model_regions or prepared_repairs.literal_shields
+        ):
+            processed = strip_repair_framing(processed, prepared_repairs.manifest())
+        write_trace(
+            diagnostic_trace_id,
+            stages={"raw": original, "pre": processed},
+            failure_reason=f"state persistence degraded: {error}",
+        )
     # Optional recovery-state I/O must not discard successful preprocessing.
     try:
-        record_pending_slash_commands(processed, args.snippets)
+        record_pending_slash_commands(processed, args.snippets, slash_state_path)
     except Exception as error:
         log_iterm_file_reference_event("pre.slash_recovery", str(error))
-    sys.stdout.write(processed)
+    sys.stdout.write(processed.rstrip())
     return 0
 
 

@@ -50,6 +50,12 @@ class ProcessorTests(unittest.TestCase):
         self.assertIsNotNone(match)
         return match.group(0)
 
+    def assert_repair_protocol(self, value, repair_type="REPLACEMENT", count=1):
+        self.assertNotIn("[[SPK_CMD_REPLACE_NEAREST]]", value)
+        self.assertEqual(len(re.findall(r"\[\[SPK_REPAIR_\d+_START_", value)), count)
+        self.assertEqual(len(re.findall(r"\[\[SPK_REPAIR_\d+_END_", value)), count)
+        self.assertIn(f"_CUE_1_{repair_type}_", value)
+
     def test_deletes_previous_sentence(self):
         value = pre_ai.process(
             "Keep this. Remove this sentence. Delete the last sentence. Keep this too.",
@@ -73,23 +79,23 @@ class ProcessorTests(unittest.TestCase):
 
     def test_correction_gets_hint(self):
         value = pre_ai.process("The meeting is Friday. I mean Monday.", self.snippets)
-        self.assertEqual(
-            value, "The meeting is Friday, [[SPK_CMD_REPLACE_NEAREST]] Monday."
-        )
+        self.assert_repair_protocol(value)
+        self.assertIn("The meeting is Friday.", value)
+        self.assertIn(" Monday.", value)
 
     def test_i_mean_can_correct_a_repeated_clause(self):
         value = pre_ai.process(
             "We should ship Friday, I mean we should ship Monday after review.",
             self.snippets,
         )
-        self.assertIn("[[SPK_CMD_REPLACE_NEAREST]]", value)
+        self.assert_repair_protocol(value)
 
     def test_i_mean_can_correct_to_infinitive_phrase(self):
         value = pre_ai.process(
             "I want to send the old version, I mean to create the new version.",
             self.snippets,
         )
-        self.assertIn("[[SPK_CMD_REPLACE_NEAREST]]", value)
+        self.assert_repair_protocol(value)
 
     def test_long_clear_i_mean_correction_gets_hint(self):
         value = pre_ai.process(
@@ -97,7 +103,7 @@ class ProcessorTests(unittest.TestCase):
             "product and engineering team in the main conference room.",
             self.snippets,
         )
-        self.assertIn("[[SPK_CMD_REPLACE_NEAREST]]", value)
+        self.assert_repair_protocol(value)
 
     def test_other_clear_repair_phrases_get_hints(self):
         cases = [
@@ -110,7 +116,8 @@ class ProcessorTests(unittest.TestCase):
         for transcript in cases:
             with self.subTest(transcript=transcript):
                 value = pre_ai.process(transcript, self.snippets)
-                self.assertIn("[[SPK_CMD_REPLACE_NEAREST]]", value)
+                expected = "RESTART" if "No, wait" in transcript else "REPLACEMENT"
+                self.assert_repair_protocol(value, expected)
 
     def test_ambiguous_repair_words_are_not_marked(self):
         cases = [
@@ -121,7 +128,7 @@ class ProcessorTests(unittest.TestCase):
         for transcript in cases:
             with self.subTest(transcript=transcript):
                 value = pre_ai.process(transcript, self.snippets)
-                self.assertNotIn("[[SPK_CMD_REPLACE_NEAREST]]", value)
+                self.assertNotIn("[[SPK_REPAIR_", value)
 
     def test_snippet_is_protected_and_expanded_exactly(self):
         protected = pre_ai.process(
@@ -212,13 +219,15 @@ class ProcessorTests(unittest.TestCase):
 
     def test_no_actually_gets_correction_hint(self):
         value = pre_ai.process("The meeting is at 3. No, actually 4.", self.snippets)
-        self.assertEqual(value, "The meeting is at 3, [[SPK_CMD_REPLACE_NEAREST]] 4.")
+        self.assert_repair_protocol(value)
+        self.assertIn("The meeting is at 3.", value)
+        self.assertIn(" 4.", value)
 
     def test_explanatory_i_mean_is_not_marked(self):
         value = pre_ai.process(
             "I mean that sincerely and without qualification.", self.snippets
         )
-        self.assertNotIn("[[SPK_CMD_REPLACE_NEAREST]]", value)
+        self.assertNotIn("[[SPK_REPAIR_", value)
 
     def test_reported_explicit_correction_is_preserved(self):
         cases = [
@@ -229,7 +238,7 @@ class ProcessorTests(unittest.TestCase):
         for transcript in cases:
             with self.subTest(transcript=transcript):
                 value = pre_ai.process(transcript, self.snippets)
-                self.assertNotIn("[[SPK_CMD_REPLACE_NEAREST]]", value)
+                self.assertNotIn("[[SPK_REPAIR_", value)
 
     def test_sentence_boundary_correction_is_scoped_as_replacement(self):
         value = pre_ai.process(
@@ -237,11 +246,9 @@ class ProcessorTests(unittest.TestCase):
             "I mean the support team.",
             self.snippets,
         )
-        self.assertEqual(
-            value,
-            "Tomorrow I want to send the onboarding guide to the sales team, "
-            "[[SPK_CMD_REPLACE_NEAREST]] the support team.",
-        )
+        self.assert_repair_protocol(value)
+        self.assertIn("the sales team.", value)
+        self.assertIn(" the support team.", value)
 
     def test_that_sentence_variant(self):
         value = pre_ai.process(
@@ -574,6 +581,25 @@ class ProcessorTests(unittest.TestCase):
             "/spec-ops:refine-spec, then run /spec-ops:launch-spec. After "
             "implementation, verify using /spec-ops:verify-spec, and a human "
             "will review",
+        )
+
+    def test_validated_slash_output_is_not_mutated_after_validation(self):
+        commands = [
+            {
+                "text": "/spec-ops:verify-spec",
+                "leading": False,
+                "consume_trailing_punctuation": False,
+            }
+        ]
+        source = (
+            "Keep the literal /spec_ops_verify_spec and then run "
+            "/spec-ops:verify-spec"
+        )
+        self.assertEqual(
+            post_ai.restore_pending_slash_commands(
+                source, commands, structurally_validated=True
+            ),
+            source,
         )
 
     def test_invalid_recovery_state_path_does_not_crash_processors(self):
