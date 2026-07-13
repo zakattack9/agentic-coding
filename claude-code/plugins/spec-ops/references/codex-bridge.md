@@ -135,7 +135,7 @@ Order: explicit `--model` arg → the user's `~/.codex/config.toml` (`CODEX_HOME
 `model` key → the documented `DEFAULT_MODEL` constant in the bridge.
 
 > **Model facts (version-sensitive — verify against the installed `codex --version`):**
-> the current frontier model is **`gpt-5.6-sol`** (the `DEFAULT_MODEL` constant); older
+> the current frontier model is **`gpt-5.6-terra`** (the `DEFAULT_MODEL` constant); older
 > `gpt-5.x` slugs remain selectable via `--model`, while **`gpt-5` and `gpt-5-codex`
 > are retired** (blocked for new requests) and `latest` is not a valid identifier. The
 > default constant is therefore revisitable, not load-bearing — prefer a plain `gpt-5.x`
