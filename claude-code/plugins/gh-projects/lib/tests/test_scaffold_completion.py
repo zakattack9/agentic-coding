@@ -304,6 +304,30 @@ class TestBoardStatusActionInstall(CompletionBase):
 
 
 # --------------------------------------------------------------------------- #
+# Every automation workflow that shells a vendored script must ALSO install that
+# script, or the workflow is broken in the target repo (it runs the script by
+# path with no plugin present).
+# --------------------------------------------------------------------------- #
+class TestWorkflowScriptsInstall(CompletionBase):
+    # (workflow dest, the script dest it invokes by path)
+    PAIRS = [
+        (".github/workflows/board-sync.yml", ".github/workflows/board_sync.py"),
+        (".github/workflows/signals-sync.yml", ".github/signals.py"),
+    ]
+
+    def test_each_workflow_script_registered_and_installs(self):
+        dests = {d for _, d in scaffold.INSTALL_FILES}
+        with tempfile.TemporaryDirectory() as d:
+            written = set(scaffold.apply_file_install(d, scaffold.plan_file_install(d)))
+            for wf, script in self.PAIRS:
+                self.assertIn(wf, dests, f"{wf} must be registered")
+                self.assertIn(script, dests,
+                              f"{script} must install or {wf} is broken in the repo")
+                self.assertIn(script, written, f"{script} must be written to disk")
+                self.assertTrue((Path(d) / script).is_file())
+
+
+# --------------------------------------------------------------------------- #
 # Team link (real linkProjectV2ToTeam) + base-role manual + app-access
 #         stays a confirmation.
 # --------------------------------------------------------------------------- #

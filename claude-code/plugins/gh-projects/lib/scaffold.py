@@ -87,10 +87,17 @@ INSTALL_FILES = [
     ("github/release.yml", ".github/release.yml"),
     # Governance.
     ("github/CODEOWNERS", ".github/CODEOWNERS"),
-    # Board automation workflows (authored elsewhere — listed by destination).
+    # Board automation workflows + the vendored stdlib scripts each one runs. The
+    # workflow shells its script BY PATH, so the script MUST ship beside it or the
+    # workflow is broken in the target repo (which has no plugin):
+    #   board-sync.yml   runs  .github/workflows/board_sync.py
+    #   signals-sync.yml runs  .github/signals.py
     ("github/workflows/board-sync.yml", ".github/workflows/board-sync.yml"),
+    ("github/workflows/board_sync.py", ".github/workflows/board_sync.py"),
     ("github/workflows/signals-sync.yml", ".github/workflows/signals-sync.yml"),
-    # Per-repo auto-add: new issues/PRs auto-add to the org board.
+    ("github/signals.py", ".github/signals.py"),
+    # Per-repo auto-add: new issues/PRs auto-add to the org board (uses the
+    # SHA-pinned actions/add-to-project — no vendored script of its own).
     ("github/workflows/add-to-project.yml", ".github/workflows/add-to-project.yml"),
     # Self-contained composable deploy bridge: the action AND the script it runs.
     # action.yml invokes `${{ github.action_path }}/board_status.py`, so the script

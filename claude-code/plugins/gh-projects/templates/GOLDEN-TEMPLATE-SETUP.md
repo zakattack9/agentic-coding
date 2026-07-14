@@ -408,13 +408,17 @@ rather than failures; it also **cannot** verify charts (no API) — hence the ey
 
 **What lands in the repo.** Only GitHub-functional files plus the board's self-docs —
 nothing reference-only. Under `.github/`: the issue forms, PR template, `release.yml`,
-`CODEOWNERS`, the three board workflows (`board-sync` / `signals-sync` / `add-to-project`),
-and the `board-status` composite action (its `action.yml` **and** the `board_status.py`
-it runs — both required). Under `.gh-projects/`: the board `README.md` (legend) and
-`board-language.md` (field/option card) — in-repo reference for a clone without the
-plugin, kept off the repo root beside the `.gh-projects/backlog/` staging that
-`create-issues` writes. The `.github/` special paths are fixed by GitHub and can't be
-relocated; everything else gh-projects touches lives under `.gh-projects/`.
+`CODEOWNERS`, the three board workflows (`board-sync` / `signals-sync` / `add-to-project`)
+**each with the vendored stdlib script it shells** (`board-sync` → `workflows/board_sync.py`,
+`signals-sync` → `.github/signals.py`; `add-to-project` uses the SHA-pinned third-party
+action, no script), and the `board-status` composite action (its `action.yml` **and** the
+`board_status.py` it runs). Every vendored script is self-contained — it imports nothing
+from the plugin, so the workflows run in a repo without gh-projects installed. Under
+`.gh-projects/`: the board `README.md` (legend) and `board-language.md` (field/option
+card) — in-repo reference for a clone without the plugin, kept off the repo root beside
+the `.gh-projects/backlog/` staging that `create-issues` writes. The `.github/` special
+paths are fixed by GitHub and can't be relocated; everything else gh-projects touches
+lives under `.gh-projects/`.
 
 > `scaffold-repo` installs the workflow **files** but does **not** set any Actions
 > secrets or variables — that's the manual step next, and it's why the board variables
