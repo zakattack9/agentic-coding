@@ -1,0 +1,190 @@
+#!/bin/sh
+set -eu
+
+VERSION=0.1.0
+# Names only: never read, print, or otherwise handle their values.
+AUTH_OVERRIDES='ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN
+CLAUDE_CODE_USE_BEDROCK CLAUDE_CODE_USE_VERTEX CLAUDE_CODE_USE_FOUNDRY
+ANTHROPIC_PROFILE ANTHROPIC_FEDERATION_RULE_ID ANTHROPIC_ORGANIZATION_ID
+ANTHROPIC_IDENTITY_TOKEN_FILE ANTHROPIC_IDENTITY_TOKEN
+ANTHROPIC_SERVICE_ACCOUNT_ID ANTHROPIC_WORKSPACE_ID ANTHROPIC_BASE_URL'
+
+die() { printf 'claudeo: %s\n' "$*" >&2; exit 2; }
+usage() {
+    printf '%s\n' \
+        'Usage: claudeo init <name>' \
+        '       claudeo login <name> [--email <address>] [--sso]' \
+        '       claudeo run <name> [--] [claude arguments...]' \
+        '       claudeo <name> [claude arguments...]' \
+        '       claudeo status <name> [--json]' \
+        '       claudeo logout <name>' \
+        '       claudeo path <name>' \
+        '       claudeo list | doctor | help | --version' \
+        '' \
+        'Names: 1-64 ASCII letters, digits, dots, underscores or hyphens;' \
+        'start with a letter or digit. Case-only duplicates are rejected;' \
+        'use the original spelling.' \
+        'Overrides: CLAUDEO_HOME (absolute path), CLAUDEO_CLAUDE_BIN.'
+}
+valid_name() {
+    case $1 in
+        ''|[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789]*|*[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-]*) return 1 ;;
+    esac
+    [ "${#1}" -le 64 ]
+}
+real_dir() { [ ! -L "$1" ] && [ -d "$1" ]; }
+root_path() {
+    # Keep the default independent of the caller's working directory.
+    root=${CLAUDEO_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/claudeo}
+    case $root in /*) ;; *) die 'CLAUDEO_HOME / XDG_CONFIG_HOME must be absolute paths' ;; esac
+    while [ "${root%/}" != "$root" ]; do root=${root%/}; done
+    case $root in ''|*/./*|*/../*|*/.|*/..) die 'choose an absolute storage path without . or .. components' ;; esac
+    [ ! -L "$root" ] || die 'tool root must not be a symbolic link'
+    [ ! -L "$root/accounts" ] || die 'accounts root must not be a symbolic link'
+}
+canonical_root() {
+    root=$(CDPATH='' cd -P "$root" && pwd -P) || die 'cannot access tool root'
+}
+account_path() {
+    valid_name "$1" || die 'invalid account name; see claudeo help'
+    name=$1
+    # Reject aliases on both case-sensitive and case-insensitive filesystems.
+    folded=$(printf '%s' "$name" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+    for entry in "$root/accounts/"* "$root/accounts/".[!.]* "$root/accounts/"..?*; do
+        [ -e "$entry" ] || [ -L "$entry" ] || continue
+        other=${entry##*/}
+        if [ "$other" != "$name" ] && [ "$(printf '%s' "$other" | LC_ALL=C tr '[:upper:]' '[:lower:]')" = "$folded" ]; then
+            die "account spelling conflicts with '$other'; use its exact spelling"
+        fi
+    done
+    account=$root/accounts/$name
+    [ ! -L "$account" ] || die 'account path must not be a symbolic link'
+}
+create_account() {
+    account_path "$1"
+    (
+        umask 077
+        mkdir -p "$root/accounts" || die 'cannot create accounts root'
+        chmod 700 "$root" "$root/accounts"
+    )
+    canonical_root
+    account_path "$1"
+    [ ! -L "$account/anthropic" ] || die 'profile directory must not be a symbolic link'
+    (
+        umask 077
+        mkdir -p "$account/anthropic" || die 'cannot create account directory'
+        chmod 700 "$account" "$account/anthropic"
+    )
+}
+require_account() {
+    account_path "$1"
+    if ! real_dir "$root" || ! real_dir "$root/accounts" || ! real_dir "$account"; then
+        die "unknown account '$1'; use claudeo init $1 or claudeo login $1"
+    fi
+    canonical_root
+    account_path "$1"
+}
+resolve_claude() {
+    claude_bin=${CLAUDEO_CLAUDE_BIN:-claude}
+    claude_bin=$(command -v "$claude_bin") || die 'Claude not found; install Claude Code or set CLAUDEO_CLAUDE_BIN'
+    [ -f "$claude_bin" ] && [ -x "$claude_bin" ] || die 'Claude executable is not an executable file'
+}
+sanitize() {
+    for variable in $AUTH_OVERRIDES; do unset "$variable"; done
+    # Override automatic active/default profile discovery, not only its selector.
+    CLAUDE_CONFIG_DIR=$1
+    ANTHROPIC_CONFIG_DIR=$1/anthropic
+    export CLAUDE_CONFIG_DIR ANTHROPIC_CONFIG_DIR
+}
+launch() {
+    real_dir "$account/anthropic" || die 'missing or unsafe profile directory; run claudeo init for this account'
+    resolve_claude
+    sanitize "$account"
+    exec "$claude_bin" "$@"
+}
+doctor() {
+    failed=0
+    for variable in $AUTH_OVERRIDES CLAUDE_CONFIG_DIR ANTHROPIC_CONFIG_DIR; do
+        if printenv "$variable" >/dev/null 2>&1; then
+            printf 'claudeo: warning: %s is set; overridden in Claude child processes\n' "$variable" >&2
+        fi
+    done
+    if ! real_dir "$root" || ! real_dir "$root/accounts" ||
+       [ ! -r "$root/accounts" ] || [ ! -w "$root/accounts" ] || [ ! -x "$root/accounts" ]; then
+        printf 'claudeo: account root is unavailable; use claudeo init <name>\n' >&2
+        failed=1
+    else
+        for entry in "$root/accounts/"* "$root/accounts/".[!.]* "$root/accounts/"..?*; do
+            [ -e "$entry" ] || [ -L "$entry" ] || continue
+            if ! valid_name "${entry##*/}" || ! real_dir "$entry" ||
+               ! real_dir "$entry/anthropic" || [ ! -r "$entry" ] || [ ! -w "$entry" ] || [ ! -x "$entry" ]; then
+                printf 'claudeo: invalid or unusable account entry: %s\n' "${entry##*/}" >&2
+                failed=1
+            elif ! (account_path "${entry##*/}"); then
+                failed=1
+            fi
+        done
+    fi
+    # --version is read-only; do not inspect default authentication or settings.
+    if (resolve_claude; sanitize "$root"; exec "$claude_bin" --version); then :; else failed=1; fi
+    return "$failed"
+}
+
+[ "$#" -gt 0 ] || { usage >&2; exit 2; }
+command=$1
+shift
+case $command in
+    help|-h|--help) [ "$#" -eq 0 ] || die 'help takes no arguments'; usage; exit ;;
+    --version) [ "$#" -eq 0 ] || die '--version takes no arguments'; printf '%s\n' "$VERSION"; exit ;;
+esac
+root_path
+case $command in
+    init|path|logout)
+        [ "$#" -eq 1 ] || die "$command requires exactly one account name"
+        if [ "$command" = init ]; then create_account "$1"; else require_account "$1"; fi
+        if [ "$command" = logout ]; then launch auth logout; else printf '%s\n' "$account"; fi
+        ;;
+    login)
+        [ "$#" -ge 1 ] || die 'login requires an account name'
+        name=$1; shift
+        # Validate in a subshell so the native option order/values stay unchanged.
+        (
+            while [ "$#" -gt 0 ]; do
+                case $1 in
+                    --email) [ "$#" -ge 2 ] || die '--email requires an address'; shift 2 ;;
+                    --sso) shift ;;
+                    --console|--console=*) die 'Console login is unsupported; use a Claude subscription' ;;
+                    *) die 'login accepts only --email <address> and --sso' ;;
+                esac
+            done
+        )
+        create_account "$name"
+        launch auth login --claudeai "$@"
+        ;;
+    status)
+        [ "$#" -ge 1 ] && [ "$#" -le 2 ] || die 'usage: claudeo status <name> [--json]'
+        [ "$#" -eq 1 ] || [ "$2" = --json ] || die 'status accepts only --json'
+        require_account "$1"
+        if [ "$#" -eq 2 ]; then launch auth status; else launch auth status --text; fi
+        ;;
+    list)
+        [ "$#" -eq 0 ] || die 'list takes no arguments'
+        [ ! -e "$root/accounts" ] || real_dir "$root/accounts" || die 'accounts root is not a directory'
+        for entry in "$root/accounts/"*; do
+            if ! real_dir "$entry" || ! valid_name "${entry##*/}"; then continue; fi
+            printf '%s\n' "${entry##*/}"
+        done | LC_ALL=C sort
+        ;;
+    doctor) [ "$#" -eq 0 ] || die 'doctor takes no arguments'; doctor ;;
+    *)
+        if [ "$command" = run ]; then
+            [ "$#" -ge 1 ] || die 'run requires an account name'
+            name=$1; shift
+        else
+            name=$command
+        fi
+        require_account "$name"
+        if [ "${1-}" = -- ]; then shift; fi
+        launch "$@"
+        ;;
+esac
