@@ -1,7 +1,10 @@
 #!/bin/sh
 set -eu
 
-VERSION=0.1.0
+VERSION=0.2.0
+# Deliberately excludes .claude.json, credentials, plugins, caches and sessions.
+SHARED_FILES='settings.json CLAUDE.md keybindings.json'
+SHARED_DIRS='rules skills agents commands hooks output-styles statuslines themes'
 # Names only: never read, print, or otherwise handle their values.
 AUTH_OVERRIDES='ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN
 CLAUDE_CODE_USE_BEDROCK CLAUDE_CODE_USE_VERTEX CLAUDE_CODE_USE_FOUNDRY
@@ -12,8 +15,9 @@ ANTHROPIC_SERVICE_ACCOUNT_ID ANTHROPIC_WORKSPACE_ID ANTHROPIC_BASE_URL'
 die() { printf 'claudeo: %s\n' "$*" >&2; exit 2; }
 usage() {
     printf '%s\n' \
-        'Usage: claudeo init <name>' \
-        '       claudeo login <name> [--email <address>] [--sso]' \
+        'Usage: claudeo init [--isolated] <name>' \
+        '       claudeo login [--isolated] <name> [--email <address>] [--sso]' \
+        '       claudeo share <name>  (back up local customizations, link main config)' \
         '       claudeo run <name> [--] [claude arguments...]' \
         '       claudeo <name> [claude arguments...]' \
         '       claudeo status <name> [--json]' \
@@ -24,7 +28,8 @@ usage() {
         'Names: 1-64 ASCII letters, digits, dots, underscores or hyphens;' \
         'start with a letter or digit. Case-only duplicates are rejected;' \
         'use the original spelling.' \
-        'Overrides: CLAUDEO_HOME (absolute path), CLAUDEO_CLAUDE_BIN.'
+        'New accounts share selected main customizations unless --isolated.' \
+        'Overrides: CLAUDEO_HOME, CLAUDEO_CLAUDE_BIN, CLAUDEO_SHARED_CONFIG_DIR.'
 }
 valid_name() {
     case $1 in
@@ -62,6 +67,11 @@ account_path() {
 }
 create_account() {
     account_path "$1"
+    is_new=0
+    if [ ! -e "$account" ]; then is_new=1; fi
+    if [ "$is_new" -eq 0 ] && [ "${isolated:-0}" -eq 1 ] && [ -e "$account/.claudeo-sharing" ]; then
+        die '--isolated is for new accounts; existing shared customizations are not removed'
+    fi
     (
         umask 077
         mkdir -p "$root/accounts" || die 'cannot create accounts root'
@@ -75,6 +85,64 @@ create_account() {
         mkdir -p "$account/anthropic" || die 'cannot create account directory'
         chmod 700 "$account" "$account/anthropic"
     )
+    if [ "$is_new" -eq 1 ] && [ "${isolated:-0}" -eq 0 ]; then
+        source_dir=${CLAUDEO_SHARED_CONFIG_DIR:-$HOME/.claude}
+        if [ -d "$source_dir" ]; then
+            share_account
+        elif [ -n "${CLAUDEO_SHARED_CONFIG_DIR:-}" ]; then
+            die 'CLAUDEO_SHARED_CONFIG_DIR is not a directory; use claudeo share after correcting it'
+        fi
+    fi
+}
+share_account() {
+    source_dir=${CLAUDEO_SHARED_CONFIG_DIR:-$HOME/.claude}
+    case $source_dir in /*) ;; *) die 'CLAUDEO_SHARED_CONFIG_DIR must be absolute' ;; esac
+    source_dir=$(CDPATH='' cd -P "$source_dir" && pwd -P) || die 'shared configuration directory is unavailable'
+    case $source_dir/ in "$account/"*) die 'shared source must be outside this account' ;; esac
+    case $account/ in "$source_dir/"*) die 'shared source must not contain this account' ;; esac
+    [ ! -L "$account/.claudeo-sharing" ] || die 'sharing marker must not be a symbolic link'
+    [ ! -e "$account/.claudeo-sharing" ] || [ -f "$account/.claudeo-sharing" ] || die 'sharing marker must be a regular file'
+    # Validate every source before moving any local customization.
+    for item in $SHARED_FILES; do
+        [ ! -e "$source_dir/$item" ] && [ ! -L "$source_dir/$item" ] && continue
+        [ -f "$source_dir/$item" ] || die "shared $item must resolve to a regular file"
+    done
+    for item in $SHARED_DIRS; do
+        [ ! -e "$source_dir/$item" ] && [ ! -L "$source_dir/$item" ] && continue
+        [ -d "$source_dir/$item" ] || die "shared $item must resolve to a directory"
+    done
+    (
+        umask 077
+        backup_dir=''
+        for item in $SHARED_FILES $SHARED_DIRS; do
+            [ -e "$source_dir/$item" ] || continue
+            target=$account/$item
+            if [ -L "$target" ] && [ "$(readlink "$target")" = "$source_dir/$item" ]; then continue; fi
+            if [ -e "$target" ] || [ -L "$target" ]; then
+                if [ -z "$backup_dir" ]; then
+                    backup_dir=$(mktemp -d "$account/.claudeo-config-backup.XXXXXXXX")
+                    printf 'claudeo: previous customizations saved in %s\n' "$backup_dir" >&2
+                fi
+                mv "$target" "$backup_dir/$item"
+            fi
+            ln -s "$source_dir/$item" "$target"
+        done
+        printf '%s\n' "$source_dir" > "$account/.claudeo-sharing"
+    )
+}
+sharing_health() {
+    marker=$entry/.claudeo-sharing
+    [ -e "$marker" ] || [ -L "$marker" ] || return 0
+    [ ! -L "$marker" ] && [ -f "$marker" ] || die 'invalid sharing marker'
+    IFS= read -r shared_source < "$marker" || die 'invalid sharing marker'
+    case $shared_source in /*) ;; *) die 'shared source is not absolute' ;; esac
+    [ -d "$shared_source" ] || die 'shared configuration source is unavailable'
+    for item in $SHARED_FILES $SHARED_DIRS; do
+        [ -e "$shared_source/$item" ] || continue
+        if [ ! -L "$entry/$item" ] || [ "$(readlink "$entry/$item")" != "$shared_source/$item" ]; then
+            die "sharing drift for ${entry##*/}/$item; run claudeo share ${entry##*/} to back up and relink"
+        fi
+    done
 }
 require_account() {
     account_path "$1"
@@ -122,6 +190,8 @@ doctor() {
                 failed=1
             elif ! (account_path "${entry##*/}"); then
                 failed=1
+            elif ! (sharing_health); then
+                failed=1
             fi
         done
     fi
@@ -139,12 +209,17 @@ case $command in
 esac
 root_path
 case $command in
-    init|path|logout)
+    init|path|logout|share)
+        isolated=0
+        if [ "$command" = init ] && [ "${1-}" = --isolated ]; then isolated=1; shift; fi
         [ "$#" -eq 1 ] || die "$command requires exactly one account name"
         if [ "$command" = init ]; then create_account "$1"; else require_account "$1"; fi
+        if [ "$command" = share ]; then share_account; fi
         if [ "$command" = logout ]; then launch auth logout; else printf '%s\n' "$account"; fi
         ;;
     login)
+        isolated=0
+        if [ "${1-}" = --isolated ]; then isolated=1; shift; fi
         [ "$#" -ge 1 ] || die 'login requires an account name'
         name=$1; shift
         # Validate in a subshell so the native option order/values stay unchanged.

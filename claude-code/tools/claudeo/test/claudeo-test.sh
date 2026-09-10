@@ -14,7 +14,7 @@ export CLAUDEO_HOME="$test_root/accounts with spaces"
 export CLAUDEO_CLAUDE_BIN="$tool_dir/test/fake-claude"
 export CLAUDEO_TEST_CAPTURE="$test_root/capture"
 export CLAUDEO_TEST_SENTINEL='unchanged value'
-unset CLAUDEO_TEST_MODE CLAUDEO_TEST_EXIT
+unset CLAUDEO_TEST_MODE CLAUDEO_TEST_EXIT CLAUDEO_SHARED_CONFIG_DIR
 mkdir -p "$HOME" "$test_root/project"
 cd "$test_root/project"
 checks=0
@@ -60,7 +60,7 @@ private() {
 expect 0 help
 expect 0 --help
 expect 0 --version
-file_is "$test_root/stdout" '0.1.0
+file_is "$test_root/stdout" '0.2.0
 '
 expect 2
 expect 2 --bogus
@@ -245,7 +245,7 @@ file_is "$CLAUDEO_TEST_CAPTURE/overrides" ''
 # Installation is isolated too; uninstall must preserve siblings and account data.
 (cd "$tool_dir" && make install PREFIX="$test_root/install prefix") > "$test_root/install-log"
 expect_command 0 "$test_root/install prefix/bin/claudeo" --version
-file_is "$test_root/stdout" '0.1.0
+file_is "$test_root/stdout" '0.2.0
 '
 touch "$test_root/install prefix/bin/keep-me"
 (cd "$tool_dir" && make uninstall PREFIX="$test_root/install prefix") >> "$test_root/install-log"
@@ -253,6 +253,70 @@ touch "$test_root/install prefix/bin/keep-me"
 [ -f "$test_root/install prefix/bin/keep-me" ] || fail 'uninstall removed sibling'
 [ -d "$personal" ] || fail 'uninstall removed account data'
 checks=$((checks + 3))
+# Shared customization uses an explicit allowlist, never wholesale config state.
+mkdir -p "$HOME/.claude/skills" "$HOME/.claude/hooks" "$HOME/.claude/plugins" "$HOME/.claude/projects"
+printf '{"theme":"dark"}\n' > "$HOME/.claude/settings.json"
+printf 'shared instructions\n' > "$HOME/.claude/CLAUDE.md"
+# Empty sentinels only; neither fake nor wrapper may open these files.
+touch "$HOME/.claude/.claude.json" "$HOME/.claude/.credentials.json" "$HOME/.claude/history.jsonl"
+expect 0 init shared
+shared=$CLAUDEO_HOME/accounts/shared
+for item in settings.json CLAUDE.md skills hooks; do
+    [ -L "$shared/$item" ] || fail "not shared: $item"
+    [ "$(readlink "$shared/$item")" = "$HOME/.claude/$item" ] || fail "wrong sharing target: $item"
+    checks=$((checks + 1))
+done
+for item in .claude.json .credentials.json history.jsonl plugins projects; do
+    [ ! -e "$shared/$item" ] && [ ! -L "$shared/$item" ] || fail "private state shared: $item"
+    checks=$((checks + 1))
+done
+expect 0 init --isolated isolated
+[ ! -e "$CLAUDEO_HOME/accounts/isolated/.claudeo-sharing" ] || fail 'isolated account shares config'
+expect 0 login --isolated isolated-login --sso
+argv_is auth login --claudeai --sso
+[ ! -L "$CLAUDEO_HOME/accounts/isolated-login/settings.json" ] || fail 'isolated login shares config'
+expect 2 init --isolated shared
+expect 2 share missing
+expect 2 share
+expect 2 share personal extra
+expect_env 2 CLAUDEO_SHARED_CONFIG_DIR=relative share personal
+expect_env 2 CLAUDEO_SHARED_CONFIG_DIR="$personal" share personal
+expect_env 2 CLAUDEO_SHARED_CONFIG_DIR="$CLAUDEO_HOME" share personal
+# Existing accounts never migrate merely because the executable was upgraded.
+expect 0 init personal
+[ ! -e "$personal/.claudeo-sharing" ] || fail 'existing account silently migrated'
+printf '{"theme":"light"}\n' > "$personal/settings.json"
+expect 0 share personal
+set -- "$personal"/.claudeo-config-backup.*
+[ "$#" -eq 1 ] && [ -d "$1" ] || fail 'migration backup missing'
+private "$1"
+file_is "$1/settings.json" '{"theme":"light"}
+'
+expect 0 share personal
+set -- "$personal"/.claudeo-config-backup.*
+[ "$#" -eq 1 ] || fail 'idempotent sharing created another backup'
+printf '{"theme":"new"}\n' > "$HOME/.claude/settings.json"
+file_is "$personal/settings.json" '{"theme":"new"}
+'
+expect 0 run personal -p 'shared config'
+argv_is -p 'shared config'
+file_is "$CLAUDEO_TEST_CAPTURE/config" "$personal"
+file_is "$CLAUDEO_TEST_CAPTURE/overrides" ''
+expect 0 doctor
+unlink "$shared/settings.json"
+printf '{"theme":"local"}\n' > "$shared/settings.json"
+expect 1 doctor
+expect 0 share shared
+expect 0 doctor
+ln -s "$HOME/.claude/.credentials.json" "$CLAUDEO_HOME/accounts/isolated/.claudeo-sharing"
+expect 2 share isolated
+expect 1 doctor
+unlink "$CLAUDEO_HOME/accounts/isolated/.claudeo-sharing"
+mkdir -p "$test_root/alternate config"
+printf 'alternate\n' > "$test_root/alternate config/CLAUDE.md"
+expect_env 0 CLAUDEO_SHARED_CONFIG_DIR="$test_root/alternate config" init alternate
+file_is "$CLAUDEO_HOME/accounts/alternate/CLAUDE.md" 'alternate
+'
 # Default storage fallbacks are still confined to the test home.
 unset CLAUDEO_HOME
 expect 0 init xdg

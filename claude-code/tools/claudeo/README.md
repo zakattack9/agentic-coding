@@ -2,16 +2,17 @@
 
 Launch local Claude Code sessions with different Claude subscription logins,
 including two accounts running at the same time. A small POSIX shell wrapper for
-macOS and Linux; version `0.1.0`, with no runtime package dependencies.
+macOS and Linux; version `0.2.0`, with no runtime package dependencies.
 
 Each name selects its own stable `CLAUDE_CONFIG_DIR`. Claude Code handles browser
 authentication, credential storage, and refresh. `claudeo` never reads, copies,
 prints, or manages tokens, credential files, or Keychain entries.
 
-**Configuration is separate too:** settings, plugins, history, sessions, and other
-Claude user state may live in each account directory. There is no automatic
-copying or linking of configuration. Repository-scoped configuration can stay in
-your repositories; configure each account's user settings/plugins through Claude.
+**Familiar customizations, separate logins:** new accounts link selected settings,
+instructions, skills, and hooks from your main `~/.claude` directory by default.
+Credentials, account metadata, plugin installations, history, and sessions stay
+separate. Use `--isolated` when creating an account to skip customization sharing.
+Existing accounts are never silently migrated on upgrade.
 
 ## Install
 
@@ -63,6 +64,9 @@ same project still share its files; use separate worktrees when appropriate.
 
 ```sh
 claudeo init personal                     # Create private storage; no login
+claudeo init --isolated independent       # No links to your main customizations
+claudeo login --isolated independent      # Native login with isolated config
+claudeo share personal                    # Explicitly migrate/refresh sharing
 claudeo login work --sso                  # Native subscription SSO flow
 claudeo run personal                      # Interactive session
 claudeo run work -- -p "summarize this repository"
@@ -82,7 +86,7 @@ and `--sso`, and rejects `--console`. This is for Pro, Max, Team, and Enterprise
 subscription accounts. **Anthropic profiles are a different mechanism**, used
 for Console OAuth and workload identity federation, not subscription switching.
 
-Only `init` and `login` create accounts. `run`, `status`, `logout`, and `path`
+Only `init` and `login` create accounts. `run`, `status`, `logout`, `share`, and `path`
 require an existing account. Names use 1–64 ASCII letters, digits, `.`, `_`, or
 `-`, starting with a letter or digit. Case-only duplicates and inconsistent
 casing are rejected on both platforms (macOS filesystems commonly ignore case).
@@ -97,6 +101,74 @@ preserved using `exec`. Invalid wrapper invocations exit `2`. Native status exit
 the wrapper itself never invokes token-generation or credential-file commands.
 
 ## Storage and isolation
+
+### Shared customizations
+
+If your main configuration directory exists, newly created accounts symlink
+these existing entries from it:
+
+```text
+settings.json   CLAUDE.md       keybindings.json
+rules/          skills/        agents/           commands/
+hooks/          output-styles/ statuslines/      themes/
+```
+
+Edits to the main files are visible to both accounts on the next load. These
+are ordinary writable symlinks: edits through an account can change the main
+file too. Shared configuration is trusted code/configuration, not a read-only
+overlay. Relative scripts/imports still need valid paths and dependencies.
+
+Only this allowlist is linked. In particular, neither `.claude.json` nor
+`.credentials.json`, managed/remote settings, plugin storage, history, caches,
+or session directories are shared. Global MCP registrations and their
+authentication remain account-local; configure them through Claude normally.
+Repository-scoped configuration is still loaded normally.
+
+For an account created before `0.2.0`, or to pick up newly added customization
+files/directories, run:
+
+```sh
+claudeo share personal
+```
+
+Conflicting account-local customizations are moved (not deleted) into a private
+`.claudeo-config-backup.<random>` directory inside that account before linking.
+Its location is reported on stderr. Repeating `share` with intact links is
+idempotent. The command touches only allowlisted customization entries and its
+own `.claudeo-sharing` marker; it never moves the account directory itself.
+To restore a backed-up customization, unlink that individual shared entry and
+move the corresponding backup entry back. No credential restoration is needed.
+
+Some editors and native configuration commands replace a symlink with a new
+regular file. `doctor` reports that sharing has drifted; run `share` again to
+back up that local replacement and restore the link. Changing the shared source
+does not remove old links for entries absent from the new source; review those
+individually if changing sources. An absent default `~/.claude` directory simply
+leaves a new account unlinked until you explicitly run `share`.
+
+`--isolated` goes **before** the account name and skips sharing when the account
+is first created. It does not remove existing shared links. Ordinary `init` or
+`login` on an existing isolated account keeps it isolated.
+
+### Plugins
+
+Plugin enablement preferences are in shared `settings.json`, but installations
+and marketplace registries remain separate. Install desired plugins through
+Claude's CLI for each account; sharing the entire `plugins/` directory would
+also couple its mutable state and configuration. For example:
+
+```sh
+claudeo personal plugin marketplace add anthropics/claude-plugins-official
+claudeo personal plugin install frontend-design@claude-plugins-official --scope user
+```
+
+Review `/plugin` in the new account. Enabling/disabling a plugin may update
+shared settings. For a migration, installing plugins **before** running `share`
+preserves your main preferences and backs up the account's previous settings.
+The wrapper does not parse plugin registries, install arbitrary plugins on
+startup, or share plugin credentials.
+
+### Private account storage
 
 ```text
 ${CLAUDEO_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/claudeo}/
@@ -126,6 +198,10 @@ Advanced overrides:
   enforces private permissions. Relative `XDG_CONFIG_HOME` is also rejected.
 - `CLAUDEO_CLAUDE_BIN`: executable path or command name, defaulting to
   `command -v claude`. It is one executable, not a shell command or flags.
+- `CLAUDEO_SHARED_CONFIG_DIR`: absolute main customization directory, default
+  `$HOME/.claude`. It is used at account creation or explicit `share`, never
+  inferred from ambient `CLAUDE_CONFIG_DIR`. Existing links keep their source
+  until explicitly migrated. An explicit nonexistent source is an error.
 
 Before launching Claude, the wrapper unsets these ambient variables in its
 child environment only, including variables set to empty strings:
@@ -165,6 +241,12 @@ if the effective source is unexpected; organizational policies remain in force.
 The wrapper neither parses nor overrides settings, and cannot promise
 subscription-only billing under arbitrary configuration. Bare mode is not a
 substitute: it changes normal Claude behavior and authentication support.
+
+Before sharing a source, check that its settings do not supply authentication
+variables in `env`, an `apiKeyHelper`, or forced login/gateway settings. Do not
+share such a source for subscription switching. This check remains your
+responsibility: the dependency-free wrapper does not parse JSON or read secrets
+from settings. Subsequent edits to shared settings affect every linked account.
 
 ## Verify, upgrade, and uninstall
 

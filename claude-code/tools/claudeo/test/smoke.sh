@@ -16,9 +16,10 @@ trap 'exit 130' INT
 trap 'exit 143' HUP TERM
 export HOME="$smoke_root/home" XDG_CONFIG_HOME="$smoke_root/xdg"
 export CLAUDEO_HOME="$smoke_root/claudeo" CLAUDEO_CLAUDE_BIN="$real_claude"
+unset CLAUDEO_SHARED_CONFIG_DIR
 mkdir -p "$HOME" "$smoke_root/project"
 cd "$smoke_root/project"
-"$tool_dir/bin/claudeo" init smoke >/dev/null
+"$tool_dir/bin/claudeo" init --isolated smoke >/dev/null
 status=0
 "$tool_dir/bin/claudeo" status smoke > "$smoke_root/status" 2> "$smoke_root/stderr" || status=$?
 if [ "$status" -ne 1 ]; then
