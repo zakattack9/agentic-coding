@@ -1,0 +1,54 @@
+#!/bin/sh
+set -eu
+
+# Only used by the harness: capture argv and a small allowlist of test state.
+: "${CLAUDEO_TEST_CAPTURE:?run through claudeo-test.sh}"
+mkdir -p "$CLAUDEO_TEST_CAPTURE"
+printf 'call\n' >> "$CLAUDEO_TEST_CAPTURE/calls"
+printf '%s' "${CLAUDE_CONFIG_DIR-}" > "$CLAUDEO_TEST_CAPTURE/config"
+printf '%s' "${ANTHROPIC_CONFIG_DIR-}" > "$CLAUDEO_TEST_CAPTURE/profile"
+printf '%s' "${CLAUDEO_TEST_SENTINEL-}" > "$CLAUDEO_TEST_CAPTURE/sentinel"
+pwd -P > "$CLAUDEO_TEST_CAPTURE/cwd"
+printf '%s' "$#" > "$CLAUDEO_TEST_CAPTURE/argc"
+printf '%s' "$$" > "$CLAUDEO_TEST_CAPTURE/pid"
+i=0
+for arg do
+    printf '%s' "$arg" > "$CLAUDEO_TEST_CAPTURE/arg.$i"
+    i=$((i + 1))
+done
+# Capture presence only, never credential values (even on failed isolation).
+: > "$CLAUDEO_TEST_CAPTURE/overrides"
+for variable in ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN \
+    CLAUDE_CODE_USE_BEDROCK CLAUDE_CODE_USE_VERTEX CLAUDE_CODE_USE_FOUNDRY \
+    ANTHROPIC_PROFILE ANTHROPIC_FEDERATION_RULE_ID ANTHROPIC_ORGANIZATION_ID \
+    ANTHROPIC_IDENTITY_TOKEN_FILE ANTHROPIC_IDENTITY_TOKEN \
+    ANTHROPIC_SERVICE_ACCOUNT_ID ANTHROPIC_WORKSPACE_ID ANTHROPIC_BASE_URL; do
+    if printenv "$variable" >/dev/null 2>&1; then
+        printf '%s\n' "$variable" >> "$CLAUDEO_TEST_CAPTURE/overrides"
+    fi
+done
+case ${CLAUDEO_TEST_MODE-} in
+    stdin) cat; printf 'fake stderr\n' >&2 ;;
+    signal)
+        trap 'exit 73' TERM
+        : > "$CLAUDEO_TEST_CAPTURE/ready"
+        n=0
+        while [ "$n" -lt 10 ]; do sleep 1; n=$((n + 1)); done
+        exit 99
+        ;;
+    concurrent)
+        : > "$CLAUDEO_TEST_CAPTURE/ready"
+        n=0
+        while [ ! -f "$CLAUDEO_TEST_PEER/ready" ]; do
+            n=$((n + 1))
+            [ "$n" -lt 10 ] || exit 99
+            sleep 1
+        done
+        ;;
+esac
+case ${1-}:${2-}:${3-} in
+    --version::) printf 'fake-claude 1.0.0\n' ;;
+    auth:status:--text) printf 'Not logged in\n' ;;
+    auth:status:) printf '{"loggedIn":false}\n' ;;
+esac
+exit "${CLAUDEO_TEST_EXIT:-0}"
