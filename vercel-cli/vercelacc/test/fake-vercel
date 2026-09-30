@@ -1,0 +1,19 @@
+#!/bin/sh
+# Stand-in for the Vercel CLI. Prints its arguments with the account storage
+# prefix shortened, and imitates the few side effects the wrapper reacts to.
+printf 'REAL:'
+for arg do
+    case $arg in
+        "$VACCT_HOME"/accounts/*) arg=${arg#"$VACCT_HOME"/accounts/} ;;
+    esac
+    printf ' %s' "$arg"
+done
+printf '\n'
+case " $* " in
+    *" logout "*) [ -n "${FAKE_LOGOUT_FAIL:-}" ] && exit 1 ;;
+    *" link "*)
+        mkdir -p .vercel
+        printf '{"projectId":"p","orgId":"%s"}\n' "${FAKE_LINK_ORG:-team_NEW}" > .vercel/project.json
+        ;;
+esac
+exit 0

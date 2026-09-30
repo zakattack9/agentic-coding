@@ -6,6 +6,7 @@ This repository centralizes configuration, plugins, and tooling for AI-powered c
 
 - `claude-code/` — Everything related to Claude Code: installable plugins, skills, hooks, commands, agents. See `claude-code/CLAUDE.md` for specifics.
 - `codex-cli/` — Everything related to OpenAI Codex CLI (future).
+- `vercel-cli/` — Tooling for the Vercel CLI. `vercelacc/` switches between several logged-in Vercel accounts.
 - `docs/` — General documentation, guides, and notes not scoped to a specific tool.
 
 ## Plugin Marketplace
