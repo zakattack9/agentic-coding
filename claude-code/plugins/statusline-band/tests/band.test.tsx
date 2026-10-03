@@ -10,6 +10,7 @@ import {
   livePercent,
   parseEtime,
   shortenDir,
+  shade,
   shortenId,
   shortenModel,
   xterm256,
@@ -201,8 +202,9 @@ test('formatting the band adds', async () => {
   expect(livePercent(13.4, undefined, now)).toBe(13.4)
   expect(shortenId('f00a9b5b-d316-4fca-9031-1b5fa9afddad')).toBe('f00a9b5b…afddad')
   expect(shortenId('abc-123')).toBe('abc-123')
+  expect(shade('#ffd7af')).toBe('#bfa183')
   const side = [[{ text: 'a' }], [{ text: 'id', copy: 'full-id' }]]
   const text = (padded: boolean) => joinSide(side, padded).map(p => p.text).join('')
-  expect(text(false)).toBe('a\u00a0\u00a0⌁\u00a0\u00a0id')
-  expect(text(true)).toBe('a\u00a0\u00a0⌁id')
+  expect(text(false)).toBe('a\u00a0\u00a0⟡\u00a0\u00a0id')
+  expect(text(true)).toBe('a\u00a0\u00a0⟡id')
 })

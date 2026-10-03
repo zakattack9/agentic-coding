@@ -42,6 +42,13 @@ export function xterm256(n: number): string {
   return '#' + hex2(v) + hex2(v) + hex2(v)
 }
 
+// A color a shade darker: each channel scaled toward black.
+export function shade(hex: string, factor = 0.75): string {
+  const n = parseInt(hex.slice(1), 16)
+  const ch = (shift: number) => hex2(Math.round(((n >> shift) & 0xff) * factor))
+  return '#' + ch(16) + ch(8) + ch(0)
+}
+
 // `sed "s|^$HOME|~|"` then keep the last `levels` components (0 = full path).
 export function shortenDir(dir: string, home: string | undefined, levels: number): string {
   let d = dir
@@ -162,17 +169,18 @@ export type Snapshot = {
   ram: Ram
 }
 
-// One run of text; `seg` colors it, `isDim` draws it quiet, and `copy` makes
-// it a button that copies that text.
-export type Piece = { text: string; seg?: Segment; isDim?: boolean; copy?: string }
+// One run of text; `seg` colors it, `isShaded` draws that color a shade
+// darker, `isDim` draws it quiet, and `copy` makes it a button that copies
+// that text.
+export type Piece = { text: string; seg?: Segment; isShaded?: boolean; isDim?: boolean; copy?: string }
 // Segments are joined by the separator; each is one or more pieces.
 export type Side = Piece[][]
 export type Row = { left: Side; right: Side }
 
 // Two rows, each split into a left side (what changes the reading of the
 // session) and a right side pushed to the band's far edge:
-//   dir ⌁ branch ⌁ model ⌁ effort                 duration ⌁ version ⌁ session id
-//   5h 13% · 7d 26% ⌁ ctx 8% ⌁ $0.77 ⌁ style                RAM 2.03GB (7 · 3.1%)
+//   dir ⟡ branch ⟡ model ⟡ effort                 duration ⟡ version ⟡ session id
+//   5h 13% · 7d 26% ⟡ ctx 8% ⟡ $0.77 ⟡ style                RAM 2.03GB (7 · 3.1%)
 export function rows(s: Snapshot): Row[] {
   const row1: Row = {
     left: [[{ text: s.dir, seg: 'dir' }], [{ text: s.git, seg: 'git' }], [{ text: s.model, seg: 'model' }]],
@@ -185,13 +193,21 @@ export function rows(s: Snapshot): Row[] {
 
   const row2: Row = { left: [], right: [] }
   if (s.limits.length > 0) {
-    row2.left.push([{ text: s.limits.map(l => `${l.label} ${Math.trunc(l.pct)}%`).join(' · '), seg: 'session' }])
+    const pieces: Piece[] = []
+    s.limits.forEach((l, i) => {
+      if (i > 0) pieces.push({ text: ' · ', seg: 'session' })
+      pieces.push({ text: `${l.label} `, seg: 'session', isShaded: true }, { text: `${Math.trunc(l.pct)}%`, seg: 'session' })
+    })
+    row2.left.push(pieces)
   }
   const ctx = s.ctxPct === undefined ? '—' : `${Math.trunc(s.ctxPct)}%`
   row2.left.push([{ text: `ctx ${ctx}`, seg: 'ctx' }])
   if (s.costUsd !== undefined) row2.left.push([{ text: `$${s.costUsd.toFixed(2)}`, seg: 'cost' }])
   if (s.outputStyle) row2.left.push([{ text: s.outputStyle, seg: 'ostyle' }])
-  row2.right.push([{ text: `RAM ${s.ram.amount} (${s.ram.procs} · ${s.ram.pct})`, seg: 'ram' }])
+  row2.right.push([
+    { text: `RAM ${s.ram.amount}`, seg: 'ram' },
+    { text: ` (${s.ram.procs} · ${s.ram.pct})`, seg: 'ram', isShaded: true },
+  ])
 
   return [row1, row2]
 }
@@ -208,7 +224,7 @@ export function joinSide(side: Side, isButtonPadded = false): Piece[] {
   side.forEach((seg, i) => {
     if (i > 0) {
       const beforeButton = isButtonPadded && seg[0]?.copy !== undefined
-      out.push({ text: GAP + '⌁' + (beforeButton ? '' : GAP), seg: 'sep', isDim: true })
+      out.push({ text: GAP + '⟡' + (beforeButton ? '' : GAP), seg: 'sep', isDim: true })
     }
     out.push(...seg)
   })

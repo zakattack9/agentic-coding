@@ -11,6 +11,7 @@ import {
   parseEtime,
   type Piece,
   rows,
+  shade,
   shortenDir,
   shortenModel,
   type Snapshot,
@@ -218,7 +219,11 @@ export const register: Register = (on, options) => {
     if (e.surface === 'terminal' && !showInTerminal) return next(e)
 
     const { Box, Button, Text } = $.ui.resolve(e)
-    const color = (p: Piece) => (useColor && p.seg ? xterm256(PALETTE[p.seg]) : undefined)
+    const color = (p: Piece) => {
+      if (!useColor || !p.seg) return undefined
+      const hex = xterm256(PALETTE[p.seg])
+      return p.isShaded ? shade(hex) : hex
+    }
     const draw = (pieces: Piece[]) =>
       pieces.map(p => (
         <Text color={color(p)} dimColor={p.isDim === true}>
