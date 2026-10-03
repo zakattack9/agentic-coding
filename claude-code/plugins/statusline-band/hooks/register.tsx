@@ -137,7 +137,6 @@ async function collect($: EngineInterface): Promise<Snapshot> {
     sessionId: id,
     outputStyle: cfg.outputStyle || 'default',
     ctxPct: usage.context.percent,
-    ctxWindow: usage.context.window,
     costUsd: usage.cost?.usd,
     durationMs: now - Math.max(runStart, usage.startedAt),
     limits,
@@ -262,15 +261,18 @@ export const register: Register = (on, options) => {
       return out
     }
 
+    // A plain Button is the bare label on the terminal; other surfaces pad it.
+    const isButtonPadded = e.surface !== 'terminal'
+
     // Each row: the left side from the start, the right side pushed to the
     // far edge. When the band is too narrow, the right side gives way first.
     return (
       <Box flexDirection="column" width={e.props.bodyColumns}>
         {rows(snap).map(row => (
           <Box flexDirection="row" justifyContent="space-between" columnGap={3}>
-            <Text wrap="truncate-end">{draw(joinSide(row.left))}</Text>
+            <Text wrap="truncate-end">{draw(joinSide(row.left, isButtonPadded))}</Text>
             <Box flexDirection="row" flexShrink={1000}>
-              {side(joinSide(row.right), 'truncate-start')}
+              {side(joinSide(row.right, isButtonPadded), 'truncate-start')}
             </Box>
           </Box>
         ))}

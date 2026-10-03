@@ -6,6 +6,7 @@ import {
   formatEffort,
   formatRam,
   formatTokens,
+  joinSide,
   livePercent,
   parseEtime,
   shortenDir,
@@ -73,7 +74,7 @@ test('draws two rows on desktop', async ($, on) => {
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
   for (const text of [
     'presspoint/api/src', 'main', 'Opus 5.5 (1M)', 'default', 'v2.1.288',
-    '13%', '7%', '21%', ' of 1M', '$1.23',
+    '5h 13% · 7d 7%', 'ctx 21%', '$1.23',
     // Uptime of this run (the engine's etime), not usage.startedAt (1h 2m ago).
     '20m',
     // Three claude processes; the disclaimer wrapper is dropped.
@@ -90,7 +91,6 @@ test('leaves out what the engine has no figure for', async ($, on) => {
   await $.session.start({ cwd: '/Users/z', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
   expect(await ui.find({ type: 'Text', text: '—' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: ' of 200k' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '5h ' })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: '$1.23' })).toBeUndefined()
   await ui.unmount()
@@ -201,4 +201,8 @@ test('formatting the band adds', async () => {
   expect(livePercent(13.4, undefined, now)).toBe(13.4)
   expect(shortenId('f00a9b5b-d316-4fca-9031-1b5fa9afddad')).toBe('f00a9b5b…afddad')
   expect(shortenId('abc-123')).toBe('abc-123')
+  const side = [[{ text: 'a' }], [{ text: 'id', copy: 'full-id' }]]
+  const text = (padded: boolean) => joinSide(side, padded).map(p => p.text).join('')
+  expect(text(false)).toBe('a\u00a0\u00a0◦\u00a0\u00a0id')
+  expect(text(true)).toBe('a\u00a0\u00a0◦id')
 })

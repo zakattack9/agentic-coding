@@ -10,12 +10,12 @@ export const PALETTE = {
   style: 245, // gray (cc version)
   ram: 218, // pastel pink
   ctx: 116, // soft teal
-  dur: 173, // muted salmon
+  dur: 139, // muted mauve-gray (the script's ostyle_color: duration took the style's old slot)
   git: 150, // soft green
   cost: 222, // light gold
   session: 194, // light green
   sessid: 103, // muted periwinkle-gray
-  ostyle: 139, // muted mauve-gray
+  ostyle: 173, // muted salmon (the script's dur_color: style took the duration's old slot)
 } as const
 
 export type Segment = keyof typeof PALETTE
@@ -155,7 +155,6 @@ export type Snapshot = {
   outputStyle: string
   // Absent until the live window's first response (a fresh or just-compacted session).
   ctxPct?: number
-  ctxWindow: number
   // Absent where the host keeps no cost ledger.
   costUsd?: number
   durationMs: number
@@ -172,36 +171,45 @@ export type Row = { left: Side; right: Side }
 
 // Two rows, each split into a left side (what changes the reading of the
 // session) and a right side pushed to the band's far edge:
-//   dir ◦ branch ◦ model ◦ effort                 style ◦ version ◦ session id
-//   5h 13% ◦ 7d 26% ◦ ctx 8% of 1M ◦ $0.77 ◦ 2m      RAM 2.03GB (7 · 3.1%)
+//   dir ◦ branch ◦ model ◦ effort                 duration ◦ version ◦ session id
+//   5h 13% · 7d 26% ◦ ctx 8% ◦ $0.77 ◦ style                RAM 2.03GB (7 · 3.1%)
 export function rows(s: Snapshot): Row[] {
   const row1: Row = {
     left: [[{ text: s.dir, seg: 'dir' }], [{ text: s.git, seg: 'git' }], [{ text: s.model, seg: 'model' }]],
     right: [],
   }
   if (s.effort) row1.left.push([{ text: s.effort, seg: 'effort' }])
-  if (s.outputStyle) row1.right.push([{ text: s.outputStyle, seg: 'ostyle' }])
+  row1.right.push([{ text: formatDuration(s.durationMs), seg: 'dur' }])
   if (s.version) row1.right.push([{ text: `v${s.version}`, seg: 'style' }])
   if (s.sessionId) row1.right.push([{ text: shortenId(s.sessionId), seg: 'sessid', copy: s.sessionId }])
 
   const row2: Row = { left: [], right: [] }
-  for (const l of s.limits) {
-    row2.left.push([{ text: `${l.label} ${Math.trunc(l.pct)}%`, seg: 'session' }])
+  if (s.limits.length > 0) {
+    row2.left.push([{ text: s.limits.map(l => `${l.label} ${Math.trunc(l.pct)}%`).join(' · '), seg: 'session' }])
   }
   const ctx = s.ctxPct === undefined ? '—' : `${Math.trunc(s.ctxPct)}%`
-  row2.left.push([{ text: `ctx ${ctx} of ${formatTokens(s.ctxWindow)}`, seg: 'ctx' }])
+  row2.left.push([{ text: `ctx ${ctx}`, seg: 'ctx' }])
   if (s.costUsd !== undefined) row2.left.push([{ text: `$${s.costUsd.toFixed(2)}`, seg: 'cost' }])
-  row2.left.push([{ text: formatDuration(s.durationMs), seg: 'dur' }])
+  if (s.outputStyle) row2.left.push([{ text: s.outputStyle, seg: 'ostyle' }])
   row2.right.push([{ text: `RAM ${s.ram.amount} (${s.ram.procs} · ${s.ram.pct})`, seg: 'ram' }])
 
   return [row1, row2]
 }
 
-// A side as one flat run of pieces, separators included.
-export function joinSide(side: Side): Piece[] {
+// Two no-break spaces each side: plain spaces may collapse on a surface that
+// lays the band out as HTML.
+const GAP = '\u00a0\u00a0'
+
+// A side as one flat run of pieces, separators included. `isButtonPadded`:
+// the surface pads a button itself (Desktop draws a native one), so the
+// separator before a copy button drops its trailing gap.
+export function joinSide(side: Side, isButtonPadded = false): Piece[] {
   const out: Piece[] = []
   side.forEach((seg, i) => {
-    if (i > 0) out.push({ text: ' ◦ ', seg: 'sep', isDim: true })
+    if (i > 0) {
+      const beforeButton = isButtonPadded && seg[0]?.copy !== undefined
+      out.push({ text: GAP + '◦' + (beforeButton ? '' : GAP), seg: 'sep', isDim: true })
+    }
     out.push(...seg)
   })
   return out

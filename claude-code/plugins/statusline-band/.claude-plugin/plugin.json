@@ -1,6 +1,6 @@
 {
   "name": "statusline-band",
-  "description": "Port of statuslineV4.sh to a mod: draws the same figures in two colored rows (dir, git, model, effort | output style, version, session id / rate limits, context, cost, duration | RAM) in the band above the prompt, so the Desktop Code tab gets a status line. Off in the terminal by default, where the real statusLine still runs.",
+  "description": "Port of statuslineV4.sh to a mod: draws the same figures in two colored rows (dir, git, model, effort | duration, version, session id / rate limits, context, cost, output style | RAM) in the band above the prompt, so the Desktop Code tab gets a status line. Off in the terminal by default, where the real statusLine still runs.",
   "userConfig": {
     "show_in_terminal": {
       "type": "boolean",
