@@ -1,12 +1,13 @@
 # statusline-band
 
-A mod that ports `claude-code/statuslines/statuslineV4.sh` into the band above the prompt, so the Claude Desktop Code tab (which doesn't run `statusLine` scripts) gets the same three rows:
+A mod that ports `claude-code/statuslines/statuslineV4.sh` into the band above the prompt, so the Claude Desktop Code tab (which doesn't run `statusLine` scripts) gets the same figures in two rows:
 
-1. directory ✦ git branch ✦ model ✦ effort
-2. 5h / 7d rate limits ✦ RAM ✦ context % ✦ cost ✦ duration
-3. Claude Code version ✦ session id ✦ output style
+```
+statusline-band ◦ main ◦ Opus 5.5 ◦ high                    Caveman ◦ v2.1.286 ◦ f00a9b5b…afddad
+5h 13% ◦ 7d 26% ◦ ctx 8% of 1M ◦ $0.77 ◦ 2m                                RAM 2.03GB (6 · 2.9%)
+```
 
-Colors are the script's xterm-256 palette converted to hex. `NO_COLOR` turns them off.
+Each row puts its main figures on the left and pushes the rest to the right edge. Labels (`5h`, `ctx`, `RAM`) are dimmed so the values stand out. Colors are the script's xterm-256 palette converted to hex. A non-empty `NO_COLOR` turns them off.
 
 ## Install
 
@@ -15,7 +16,7 @@ Colors are the script's xterm-256 palette converted to hex. `NO_COLOR` turns the
 /plugin install statusline-band@zaksak
 ```
 
-Requires Claude Code v2.1.287 or later (mods).
+Requires a Claude Code build with mods. Tested on v2.1.286 in the Desktop Code tab.
 
 ## Options
 
@@ -30,9 +31,14 @@ Set via `/plugin configure statusline-band@zaksak` or `/config`:
 ## Differences from the script
 
 - Draws **above** the prompt: mods can't draw in the status line slot below it.
-- Effort comes from the main loop's last request (`turn.step`); before the first request it falls back to the `/config` row.
-- Output style comes from the `/config` row, matched by key name; shows `default` when not found.
-- RAM uses the script's `pgrep claude` match, which may not find the Desktop app's process.
+- Two rows instead of three. The version, session id and output style move to the right side of row 1, and the session id is shortened to `first8…last6`.
+- Effort comes from the main loop's last request (`turn.step`), and is blank for a model without effort. Before the first request, or after `/effort` or `/model` changes between turns, it comes from the `/config` row until the next request.
+- Output style comes from the engine's own `/config` row, matched by key name. It shows `default` when not found.
+- Context shows the window size (`ctx 8% of 1M`) and `—` until the first response of a fresh or just-compacted session, where the script showed `0%`.
+- Rate limits read `0%` once a window's reset time has passed, since the engine's reading is from the last response. A gateway's `spend_limit` shows as `spend`. With no reading at all, the segment is left out instead of saying `No ongoing session`.
+- Cost is left out when the host keeps no cost ledger, instead of showing `$0.00`.
+- Duration counts from this run's start, read from the engine process's uptime. The engine's own session start counts from a resumed session's first launch. `/clear` still resets it.
+- RAM sums every process named `claude` for this user, as the script does: all Desktop Code tabs and terminal sessions, not just this one. This session's engine is always included, and the Desktop app's `disclaimer` wrapper is skipped.
 
 ## Develop
 

@@ -65,6 +65,20 @@ export function shortenModel(model: string): string {
   return model.replace(' context', '')
 }
 
+// turn.step's effort: a level name, or a thinking budget in tokens.
+export function formatEffort(effort: string | number | undefined): string {
+  if (effort === undefined) return ''
+  if (typeof effort === 'number') return formatTokens(effort)
+  return effort === 'null' ? '' : effort
+}
+
+// 1_000_000 -> "1M", 200_000 -> "200k", 32_000 -> "32k".
+export function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${+(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1000) return `${Math.round(n / 1000)}k`
+  return `${n}`
+}
+
 export function formatDuration(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000))
   const days = Math.floor(s / 86400)
@@ -76,31 +90,45 @@ export function formatDuration(ms: number): string {
   return `${mins}m`
 }
 
-// "5h 13% | 7d 7% " or '' when no window has a reading.
-export function sessionText(rl5?: number, rl7?: number): string {
-  const parts: string[] = []
-  if (rl5 !== undefined) parts.push(`5h ${Math.trunc(rl5)}%`)
-  if (rl7 !== undefined) parts.push(`7d ${Math.trunc(rl7)}%`)
-  return parts.length ? parts.join(' | ') + ' ' : ''
+// `ps -o etime=` ("[[dd-]hh:]mm:ss") to milliseconds; undefined when unparsable.
+export function parseEtime(etime: string): number | undefined {
+  const m = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)$/.exec(etime.trim())
+  if (!m) return undefined
+  const [d, h, min, s] = [m[1], m[2], m[3], m[4]].map(x => Number(x ?? 0))
+  return (((d ?? 0) * 24 + (h ?? 0)) * 60 + (min ?? 0)) * 60_000 + (s ?? 0) * 1000
 }
 
-// Sums `ps -o %mem=,rss=` output the way the script's awk does.
-export function formatRam(psOutput: string): string {
+// A window's percent, or 0 once its reset time has passed: the reading is from
+// the last API response, which may predate the reset by hours.
+export function livePercent(percentUsed: number, resetsAt: string | undefined, now: number): number {
+  const t = resetsAt ? Date.parse(resetsAt) : NaN
+  return Number.isFinite(t) && t <= now ? 0 : percentUsed
+}
+
+// "f00a9b5b-d316-4fca-9031-1b5fa9afddad" -> "f00a9b5b…afddad".
+export function shortenId(id: string): string {
+  return id.length > 16 ? `${id.slice(0, 8)}…${id.slice(-6)}` : id
+}
+
+export type Ram = { amount: string; procs: number; pct: string }
+
+// Sums `ps -o %mem=,rss=,comm=` output the way the script's awk does, keeping
+// only programs named exactly "claude": a wrapper whose arguments end in a
+// claude path (the Desktop app's `disclaimer`) matches `pgrep -f` but isn't one.
+export function formatRam(psOutput: string): Ram {
   let mem = 0
   let rss = 0
   let found = 0
   for (const line of psOutput.split('\n')) {
-    const cols = line.trim().split(/\s+/)
-    if (cols.length < 2 || cols[0] === '') continue
-    mem += Number(cols[0]) || 0
-    rss += Number(cols[1]) || 0
+    const m = /^\s*([\d.]+)\s+(\d+)\s+(.+?)\s*$/.exec(line)
+    if (!m || !/(^|\/)claude$/.test(m[3] ?? '')) continue
+    mem += Number(m[1]) || 0
+    rss += Number(m[2]) || 0
     found++
   }
-  if (found === 0) return 'RAM: 0.0MB (0 | 0.0%)'
   const mb = rss / 1024
-  return mb >= 1000
-    ? `RAM: ${(mb / 1024).toFixed(2)}GB (${found} | ${mem.toFixed(1)}%)`
-    : `RAM: ${mb.toFixed(1)}MB (${found} | ${mem.toFixed(1)}%)`
+  const amount = mb >= 1000 ? `${(mb / 1024).toFixed(2)}GB` : `${mb.toFixed(1)}MB`
+  return { amount, procs: found, pct: `${mem.toFixed(1)}%` }
 }
 
 // Unique pids from any number of `pgrep` outputs.
@@ -115,6 +143,8 @@ export function mergePids(...outputs: string[]): string[] {
   return [...seen]
 }
 
+export type Limit = { label: string; pct: number }
+
 export type Snapshot = {
   dir: string
   git: string
@@ -123,52 +153,62 @@ export type Snapshot = {
   version: string
   sessionId: string
   outputStyle: string
-  ctxPct: number
-  costUsd: number
+  // Absent until the live window's first response (a fresh or just-compacted session).
+  ctxPct?: number
+  ctxWindow: number
+  // Absent where the host keeps no cost ledger.
+  costUsd?: number
   durationMs: number
-  rl5?: number
-  rl7?: number
-  ram: string
+  limits: Limit[]
+  ram: Ram
 }
 
-export type Piece = { text: string; seg?: Segment }
+// One run of text; `seg` colors it, `isLabel` draws it quiet.
+export type Piece = { text: string; seg?: Segment; isLabel?: boolean }
+// Segments are joined by the separator; each is one or more pieces.
+export type Side = Piece[][]
+export type Row = { left: Side; right: Side }
 
-// The three rows of the script, as colored pieces.
-export function rows(s: Snapshot): Piece[][] {
-  const sep: Piece = { text: ' ✦ ', seg: 'sep' }
+// Two rows, each split into a left side (what changes the reading of the
+// session) and a right side pushed to the band's far edge:
+//   dir ◦ branch ◦ model ◦ effort                 style ◦ version ◦ session id
+//   5h 13% ◦ 7d 26% ◦ ctx 8% of 1M ◦ $0.77 ◦ 2m      RAM 2.03GB (7 · 3.1%)
+export function rows(s: Snapshot): Row[] {
+  const row1: Row = {
+    left: [[{ text: s.dir, seg: 'dir' }], [{ text: s.git, seg: 'git' }], [{ text: s.model, seg: 'model' }]],
+    right: [],
+  }
+  if (s.effort) row1.left.push([{ text: s.effort, seg: 'effort' }])
+  if (s.outputStyle) row1.right.push([{ text: s.outputStyle, seg: 'ostyle' }])
+  if (s.version) row1.right.push([{ text: `v${s.version}`, seg: 'style' }])
+  if (s.sessionId) row1.right.push([{ text: shortenId(s.sessionId), seg: 'sessid' }])
 
-  const row1: Piece[] = [
-    { text: s.dir, seg: 'dir' },
-    sep,
-    { text: s.git, seg: 'git' },
-    sep,
-    { text: s.model, seg: 'model' },
-  ]
-  if (s.effort) row1.push(sep, { text: s.effort, seg: 'effort' })
+  const row2: Row = { left: [], right: [] }
+  for (const l of s.limits) {
+    row2.left.push([{ text: `${l.label} `, isLabel: true }, { text: `${Math.trunc(l.pct)}%`, seg: 'session' }])
+  }
+  row2.left.push([
+    { text: 'ctx ', isLabel: true },
+    { text: s.ctxPct === undefined ? '—' : `${Math.trunc(s.ctxPct)}%`, seg: 'ctx' },
+    { text: ` of ${formatTokens(s.ctxWindow)}`, isLabel: true },
+  ])
+  if (s.costUsd !== undefined) row2.left.push([{ text: `$${s.costUsd.toFixed(2)}`, seg: 'cost' }])
+  row2.left.push([{ text: formatDuration(s.durationMs), seg: 'dur' }])
+  row2.right.push([
+    { text: 'RAM ', isLabel: true },
+    { text: s.ram.amount, seg: 'ram' },
+    { text: ` (${s.ram.procs} · ${s.ram.pct})`, isLabel: true },
+  ])
 
-  const sess = sessionText(s.rl5, s.rl7)
-  const row2: Piece[] = [
-    { text: ' ' },
-    { text: sess || 'No ongoing session ', seg: 'session' },
-    { text: '✦ ', seg: 'sep' },
-    { text: s.ram, seg: 'ram' },
-    sep,
-    { text: `${Math.trunc(s.ctxPct)}% ctx`, seg: 'ctx' },
-    sep,
-    { text: `$${s.costUsd.toFixed(2)}`, seg: 'cost' },
-    sep,
-    { text: formatDuration(s.durationMs), seg: 'dur' },
-  ]
+  return [row1, row2]
+}
 
-  const row3: Piece[] = [{ text: ' ' }]
-  const tail: Piece[] = []
-  if (s.version) tail.push({ text: `v${s.version}`, seg: 'style' })
-  if (s.sessionId) tail.push({ text: s.sessionId, seg: 'sessid' })
-  if (s.outputStyle) tail.push({ text: s.outputStyle, seg: 'ostyle' })
-  tail.forEach((p, i) => {
-    if (i > 0) row3.push(sep)
-    row3.push(p)
+// A side as one flat run of pieces, separators included.
+export function joinSide(side: Side): Piece[] {
+  const out: Piece[] = []
+  side.forEach((seg, i) => {
+    if (i > 0) out.push({ text: ' ◦ ', seg: 'sep' })
+    out.push(...seg)
   })
-
-  return [row1, row2, row3]
+  return out
 }

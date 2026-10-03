@@ -1,7 +1,18 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
-import { formatDuration, formatRam, shortenDir, shortenModel, xterm256 } from '../hooks/format'
+import {
+  formatDuration,
+  formatEffort,
+  formatRam,
+  formatTokens,
+  livePercent,
+  parseEtime,
+  shortenDir,
+  shortenId,
+  shortenModel,
+  xterm256,
+} from '../hooks/format'
 
 const BAND = {
   plugin: 'statusline-band',
@@ -17,24 +28,26 @@ const BAND = {
 } as const
 
 // The world beneath the plugin: a session in a git repo on a Mac.
-function world(on: On) {
+function world(on: On, usage: Record<string, unknown> = {}, engineComm = '/Apps/claude.app/Contents/MacOS/claude') {
   mock.env(on, { HOME: '/Users/z' })
   const clock = mock.clock(on, { now: 1_000_000 + 3_725_000 })
   on('session.cwd', async () => ({ value: '/Users/z/dev/presspoint/api/src' }))
   on('session.model', async () => ({ value: 'claude-opus-5-5[1m]' }))
-  on('session.id', async () => ({ value: 'abc-123' }))
+  on('session.id', async () => ({ value: 'f00a9b5b-d316-4fca-9031-1b5fa9afddad' }))
   on('session.version', async () => ({ value: { version: '2.1.288', base: '2.1.288' } }))
   on('session.usage', async () => ({ value: {
     startedAt: 1_000_000,
-    context: { tokens: 42_000, window: 200_000, percent: 21 },
+    context: { tokens: 42_000, window: 1_000_000, percent: 21 },
     rateLimits: [
       { kind: 'five_hour', percentUsed: 13.4 },
       { kind: 'seven_day', percentUsed: 7.9 },
     ],
     cost: { usd: 1.234 },
+    ...usage,
   } }))
   on('session.start', async ($, e) => ({ cwd: e.cwd }))
   on('config.list', async () => ({ value: [] }))
+  on('classic.SessionStart', async () => ({}))
   const out = (exitCode: number, stdout: string) => ({
     value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
   })
@@ -42,28 +55,69 @@ function world(on: On) {
     const argv = e.argv.join(' ')
     if (argv === 'git rev-parse --git-dir') return out(0, '.git\n')
     if (argv === 'git branch --show-current') return out(0, 'main\n')
+    if (argv === 'sh -c echo $PPID') return out(0, '103\n')
+    if (argv === 'ps -o etime=,comm= -p 103') return out(0, `   20:00 ${engineComm}\n`)
     if (argv.startsWith('pgrep -x')) return out(0, '101\n102\n')
-    if (argv.startsWith('pgrep -fx')) return out(0, '102\n')
-    if (argv.startsWith('ps ')) return out(0, ' 1.5 307200\n 0.5 204800\n')
+    if (argv.startsWith('pgrep -fx')) return out(0, '102\n104\n')
+    if (argv.startsWith('ps -o %mem=,rss=,comm= -p ')) {
+      return out(0, ' 1.0 204800 claude\n 0.5 102400 /Users/z/.local/bin/claude\n 0.0 688 /Apps/Helpers/disclaimer\n 0.5 204800 /Apps/claude.app/Contents/MacOS/claude\n')
+    }
     return out(1, '')
   })
   return clock
 }
 
-test('draws the three rows on desktop', async ($, on) => {
+test('draws two rows on desktop', async ($, on) => {
   world(on)
   await $.session.start({ cwd: '/Users/z/dev/presspoint/api/src', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
-  expect(await ui.find({ type: 'Text', text: 'api/src' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'main' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'Opus 5.5 (1M)' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: '5h 13% | 7d 7% ' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'RAM: 500.0MB (2 | 2.0%)' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: '21% ctx' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: '$1.23' })).toBeDefined()
+  for (const text of [
+    'presspoint/api/src', 'main', 'Opus 5.5 (1M)', 'default', 'v2.1.288', 'f00a9b5b…afddad',
+    '13%', '7%', '21%', ' of 1M', '$1.23',
+    // Uptime of this run (the engine's etime), not usage.startedAt (1h 2m ago).
+    '20m',
+    // Three claude processes; the disclaimer wrapper is dropped.
+    '500.0MB', ' (3 · 2.0%)',
+  ]) {
+    expect(await ui.find({ type: 'Text', text })).toBeDefined()
+  }
+  await ui.unmount()
+})
+
+test('leaves out what the engine has no figure for', async ($, on) => {
+  world(on, { context: { window: 200_000 }, rateLimits: [], cost: undefined })
+  await $.session.start({ cwd: '/Users/z', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: '—' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: ' of 200k' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '5h ' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: '$1.23' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('reads a rate-limit window past its reset as 0%', async ($, on) => {
+  world(on, { rateLimits: [{ kind: 'five_hour', percentUsed: 13.4, resetsAt: '1970-01-01T00:00:01Z' }] })
+  await $.session.start({ cwd: '/Users/z', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: '5h 0%' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '13%' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('counts duration from /clear when it is later than the engine start', async ($, on) => {
+  // The mocked clock reads 4_725_000; /clear 5 minutes ago, engine up 20m.
+  world(on, { startedAt: 4_425_000 })
+  await $.session.start({ cwd: '/Users/z', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: '5m' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('falls back to the session start when the parent is not claude', async ($, on) => {
+  world(on, {}, '/usr/bin/node')
+  await $.session.start({ cwd: '/Users/z', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
   expect(await ui.find({ type: 'Text', text: '1h 2m' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'v2.1.288' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'abc-123' })).toBeDefined()
   await ui.unmount()
 })
 
@@ -77,7 +131,7 @@ test('leaves the terminal band to the real status line by default', async ($, on
   await $.session.start({ cwd: '/Users/z', surface: 'terminal', isInteractive: true })
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(await ui.find({ type: 'Text', text: 'engine band' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'ctx' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: '21%' })).toBeUndefined()
   await ui.unmount()
 })
 
@@ -85,7 +139,7 @@ test('draws in the terminal when asked to', { options: { show_in_terminal: true 
   world(on)
   await $.session.start({ cwd: '/Users/z', surface: 'terminal', isInteractive: true })
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect(await ui.find({ type: 'Text', text: '21% ctx' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '21%' })).toBeDefined()
   await ui.unmount()
 })
 
@@ -100,6 +154,25 @@ test('formatting matches the script', async () => {
   expect(formatDuration(42_000)).toBe('42s')
   expect(formatDuration(3_725_000)).toBe('1h 2m')
   expect(formatDuration(90_000_000)).toBe('1d 1h')
-  expect(formatRam('')).toBe('RAM: 0.0MB (0 | 0.0%)')
-  expect(formatRam(' 3.0 1572864\n')).toBe('RAM: 1.50GB (1 | 3.0%)')
+  expect(formatRam('')).toEqual({ amount: '0.0MB', procs: 0, pct: '0.0%' })
+  expect(formatRam(' 3.0 1572864 claude\n')).toEqual({ amount: '1.50GB', procs: 1, pct: '3.0%' })
+  expect(formatRam(' 0.0 688 /Apps/Helpers/disclaimer\n')).toEqual({ amount: '0.0MB', procs: 0, pct: '0.0%' })
+})
+
+test('formatting the band adds', async () => {
+  expect(formatEffort(undefined)).toBe('')
+  expect(formatEffort('xhigh')).toBe('xhigh')
+  expect(formatEffort(32_000)).toBe('32k')
+  expect(formatTokens(1_000_000)).toBe('1M')
+  expect(formatTokens(200_000)).toBe('200k')
+  expect(parseEtime('18:04')).toBe(1_084_000)
+  expect(parseEtime('04:11:56')).toBe(15_116_000)
+  expect(parseEtime('02-01:39:38')).toBe(178_778_000)
+  expect(parseEtime('junk')).toBeUndefined()
+  const now = Date.parse('2026-10-02T12:00:00Z')
+  expect(livePercent(13.4, '2026-10-02T11:00:00Z', now)).toBe(0)
+  expect(livePercent(13.4, '2026-10-02T13:00:00Z', now)).toBe(13.4)
+  expect(livePercent(13.4, undefined, now)).toBe(13.4)
+  expect(shortenId('f00a9b5b-d316-4fca-9031-1b5fa9afddad')).toBe('f00a9b5b…afddad')
+  expect(shortenId('abc-123')).toBe('abc-123')
 })

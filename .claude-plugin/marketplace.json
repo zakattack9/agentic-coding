@@ -49,8 +49,8 @@
     {
       "name": "statusline-band",
       "source": "./claude-code/plugins/statusline-band",
-      "description": "A mod that ports the statuslineV4.sh status line into the band above the prompt, so the Claude Desktop Code tab, which runs no statusLine scripts, gets the same three colored rows: directory, git branch, model and effort; rate limits, RAM, context, cost and duration; version, session id and output style. It stays off in the terminal by default, where the real status line still runs.",
-      "version": "0.1.0"
+      "description": "A mod that ports the statuslineV4.sh status line into the band above the prompt, so the Claude Desktop Code tab, which runs no statusLine scripts, gets the same figures in two colored rows: directory, git branch, model and effort, with output style, version and session id on the right; rate limits, context, cost and duration, with RAM on the right. It stays off in the terminal by default, where the real status line still runs.",
+      "version": "0.2.0"
     }
   ]
 }
