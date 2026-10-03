@@ -1,0 +1,24 @@
+{
+  "name": "statusline-band",
+  "description": "Port of statuslineV4.sh to a mod: draws the same three colored rows (dir, git, model, effort / rate limits, RAM, context, cost, duration / version, session id, output style) in the band above the prompt, so the Desktop Code tab gets a status line. Off in the terminal by default, where the real statusLine still runs.",
+  "userConfig": {
+    "show_in_terminal": {
+      "type": "boolean",
+      "title": "Show in terminal",
+      "description": "Also draw the band in terminal sessions (off by default, since the CLI already runs statuslineV4.sh)",
+      "default": false
+    },
+    "dir_levels": {
+      "type": "number",
+      "title": "Directory levels",
+      "description": "Trailing path components to show; 0 shows the full path",
+      "default": 3
+    },
+    "refresh_seconds": {
+      "type": "number",
+      "title": "Refresh interval (seconds)",
+      "description": "How often git, RAM and duration refresh between turns",
+      "default": 5
+    }
+  }
+}

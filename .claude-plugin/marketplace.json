@@ -45,6 +45,12 @@
       "source": "./claude-code/plugins/codex",
       "description": "Run the OpenAI Codex CLI from inside Claude Code as a cross-model escape hatch: hand a one-off review, question, or write task to a different provider's model for a second opinion, grounded in your repo with web search always on. Every call routes through one fail-open bridge \u2014 if Codex is absent, unauthenticated, or broken the skill reports and stops rather than answering as Claude, and Codex's output is surfaced verbatim as untrusted external text. Assumes an OpenAI-authenticated Codex setup.",
       "version": "0.2.1"
+    },
+    {
+      "name": "statusline-band",
+      "source": "./claude-code/plugins/statusline-band",
+      "description": "A mod that ports the statuslineV4.sh status line into the band above the prompt, so the Claude Desktop Code tab, which runs no statusLine scripts, gets the same three colored rows: directory, git branch, model and effort; rate limits, RAM, context, cost and duration; version, session id and output style. It stays off in the terminal by default, where the real status line still runs.",
+      "version": "0.1.0"
     }
   ]
 }
