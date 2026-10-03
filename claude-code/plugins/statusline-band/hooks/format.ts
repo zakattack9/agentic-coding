@@ -171,8 +171,8 @@ export type Row = { left: Side; right: Side }
 
 // Two rows, each split into a left side (what changes the reading of the
 // session) and a right side pushed to the band's far edge:
-//   dir ◦ branch ◦ model ◦ effort                 duration ◦ version ◦ session id
-//   5h 13% · 7d 26% ◦ ctx 8% ◦ $0.77 ◦ style                RAM 2.03GB (7 · 3.1%)
+//   dir ⌁ branch ⌁ model ⌁ effort                 duration ⌁ version ⌁ session id
+//   5h 13% · 7d 26% ⌁ ctx 8% ⌁ $0.77 ⌁ style                RAM 2.03GB (7 · 3.1%)
 export function rows(s: Snapshot): Row[] {
   const row1: Row = {
     left: [[{ text: s.dir, seg: 'dir' }], [{ text: s.git, seg: 'git' }], [{ text: s.model, seg: 'model' }]],
@@ -208,7 +208,7 @@ export function joinSide(side: Side, isButtonPadded = false): Piece[] {
   side.forEach((seg, i) => {
     if (i > 0) {
       const beforeButton = isButtonPadded && seg[0]?.copy !== undefined
-      out.push({ text: GAP + '◦' + (beforeButton ? '' : GAP), seg: 'sep', isDim: true })
+      out.push({ text: GAP + '⌁' + (beforeButton ? '' : GAP), seg: 'sep', isDim: true })
     }
     out.push(...seg)
   })

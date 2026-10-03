@@ -203,6 +203,6 @@ test('formatting the band adds', async () => {
   expect(shortenId('abc-123')).toBe('abc-123')
   const side = [[{ text: 'a' }], [{ text: 'id', copy: 'full-id' }]]
   const text = (padded: boolean) => joinSide(side, padded).map(p => p.text).join('')
-  expect(text(false)).toBe('a\u00a0\u00a0◦\u00a0\u00a0id')
-  expect(text(true)).toBe('a\u00a0\u00a0◦id')
+  expect(text(false)).toBe('a\u00a0\u00a0⌁\u00a0\u00a0id')
+  expect(text(true)).toBe('a\u00a0\u00a0⌁id')
 })

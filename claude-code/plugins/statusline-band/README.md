@@ -3,11 +3,11 @@
 A mod that ports `claude-code/statuslines/statuslineV4.sh` into the band above the prompt, so the Claude Desktop Code tab (which doesn't run `statusLine` scripts) gets the same figures in two rows:
 
 ```
-statusline-band  ◦  main  ◦  Opus 5.5  ◦  high               2m  ◦  v2.1.286  ◦  f00a9b5b…afddad
-5h 13% · 7d 26%  ◦  ctx 8%  ◦  $0.77  ◦  Caveman                        RAM 2.03GB (6 · 2.9%)
+statusline-band  ⌁  main  ⌁  Opus 5.5  ⌁  high               2m  ⌁  v2.1.286  ⌁  f00a9b5b…afddad
+5h 13% · 7d 26%  ⌁  ctx 8%  ⌁  $0.77  ⌁  Caveman                        RAM 2.03GB (6 · 2.9%)
 ```
 
-Each row puts its main figures on the left and pushes the rest to the right edge. Each figure is drawn in its own color, labels included, and the `◦` separators are dimmed. Colors are the script's xterm-256 palette converted to hex. A non-empty `NO_COLOR` turns them off.
+Each row puts its main figures on the left and pushes the rest to the right edge. Each figure is drawn in its own color, labels included, and the `⌁` separators are dimmed. Colors are the script's xterm-256 palette converted to hex. A non-empty `NO_COLOR` turns them off.
 
 The session id is a button. In the terminal, pressing it copies the full id. The Desktop app doesn't let mods write to the clipboard yet, so there it shows the full id in a toast instead.
 
