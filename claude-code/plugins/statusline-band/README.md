@@ -7,7 +7,9 @@ statusline-band ◦ main ◦ Opus 5.5 ◦ high                    Caveman ◦ v2
 5h 13% ◦ 7d 26% ◦ ctx 8% of 1M ◦ $0.77 ◦ 2m                                RAM 2.03GB (6 · 2.9%)
 ```
 
-Each row puts its main figures on the left and pushes the rest to the right edge. Labels (`5h`, `ctx`, `RAM`) are dimmed so the values stand out. Colors are the script's xterm-256 palette converted to hex. A non-empty `NO_COLOR` turns them off.
+Each row puts its main figures on the left and pushes the rest to the right edge. Each figure is drawn in its own color, labels included, and the `◦` separators are dimmed. Colors are the script's xterm-256 palette converted to hex. A non-empty `NO_COLOR` turns them off.
+
+The session id is a button. In the terminal, pressing it copies the full id. The Desktop app doesn't let mods write to the clipboard yet, so there it shows the full id in a toast instead.
 
 ## Install
 

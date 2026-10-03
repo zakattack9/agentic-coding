@@ -72,7 +72,7 @@ test('draws two rows on desktop', async ($, on) => {
   await $.session.start({ cwd: '/Users/z/dev/presspoint/api/src', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
   for (const text of [
-    'presspoint/api/src', 'main', 'Opus 5.5 (1M)', 'default', 'v2.1.288', 'f00a9b5b…afddad',
+    'presspoint/api/src', 'main', 'Opus 5.5 (1M)', 'default', 'v2.1.288',
     '13%', '7%', '21%', ' of 1M', '$1.23',
     // Uptime of this run (the engine's etime), not usage.startedAt (1h 2m ago).
     '20m',
@@ -81,6 +81,7 @@ test('draws two rows on desktop', async ($, on) => {
   ]) {
     expect(await ui.find({ type: 'Text', text })).toBeDefined()
   }
+  expect(await ui.find({ type: 'Button', key: 'copy-session-id', text: 'f00a9b5b…afddad' })).toBeDefined()
   await ui.unmount()
 })
 
@@ -120,6 +121,31 @@ test('falls back to the session start when the parent is not claude', async ($, 
   expect(await ui.find({ type: 'Text', text: '1h 2m' })).toBeDefined()
   await ui.unmount()
 })
+
+for (const [surface, copied, toast] of [
+  ['terminal', true, 'Session ID copied'],
+  ['desktop', false, 'Session ID: f00a9b5b-d316-4fca-9031-1b5fa9afddad'],
+] as const) {
+  test(`copies the session id on ${surface}`, { options: { show_in_terminal: true } }, async ($, on) => {
+    world(on)
+    const copies: string[] = []
+    on('ui.copy', async ($, e) => {
+      copies.push(e.text)
+      return { value: copied ? { isCopied: true } : { isCopied: false, reason: 'no-clipboard' } }
+    })
+    const toasts: string[] = []
+    on('ui.toast', async ($, e) => {
+      toasts.push(e.text)
+      return { value: undefined }
+    })
+    await $.session.start({ cwd: '/Users/z', surface, isInteractive: true })
+    const ui = await $.ui.mount({ ...BAND, surface })
+    await ui.press({ key: 'copy-session-id' })
+    expect(copies).toEqual(['f00a9b5b-d316-4fca-9031-1b5fa9afddad'])
+    expect(toasts).toEqual([toast])
+    await ui.unmount()
+  })
+}
 
 test('leaves the terminal band to the real status line by default', async ($, on) => {
   world(on)

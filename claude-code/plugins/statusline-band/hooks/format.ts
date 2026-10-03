@@ -163,8 +163,9 @@ export type Snapshot = {
   ram: Ram
 }
 
-// One run of text; `seg` colors it, `isLabel` draws it quiet.
-export type Piece = { text: string; seg?: Segment; isLabel?: boolean }
+// One run of text; `seg` colors it, `isDim` draws it quiet, and `copy` makes
+// it a button that copies that text.
+export type Piece = { text: string; seg?: Segment; isDim?: boolean; copy?: string }
 // Segments are joined by the separator; each is one or more pieces.
 export type Side = Piece[][]
 export type Row = { left: Side; right: Side }
@@ -181,24 +182,17 @@ export function rows(s: Snapshot): Row[] {
   if (s.effort) row1.left.push([{ text: s.effort, seg: 'effort' }])
   if (s.outputStyle) row1.right.push([{ text: s.outputStyle, seg: 'ostyle' }])
   if (s.version) row1.right.push([{ text: `v${s.version}`, seg: 'style' }])
-  if (s.sessionId) row1.right.push([{ text: shortenId(s.sessionId), seg: 'sessid' }])
+  if (s.sessionId) row1.right.push([{ text: shortenId(s.sessionId), seg: 'sessid', copy: s.sessionId }])
 
   const row2: Row = { left: [], right: [] }
   for (const l of s.limits) {
-    row2.left.push([{ text: `${l.label} `, isLabel: true }, { text: `${Math.trunc(l.pct)}%`, seg: 'session' }])
+    row2.left.push([{ text: `${l.label} ${Math.trunc(l.pct)}%`, seg: 'session' }])
   }
-  row2.left.push([
-    { text: 'ctx ', isLabel: true },
-    { text: s.ctxPct === undefined ? '—' : `${Math.trunc(s.ctxPct)}%`, seg: 'ctx' },
-    { text: ` of ${formatTokens(s.ctxWindow)}`, isLabel: true },
-  ])
+  const ctx = s.ctxPct === undefined ? '—' : `${Math.trunc(s.ctxPct)}%`
+  row2.left.push([{ text: `ctx ${ctx} of ${formatTokens(s.ctxWindow)}`, seg: 'ctx' }])
   if (s.costUsd !== undefined) row2.left.push([{ text: `$${s.costUsd.toFixed(2)}`, seg: 'cost' }])
   row2.left.push([{ text: formatDuration(s.durationMs), seg: 'dur' }])
-  row2.right.push([
-    { text: 'RAM ', isLabel: true },
-    { text: s.ram.amount, seg: 'ram' },
-    { text: ` (${s.ram.procs} · ${s.ram.pct})`, isLabel: true },
-  ])
+  row2.right.push([{ text: `RAM ${s.ram.amount} (${s.ram.procs} · ${s.ram.pct})`, seg: 'ram' }])
 
   return [row1, row2]
 }
@@ -207,7 +201,7 @@ export function rows(s: Snapshot): Row[] {
 export function joinSide(side: Side): Piece[] {
   const out: Piece[] = []
   side.forEach((seg, i) => {
-    if (i > 0) out.push({ text: ' ◦ ', seg: 'sep' })
+    if (i > 0) out.push({ text: ' ◦ ', seg: 'sep', isDim: true })
     out.push(...seg)
   })
   return out

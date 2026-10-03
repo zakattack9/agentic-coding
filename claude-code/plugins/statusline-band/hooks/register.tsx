@@ -218,16 +218,49 @@ export const register: Register = (on, options) => {
     if (e.props.hasSurvey || snap === null) return next(e)
     if (e.surface === 'terminal' && !showInTerminal) return next(e)
 
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Button, Text } = $.ui.resolve(e)
+    const color = (p: Piece) => (useColor && p.seg ? xterm256(PALETTE[p.seg]) : undefined)
     const draw = (pieces: Piece[]) =>
       pieces.map(p => (
-        <Text
-          color={useColor && p.seg ? xterm256(PALETTE[p.seg]) : useColor && p.isLabel ? xterm256(PALETTE.sep) : undefined}
-          dimColor={p.isLabel === true}
-        >
+        <Text color={color(p)} dimColor={p.isDim === true}>
           {p.text}
         </Text>
       ))
+
+    // Copies where the surface can; Desktop has no clipboard path for mods
+    // yet, so it gets the full id in a toast instead.
+    const copyButton = (p: Piece, text: string) => (
+      <Button
+        key="copy-session-id"
+        label={p.text}
+        plain
+        dimColor
+        onPress={async press => {
+          const result = await $.ui.copy({ text, surface: press.surface })
+          $.ui.toast(result.isCopied ? 'Session ID copied' : `Session ID: ${text}`)
+        }}
+      />
+    )
+
+    // A side as runs of Text, broken where a piece is a copy button.
+    const side = (pieces: Piece[], wrap: 'truncate-end' | 'truncate-start') => {
+      const out: unknown[] = []
+      let chunk: Piece[] = []
+      const flush = () => {
+        if (chunk.length > 0) out.push(<Text wrap={wrap}>{draw(chunk)}</Text>)
+        chunk = []
+      }
+      for (const p of pieces) {
+        if (p.copy === undefined) {
+          chunk.push(p)
+        } else {
+          flush()
+          out.push(copyButton(p, p.copy))
+        }
+      }
+      flush()
+      return out
+    }
 
     // Each row: the left side from the start, the right side pushed to the
     // far edge. When the band is too narrow, the right side gives way first.
@@ -236,8 +269,8 @@ export const register: Register = (on, options) => {
         {rows(snap).map(row => (
           <Box flexDirection="row" justifyContent="space-between" columnGap={3}>
             <Text wrap="truncate-end">{draw(joinSide(row.left))}</Text>
-            <Box flexShrink={1000}>
-              <Text wrap="truncate-start">{draw(joinSide(row.right))}</Text>
+            <Box flexDirection="row" flexShrink={1000}>
+              {side(joinSide(row.right), 'truncate-start')}
             </Box>
           </Box>
         ))}
