@@ -20,7 +20,7 @@
       "name": "ralph",
       "source": "./claude-code/plugins/ralph",
       "description": "Ralph Loop \u2014 an autonomous agentic coding workflow with sandbox isolation, scoped memory, and self-managing task iteration.",
-      "version": "0.1.8"
+      "version": "0.1.9"
     },
     {
       "name": "skill-manager",
