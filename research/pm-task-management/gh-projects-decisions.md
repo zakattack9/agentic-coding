@@ -41,3 +41,12 @@ Context: the 2026-11-02 audit found the plugin passes its offline tests but its 
 9. **Sprints.** Two-week sprints starting Monday. Sprint 7 starts Monday 2026-11-16.
 10. **CLAUDE.md.** Add a short "GitHub Task Board" section to `cars.bdv`'s `CLAUDE.md`: both trackers exist, `kanban/` rules are unchanged, the board is the high-level ledger, and the board skills are named. No migration wording.
 11. **Cleanup done 2026-11-11, owner-approved.** Deleted 25 fake test issues in `cars.bdv` (#188 to #211 and #220; the earlier count of 22 was wrong, the approved ranges were exact), 3 fake milestones (v1.0, v1.1, v1.2), issue #576 "Fix something", and boards #23, #29, #30, #31, #32, #33, #34, #35 and #36. Repo variables `GH_PROJECT_NUMBER` and `GH_PROJECT_URL` now point at #27. Board #7 (closed old template) is kept.
+
+## 2026-11-11 (build session): board #27 view choices and the first apply
+
+1. **Ready view has no grouping.** The Priority grouping is removed so the agent-set order is one list and the top row is the next ticket. Owner's answer: "No grouping (Recommended)".
+2. **Roadmap groups by Area**, replacing Milestone. Owner's answer: "Area (Recommended)".
+3. **First apply approved.** The owner approved the exact 20-change plan from `check_board.py` (create Area, delete the 11 fields, add Sprints 7 to 10, delete Blockers and Triage, update five views in place). Owner's answer: "Yes, apply (Recommended)".
+4. **Board access.** The three non-owner org members get Write on board #27; org owners already administer every org board. Owner's answer: "Yes, grant Write (Recommended)".
+5. **Sprint capacity is in points: S=1, M=2, L=4.** The plan-sprint skill asks for the points per sprint once and saves it in `tools/board/board.json`. Owner's answer: "Points S=1 M=2 L=4 (Recommended)".
+6. **Health thresholds.** Stale: In Progress or In Review with no update for 5 days. At risk: Target date within 3 days and not yet In Review, or blocked with Target date within 7 days. Kept in `board.json`. Owner's answer: "Stale 5 days, at risk 3 days (Recommended)".
