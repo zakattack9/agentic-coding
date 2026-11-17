@@ -51,6 +51,12 @@
       "source": "./claude-code/plugins/statusline-band",
       "description": "A mod that ports the statuslineV4.sh status line into the band above the prompt, so the Claude Desktop Code tab, which runs no statusLine scripts, gets the same figures in two colored rows: directory, git branch, model and effort, with duration, version and session id on the right; rate limits, context, cost and output style, with RAM on the right. It stays off in the terminal by default, where the real status line still runs.",
       "version": "0.2.4"
+    },
+    {
+      "name": "study",
+      "source": "./claude-code/plugins/study",
+      "description": "A study coach for books, papers and lecture decks built on retrieval practice. You read a few pages and recall them from memory; Claude grades the recall against the actual pages with page citations and asks follow-up questions, then drafts at most 8 flashcards aimed at what you missed. Cards reach Anki through AnkiConnect only after you approve each one.",
+      "version": "0.1.0"
     }
   ]
 }

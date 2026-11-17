@@ -1,0 +1,4 @@
+{
+  "name": "study",
+  "description": "Study books, papers and lecture decks with retrieval practice: you read a few pages and recall them from memory, Claude grades the recall against the actual pages and asks follow-up questions, then drafts at most 8 cited Anki cards aimed at what you missed. Cards reach Anki through AnkiConnect only after you approve each one."
+}
