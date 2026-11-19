@@ -6,27 +6,28 @@ session. Three skills, all routed through one deterministic, **fail-open** bridg
 
 | Skill | What it does | Touches the repo? |
 | ----- | ------------ | ----------------- |
-| **`review-codex`** | A read-only cross-model **code review** of your uncommitted work or a named target. Surfaces Codex's review verbatim, in Codex's own severity order, then stops. | No (read-only) |
+| **`review-codex`** | One read-only cross-model **code review**: P0/P1 findings only, each with evidence, one pass, plus a fresh-session `--recheck`. Surfaces findings verbatim, then stops. | No (read-only) |
 | **`ask-codex`** | A read-only free-form **question** answered by Codex — explain, review a plan, repo Q&A, opinion on a diff. | No (read-only) |
 | **`delegate-codex`** | Hand Codex a **write task** and let it edit the working tree, then shows you the diff. User-invoked only. | **Yes** (`workspace-write`) |
 
 Every call runs with **web search on** and Codex grounding itself natively in your repo
 (AGENTS.md + read-only file reads). Codex's output is surfaced **verbatim as untrusted
 external text** — it is never followed as instructions or auto-executed. If Codex is absent,
-unauthenticated, disabled, slow, or broken, a skill **reports and stops** — it never answers
-or edits as Claude in Codex's place.
+unauthenticated, disabled, slow, or broken, `ask-codex` and `delegate-codex` **report and
+stop**; `review-codex` runs its review once on a fresh read-only Claude subagent instead,
+labelled as the fallback.
 
-## Cross-model review subagent (`codex:codex-review`)
+## How review-codex reviews
 
-The plugin also ships one **agent**, `codex:codex-review`, for orchestrators that run a
-review loop and want Codex's second opinion **concurrently** with their own Claude reviewers
-rather than after them. Dispatch it via the Agent tool in the **same message** as the Claude
-reviewers (mixed agent types in one turn run in parallel), hand it a self-contained review
-brief (target + focus + a materiality bar + the exact finding shape to return), and it invokes
-`ask-codex` internally, distills Codex's answer to only the material findings, and returns them
-as strict JSON. Same fail-open contract: Codex unavailable → it returns an empty result flagged
-`codexAvailable: false`, never a Claude-authored review. It is a thin conduit — read-only, Codex
-does the reviewing. `spec-ops`'s `loop-spec` emits driver prompts that use it this way.
+`review-codex` runs **one** pass and reports only **P0** (blocks release) and **P1** (must fix
+before merge) findings, each with evidence (a reproduction, the test that would fail, or the
+exact lines) or labelled UNPROVEN. It never loops. The author proves each finding with a
+failing test or records a dismissal with evidence, then runs `/review-codex --recheck <findings
+file>`, which checks only those findings in a **fresh** Codex session that sees the evidence,
+not the author's argument. Anything still disputed goes to the user. If Codex is unavailable,
+the same review runs once in a fresh read-only Claude subagent, labelled as the fallback.
+Claude and Codex never review the same target side by side. The review and recheck prompts
+are in `references/review.md`.
 
 ## Requirements & setup
 
@@ -55,7 +56,7 @@ Each skill checks availability with a one-line probe that runs the bundled
 `scripts/codex_bridge.py` at skill load. In **auto permission mode**, Claude Code's classifier
 blocks a freshly-installed plugin's scripts until you trust them — so on a brand-new install
 that probe is **denied**, and the skill reads the denial as "Codex unavailable," reports it, and
-stops cleanly (fail-open — it never crashes and never answers as Claude in Codex's place). Since
+stops cleanly (fail-open — it never crashes; review-codex then runs its labelled Claude fallback). Since
 these skills exist to call Codex, you'll want to grant the bridge trust before using them. Add a
 rule to your `~/.claude/settings.json`:
 
