@@ -94,6 +94,8 @@ it); any other line — a `CODEX: NO …` line, a blank line, or a denied / erro
 Codex is unavailable, so say so and stop without composing a prompt or calling the bridge. A
 denied or failed bridge call is never a crash.
 
+**Exception: review-codex.** When Codex is unavailable, review-codex runs the same review once in a fresh read-only Claude subagent and labels it `Claude fallback review (Codex unavailable: <reason>)` (see its SKILL.md). ask-codex and delegate-codex keep the report-and-stop rule above.
+
 ## Surfacing the result (exit 0)
 
 - **Verbatim and in full.** Show Codex's payload exactly as returned — never truncated,
