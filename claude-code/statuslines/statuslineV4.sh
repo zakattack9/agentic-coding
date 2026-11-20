@@ -24,6 +24,7 @@ cost_color() { if [ "$use_color" -eq 1 ]; then printf '\033[0;38;5;222m'; fi; } 
 session_color() { if [ "$use_color" -eq 1 ]; then printf '\033[0;38;5;194m'; fi; } # light green
 sessid_color() { if [ "$use_color" -eq 1 ]; then printf '\033[0;38;5;103m'; fi; }  # muted periwinkle-gray
 ostyle_color() { if [ "$use_color" -eq 1 ]; then printf '\033[0;38;5;139m'; fi; }  # muted mauve-gray
+agent_color() { if [ "$use_color" -eq 1 ]; then printf '\033[0;38;5;109m'; fi; }   # muted slate teal
 
 rst() { if [ "$use_color" -eq 1 ]; then printf '\033[0m'; fi; }
 
@@ -56,6 +57,15 @@ else
   total_dur_ms=0
   rl_5h_pct=""
   rl_7d_pct=""
+fi
+
+# ---- agent name ----
+# The name ListAgents, SendMessage and `claude agents` use (e.g. "brain-f5"); each
+# live session records it in <config dir>/sessions/<pid>.json.
+agent_name=""
+if [ "$has_jq" -eq 1 ] && [ -n "$session_id" ]; then
+  sess_file=$(grep -lF "\"$session_id\"" "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/sessions/*.json 2>/dev/null | head -1)
+  [ -n "$sess_file" ] && agent_name=$(jq -r '.name // ""' "$sess_file" 2>/dev/null)
 fi
 
 # ---- shorten model name ----
@@ -160,7 +170,7 @@ printf ' %s✦ %s%s%% ctx%s' "$(sep_color)" "$(ctx_color)" "$ctx_pct" "$(rst)"
 printf ' %s✦ %s$%s%s' "$(sep_color)" "$(cost_color)" "$total_cost" "$(rst)"
 printf ' %s✦ %s%s%s' "$(sep_color)" "$(dur_color)" "$dur_txt" "$(rst)"
 
-# line 3: cc version, session id, output style
+# line 3: cc version, session id, agent name, output style
 printf '\n '
 row3_started=0
 if [ -n "$cc_version" ] && [ "$cc_version" != "null" ]; then
@@ -170,6 +180,11 @@ fi
 if [ -n "$session_id" ] && [ "$session_id" != "null" ]; then
   [ "$row3_started" -eq 1 ] && printf ' %s✦ %s' "$(sep_color)" "$(rst)"
   printf '%s%s%s' "$(sessid_color)" "$session_id" "$(rst)"
+  row3_started=1
+fi
+if [ -n "$agent_name" ] && [ "$agent_name" != "null" ]; then
+  [ "$row3_started" -eq 1 ] && printf ' %s✦ %s' "$(sep_color)" "$(rst)"
+  printf '%s%s%s' "$(agent_color)" "$agent_name" "$(rst)"
   row3_started=1
 fi
 if [ -n "$output_style" ] && [ "$output_style" != "null" ]; then
