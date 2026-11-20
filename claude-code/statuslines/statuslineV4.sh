@@ -59,6 +59,22 @@ else
   rl_7d_pct=""
 fi
 
+# ---- share this account's usage limits with the brain dashboard ----
+# One small file per account in <brain>/.brain/claude-usage/; written only when Claude Code sends rate_limits.
+if [ "$has_jq" -eq 1 ] && [ -r "$HOME/.config/brain/home" ]; then
+  read -r brain_home < "$HOME/.config/brain/home"
+  if [ -d "$brain_home/.brain" ]; then
+    acct=${CLAUDE_CONFIG_DIR:-$HOME/.claude}; acct=${acct%/}; acct=${acct##*/}
+    [ "$acct" = ".claude" ] && acct=default
+    snap=$(echo "$input" | jq -c --arg a "$acct" 'select(.rate_limits) | {account: $a, ts: (now | floor), version: (.version // ""),
+      five_hour: .rate_limits.five_hour, seven_day: .rate_limits.seven_day}' 2>/dev/null)
+    if [ -n "$snap" ]; then
+      snap_dir="$brain_home/.brain/claude-usage"
+      mkdir -p "$snap_dir" && printf '%s\n' "$snap" > "$snap_dir/.$acct.$$" && mv -f "$snap_dir/.$acct.$$" "$snap_dir/$acct.json"
+    fi
+  fi
+fi
+
 # ---- agent name ----
 # The name ListAgents, SendMessage and `claude agents` use (e.g. "brain-f5"); each
 # live session records it in <config dir>/sessions/<pid>.json.
