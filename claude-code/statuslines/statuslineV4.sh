@@ -70,7 +70,8 @@ if [ "$has_jq" -eq 1 ] && [ -r "$HOME/.config/brain/home" ]; then
       five_hour: .rate_limits.five_hour, seven_day: .rate_limits.seven_day}' 2>/dev/null)
     if [ -n "$snap" ]; then
       snap_dir="$brain_home/.brain/claude-usage"
-      mkdir -p "$snap_dir" && printf '%s\n' "$snap" > "$snap_dir/.$acct.$$" && mv -f "$snap_dir/.$acct.$$" "$snap_dir/$acct.json"
+      # umask 077: the file and its folder are readable by this user only (the brain flags anything wider).
+      (umask 077 && mkdir -p "$snap_dir" && printf '%s\n' "$snap" > "$snap_dir/.$acct.$$") && mv -f "$snap_dir/.$acct.$$" "$snap_dir/$acct.json"
     fi
   fi
 fi
